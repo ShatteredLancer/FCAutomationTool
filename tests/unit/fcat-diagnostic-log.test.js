@@ -464,3 +464,11 @@ it('isolates synchronous GM and clock errors without dropping later events', asy
   const broken = createFcatDiagnosticLog({ gmGetValue: () => null, gmSetValue: () => {}, now: () => { throw new Error('clock'); } });
   await expect(broken.record({ area: 'gallery', event: 'request' })).resolves.toBe(false);
 });
+
+it('separates requested Puzzle material optimization from effective cash fallback without private fields', async () => {
+  const t=harness(); await t.log.record({area:'puzzle',event:'procurement-result',requestedObjective:'material-value',objective:'additional-coins',
+    unknownCount:2,token:'secret-token',scope:'secret-account'});
+  const out=await t.log.exportPayload();
+  expect(out.entries.at(-1)).toMatchObject({requestedObjective:'material-value',objective:'additional-coins',unknownCount:2});
+  expect(JSON.stringify(out)).not.toContain('secret-');
+});

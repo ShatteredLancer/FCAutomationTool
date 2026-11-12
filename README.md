@@ -1,12 +1,16 @@
 # FC Automation Tool
 
+27.0.108：合并远程 .102–.107 的 Streamlined 恢复与 Puzzle 降本优化，保留本地最终库存替换；修复 Club 前置卡贡献后，外部卡残留重复标记导致的移卡拒绝，并显示实际已确认积分。详见 [27.0.108](docs/releases/27.0.108.md)。
+
 27.0.102：修复同价同品质的概念卡无法优先换成安全库存的问题；保存新方案前，用原剩余节点检查最终混合阵容的库存替换，减少不必要的购卡。材料总价值、完整条件与保护不放宽，已有保存阵容不会自动改变。详见 [27.0.102](docs/releases/27.0.102.md)。
 
-27.0.101：Puzzle 优先检查单/双卡降价替换，限制已有解之后的可选优化时间，报价过期时定向重核最终候选；减少重复整库诊断及化学配置解析，补足材料估值与耗时进度。同步保留 Streamlined 旧贡献显式归档与保护诊断。详见 [27.0.101 完成记录与验收边界](docs/releases/27.0.101.md)。
+27.0.107：修复材料总值模式找到初解后耗尽节点、跳过降本补搜的问题。在原阶段内留出替代比较预算，优先查询贵材料的同国籍低品质候选，并复用已验证初解；不新增85分禁用线，不提高预算/限价。见 [27.0.107 证据与边界](docs/releases/27.0.107.md)。
+
+27.0.106：Puzzle新默认按「最低材料总价值」比较库存与采购，不再默认只省新增购卡钱。以前已保存的「最低购卡支出」仍保留，设置页及结果提示切换位置；原预算/限价与保护不变，不禁用所有85分卡。见 [27.0.106 验证与切换说明](docs/releases/27.0.106.md)。
 
 **FC27 按正式版本持续开发。** 已发布的 `27.0.0` 资产保持只读且不可覆盖；当前源码版本的能力由生产 manifest 和真实验证记录决定，不再被 27.0.0 的历史发布许可锁定。未完成或待实测的能力会明确标注。
 
-当前 main：**27.0.102**。Puzzle 在国籍上限/同俱乐部最低人数/多联赛同时出现时纠正候选方向；尚未找到可行方案的联合搜索分段扩至 5 万→10 万→20 万，保留阶段进度和取消，锁卡/主阵容与交易保护不变，见 [27.0.100](docs/releases/27.0.100.md)。审核一次后，每 60 秒按原清单重查未买到的卡，至原报价到期；零采购明确显示原因，补足逐卡搜索诊断，不抬价、不自动续期，见 [27.0.99](docs/releases/27.0.99.md)。新增显式 X 帖子导入与 EVO 消息仓：逐卡核价、审核纳入总预算、先持有到固定目标再上架；六小时复核，停止/离页/重载取消监测。另修正有可靠缓存证据的 304 前置读取，不用 304 冒充交易回执，见 [27.0.98](docs/releases/27.0.98.md)。交易台分为投资与执行、候选与线索、观察笔记、设置；生成整批清单时对过期候选最多重新分析一次。严格未发送的旧计划可归档后另审新方案，未决买卖仍保护；只读恢复不再空读清除原因。见 [27.0.97](docs/releases/27.0.97.md)。新增整批投资方案与独立真实交易入口：本轮上限预填 20,000、可调，列出球员、数量、买入硬上限、卖出目标和情景税后收益；可移除候选。审核并明确确认后才买入、转入转会列表并上架；首版最多六个版本各一张，不要求花满，未成交不计盈利、不自动追涨/降价/重挂。X 采集器支持隐藏后台启动、状态与停止，仍只按需采集。旧观察笔记与 Gallery/Puzzle/Streamlined 主流程保持独立。详见 [27.0.95 用法及验证边界](docs/releases/27.0.95.md)、[投资方案合同](docs/TRADING_INVESTMENT_PLAN_ZH.md)和[后台管理](docs/TRADING_INTEL_BACKGROUND_ZH.md)。
+当前 main：**27.0.108**。Puzzle 在国籍上限/同俱乐部最低人数/多联赛同时出现时纠正候选方向；尚未找到可行方案的联合搜索分段扩至 5 万→10 万→20 万，保留阶段进度和取消，锁卡/主阵容与交易保护不变，见 [27.0.100](docs/releases/27.0.100.md)。审核一次后，每 60 秒按原清单重查未买到的卡，至原报价到期；零采购明确显示原因，补足逐卡搜索诊断，不抬价、不自动续期，见 [27.0.99](docs/releases/27.0.99.md)。新增显式 X 帖子导入与 EVO 消息仓：逐卡核价、审核纳入总预算、先持有到固定目标再上架；六小时复核，停止/离页/重载取消监测。另修正有可靠缓存证据的 304 前置读取，不用 304 冒充交易回执，见 [27.0.98](docs/releases/27.0.98.md)。交易台分为投资与执行、候选与线索、观察笔记、设置；生成整批清单时对过期候选最多重新分析一次。严格未发送的旧计划可归档后另审新方案，未决买卖仍保护；只读恢复不再空读清除原因。见 [27.0.97](docs/releases/27.0.97.md)。新增整批投资方案与独立真实交易入口：本轮上限预填 20,000、可调，列出球员、数量、买入硬上限、卖出目标和情景税后收益；可移除候选。审核并明确确认后才买入、转入转会列表并上架；首版最多六个版本各一张，不要求花满，未成交不计盈利、不自动追涨/降价/重挂。X 采集器支持隐藏后台启动、状态与停止，仍只按需采集。旧观察笔记与 Gallery/Puzzle/Streamlined 主流程保持独立。详见 [27.0.95 用法及验证边界](docs/releases/27.0.95.md)、[投资方案合同](docs/TRADING_INVESTMENT_PLAN_ZH.md)和[后台管理](docs/TRADING_INTEL_BACKGROUND_ZH.md)。
 
 [![Verify](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml/badge.svg)](https://github.com/ShatteredLancer/FCAutomationTool/actions/workflows/verify.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -38,7 +42,7 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-For current main, install [FCAutomationTool 27.0.102](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/main/FCAutomationTool.user.js?v=27.0.102). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
+For current main, install [FCAutomationTool 27.0.108](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/main/FCAutomationTool.user.js?v=27.0.108). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 

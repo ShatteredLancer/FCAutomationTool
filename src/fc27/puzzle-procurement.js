@@ -6,7 +6,7 @@ import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from '
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
-import { planPuzzleNationalityAffinity,planPuzzleLeagueMinimumAffinity } from './puzzle-query-affinity.js';
+import { planPuzzleNationalityAffinity,planPuzzleLeagueMinimumAffinity,planPuzzleNationalMinimumAffinity } from './puzzle-query-affinity.js';
 import { planPuzzleCappedNationClubFillers } from './puzzle-club-diversity-route.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
@@ -756,6 +756,15 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
     for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add(lane[index]);
   }
   if(!cappedClubs && chemistryNeeded && !parsed.rules.some(rule=>['from-clubs','from-leagues','from-nations'].includes(rule.kind))){
+    const nationalLane = planPuzzleNationalMinimumAffinity({ candidates: [...pool.candidates, ...marketCandidates(input, entries)],
+      rules: parsed.rules, required: required(input), usedQueries,
+      allowedLevels: allowedFc27MarketTiers(parsed.rules, input.policy).map(tier => tier.level),
+      excludedLeagueIds: input.policy.excludedLeagueIds });
+    if (nationalLane && tiers.length < 3) {
+      for (const level of tiers) add({ start: 0, count: 20, level });
+      add(nationalLane);
+      return { status: 'ready', executable: false, queries, complete: false };
+    }
     const lane=planPuzzleLeagueMinimumAffinity({candidates:[...pool.candidates,...marketCandidates(input,entries)],material,rules:parsed.rules,
       formation:input.challenge.formation,brickIndices:input.challenge.brickIndices,usedQueries,excludedLeagueIds:input.policy.excludedLeagueIds,
       resolveClub:createFc27ClubResolver(input.clubLinks)});

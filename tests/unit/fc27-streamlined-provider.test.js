@@ -117,17 +117,18 @@ it('materializes explicitly selected Unassigned/Transfer refs before validation'
   const plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy: f.plan.policy,
     result: { ...f.plan, items: [external, ...f.plan.items.slice(1)], batches: [[external, ...f.plan.items.slice(1)]],
       score: f.plan.score, progress: f.plan.progress, purchaseCost: 0, materialValue: null, searchComplete: true } });
-  const progress = [];
+  const progress = [], onDiagnostic = vi.fn();
   const materialize = vi.fn(async (_root, options) => ({ prepare: vi.fn(async refs => {
     expect(refs[0].pile).toBe('unassigned'); options.onProgress?.({ phase: 'materialize', completed: 1, total: 1 });
   }) }));
   const provider = createFc27StreamlinedProvider(f.root, { journal: f.journal, canWrite: () => true,
-    createMaterializer: materialize, createTransport: async () => ({ request: f.request }) });
+    createMaterializer: materialize, createTransport: async () => ({ request: f.request }), onDiagnostic });
   const batch = { index: 0, refs: plan.batches[0].map(item => ({ id: item.id, definitionId: item.definitionId,
     points: item.points, pile: item.pile, ...(item.executionPile ? { executionPile: item.executionPile } : {}) })) };
   expect(await provider.verify(plan, batch, 0, { onProgress: event => progress.push(event) })).toBe(true);
   expect(progress).toContainEqual(expect.objectContaining({ phase: 'materialize', completed: 1, total: 1, submittedScore: 0 }));
   expect(materialize).toHaveBeenCalledTimes(1);
+  expect(materialize.mock.calls[0][1].onDiagnostic).toBe(onDiagnostic);
 });
 
 it('executes and reconciles two batches with real read adapters while the page and repository stay stale', async () => {
@@ -157,4 +158,34 @@ it('executes and reconciles two batches with real read adapters while the page a
   expect(JSON.stringify(f.root.repositories)).toBe(before); expect(f.challenge.submittedScore).toBe(0);
   expect((await tx.execute(plan, approval)).status).toBe('completed');
   expect(mutations).toEqual([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10]]);
+});
+
+// A durable pending intent is not permission to dispatch after Stop.
+it.each(['factory', 'other-transactions', 'journal-read', 'dirty'])('honors Stop across the %s pre-dispatch await', async stage => {
+  const f = streamlinedRuntime(), memory = new Map();
+  let atDispatch = false, stopped = false, mutationRequests = 0, releaseGate, enterGate;
+  const entered = new Promise(resolve => { enterGate = resolve; });
+  const gate = new Promise(resolve => { releaseGate = resolve; });
+  const pause = async current => { if (atDispatch && stage === current) { enterGate(); await gate; } };
+  const journal = createStreamlinedJournal({ now: () => 1000,
+    get: async (key, fallback) => { await pause('journal-read'); return structuredClone(memory.get(key) ?? fallback); },
+    set: async (key, value) => { memory.set(key, structuredClone(value)); } });
+  const provider = createFc27StreamlinedProvider(f.root, { journal, canWrite: () => true, now: () => 1000,
+    createValidator: () => ({ verify: async (_plan, batch) => ({ fresh: true, observedAt: 1000,
+      count: batch.refs.length, points: batch.refs.reduce((sum, ref) => sum + ref.points, 0) }) }),
+    checkOtherTransactions: () => pause('other-transactions'),
+    maintenance: { dirty: () => pause('dirty') },
+    createTransport: async (_root, guards) => {
+      atDispatch = true; await pause('factory');
+      return { request: async (_action, _target, beforeDispatch) => {
+        guards.assertCurrent(); await beforeDispatch(); guards.assertCurrent();
+        if (guards.shouldStop()) throw Error('FC27_STREAMLINED_CANCELLED');
+        mutationRequests++; return { success: false, status: 401 };
+      } };
+    } });
+  const transaction = createStreamlinedTransaction({ adapter: provider, journal, lock: { acquire: async () => () => {} }, now: () => 1000 });
+  const pending = transaction.execute(f.plan, { approved: true, fingerprint: f.plan.fingerprint, batchIndices: [0], allowPartial: true });
+  await entered; stopped = true; transaction.stop(); releaseGate();
+  const result = await pending; expect(stopped).toBe(true); expect(mutationRequests).toBe(0);
+  expect(result.status).toBe('stopped'); expect((await journal.read(f.plan.context)).batches[0]).toMatchObject({ state: 'waiting' });
 });

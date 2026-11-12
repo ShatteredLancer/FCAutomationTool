@@ -41,10 +41,10 @@ export async function exerciseProductionLivePanel(context, directory) {
       const mount = liveEnabled => globalThis.LivePanelSmoke.mountFc27AcceptancePanel({ document: globalThis.document,
         hostId: 'live-smoke', title: 'FC Automation Tool', liveEnabled,
         targets: () => [{ setId: 4, name: 'Synthetic upgrade' }],
-        inspectPuzzlePolicy: async () => { state.policyReads++; return { status: 'observed', maxRating: state.puzzleCap, quoteCeiling: state.quoteCeiling }; },
+        inspectPuzzlePolicy: async () => { state.policyReads++; return { status: 'observed', maxRating: state.puzzleCap, quoteCeiling: state.quoteCeiling, objective: state.objective }; },
         setPuzzleMaxRating: async value => { state.policySaves++; state.puzzleCap = value; return { status: 'observed', maxRating: value }; },
         setPuzzlePolicy: async value => {
-          state.policySaves++; state.puzzleCap = value.maxRating; state.quoteCeiling = value.quoteCeiling;
+          state.policySaves++; state.puzzleCap = value.maxRating; state.quoteCeiling = value.quoteCeiling; state.objective = value.objective;
           return { status: 'observed', ...value };
         },
         exportDiagnostics: async () => {
@@ -117,9 +117,18 @@ export async function exerciseProductionLivePanel(context, directory) {
     // stays compact. Activate that tab before exercising the visible input.
     await button('tab-settings').click();
     assert.equal(await host.getAttribute('data-active-tab'), 'settings');
-    assert.equal(await button('puzzle-objective').inputValue(), 'additional-coins');
+    assert.equal(await button('puzzle-objective').inputValue(), 'material-value');
     assert.deepEqual(await button('puzzle-objective').locator('option').evaluateAll(nodes => nodes.map(node => node.value)),
       ['additional-coins', 'material-value']);
+    assert.match(await button('puzzle-objective-note').innerText(), /同时比较库存估值/);
+    await button('puzzle-objective').selectOption('additional-coins');
+    assert.match(await button('puzzle-objective-note').innerText(), /库存卡不计新增支出/);
+    assert.match(await button('puzzle-objective-note').innerText(), /更新不会自动改变/);
+    await page.screenshot({ path: path.join(directory, 'puzzle-cash-setting-warning.png') });
+    await button('puzzle-objective').selectOption('material-value');
+    assert.match(await button('puzzle-objective-note').innerText(), /保留贵库存/);
+    assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.policySaves), 0);
+
     await button('puzzle-rating').fill('81');
     for (const id of ['gallery', 'market', 'trading', 'inventory', 'routine', 'rolling', 'activity', 'settings', 'sbc']) {
       await button(`tab-${id}`).click();
@@ -208,6 +217,16 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.equal(await button('puzzle-rating').inputValue(), '83');
     assert.equal(await button('puzzle-quote-ceiling').inputValue(), '7500');
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.quoteCeiling), 7500);
+    assert.equal(await button('puzzle-objective').inputValue(), 'material-value');
+    // Existing cash-first preferences remain visible and unchanged until a trusted save.
+    await page.evaluate(() => { globalThis.livePanelSmoke.objective = 'additional-coins'; });
+    const reads = await page.evaluate(() => globalThis.livePanelSmoke.policyReads);
+    await page.evaluate(() => { globalThis.livePanelSmoke.panel.close(); globalThis.livePanelSmoke.panel.open(); });
+    await page.waitForFunction(before => globalThis.livePanelSmoke.policyReads > before && globalThis.document.getElementById('live-smoke').dataset.busy === 'false', reads);
+    assert.equal(await button('puzzle-objective').inputValue(), 'additional-coins');
+    assert.match(await button('puzzle-objective-note').innerText(), /库存卡不计新增支出/);
+    await button('puzzle-objective').selectOption('material-value');
+
     await button('puzzle-quote-ceiling').fill(''); await button('puzzle-policy-save').click();
     await page.waitForFunction(() => globalThis.document.getElementById('live-smoke').dataset.busy === 'false');
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.quoteCeiling), null);

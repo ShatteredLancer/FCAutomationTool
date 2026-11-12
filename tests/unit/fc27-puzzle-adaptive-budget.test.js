@@ -217,6 +217,31 @@ it('never widens an explicit fixed maxNodes, and rejects malformed/oversized ada
   expect(budget.snapshot()).toMatchObject({ budgetStage: 1, budgetNodes: 50000, maxNodes: 50000 });
 });
 
+it.each([0, 50000])('reserves refinement inside the current feasible stage without adding nodes (prefix=%i)', prefix => {
+  const budget = createFc27PuzzleSearchBudget({ refinementReserve: 6000 });
+  for (let i = 0; i < prefix + 1; i++) expect(budget.takeNode()).toBe(true);
+  budget.markFeasible();
+  while (budget.takeNode()) { /* finish the unchanged feasibility/optimization slice */ }
+  expect(budget.snapshot()).toMatchObject({ budgetNodes: prefix + 44000, maxNodes: prefix + 50000, budgetStage: prefix ? 2 : 1 });
+  expect(budget.remainingForSearch()).toBe(0);
+  expect(budget.remaining()).toBe(6000);
+  budget.accountFixed(6000);
+  expect(budget.remaining()).toBe(0);
+  expect(budget.takeNode()).toBe(false);
+  expect(() => budget.accountFixed(1)).toThrow('FC27_PUZZLE_BUDGET_INVALID');
+});
+
+it('does not invent reserved capacity if a solution is found near the stage limit', () => {
+  const budget = createFc27PuzzleSearchBudget({ refinementReserve: 6000 });
+  budget.accountFixed(49999); budget.markFeasible();
+  expect(budget.takeNode()).toBe(false);
+  expect(budget.remaining()).toBe(1);
+  budget.accountFixed(1);
+  expect(budget.snapshot()).toMatchObject({ budgetNodes: 50000, budgetStage: 1 });
+  for (const refinementReserve of [-1, 1.1, 50000, NaN])
+    expect(() => createFc27PuzzleSearchBudget({ refinementReserve })).toThrow('FC27_PUZZLE_BUDGET_INVALID');
+});
+
 it('shows and exports numeric stages without admitting nested/private evidence', async () => {
   const progress = { nodes: 100001, budgetNodes: 100001, maxNodes: 200000, budgetStage: 3, budgetStages: 3, nodeCap: 200000 };
   expect(formatFc27PuzzleProgress(progress)).toContain('搜索阶段 3 / 3');

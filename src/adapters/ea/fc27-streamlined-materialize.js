@@ -8,6 +8,30 @@ import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { projectFc27StreamlinedItem, createFc27StreamlinedMatcher } from './fc27-streamlined-read.js';
 import { filterStreamlinedItems } from '../../streamlined/eligibility.js';
 
+// Called only after the complete, fresh version query proved Club absence.
+// Native move otherwise follows duplicateId into requestItemsById and silently
+// drops the source when the former Club copy has already been consumed.
+function clearStaleDuplicate(source) {
+  if (source.duplicateId == null || source.duplicateId === 0) return false;
+  const field = Object.getOwnPropertyDescriptor(source, 'duplicateId');
+  if (!field?.writable || !integer(field.value, 1) || typeof source.isDuplicate !== 'function') {
+    fail('MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED');
+  }
+  source.duplicateId = 0;
+  try {
+    if (source.isDuplicate() !== false) fail('MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED');
+  } catch (error) { source.duplicateId = field.value; throw error; }
+  return true;
+}
+
+function moveResponseDetail(reply) {
+  const detail = {};
+  // Optional diagnostics must never turn an accepted move into an exception.
+  try { if (integer(reply?.status, 0, 599)) detail.httpStatus = reply.status; } catch { /* diagnostic only */ }
+  try { if (integer(reply?.error?.code, 0, 9999999999)) detail.localReason = `FC27_NATIVE_ERROR_${reply.error.code}`; } catch { /* diagnostic only */ }
+  return detail;
+}
+
 async function readMaterializationClub(root, ref, createTransport, assert) {
   assert();
   const transport = await createTransport(root, { nativeReauth: true });
@@ -69,7 +93,7 @@ export async function createFc27StreamlinedMaterializationRecovery(root, { conte
 // separate, user-approved transaction: move one exact entity, verify the
 // response, then verify the Club repository before the SBC validator runs.
 export async function createFc27StreamlinedMaterializer(root, { canWrite = () => false, plan, get, set,
-  createTransport = createFc27ClubReadTransport, assertCurrent = () => {}, onProgress = () => {} } = {}) {
+  createTransport = createFc27ClubReadTransport, assertCurrent = () => {}, onProgress = () => {}, onDiagnostic = () => {} } = {}) {
   const service = root.services?.Item, proto = service && Object.getPrototypeOf(service);
   if (!service || !proto) fail('MATERIALIZE_RUNTIME_UNVERIFIED');
   const runtime = await verifyFc27Methods({ service: proto, crypto: root.crypto },
@@ -82,6 +106,11 @@ export async function createFc27StreamlinedMaterializer(root, { canWrite = () =>
   const report = (stage, index, total, id) => {
     try { onProgress({ phase: 'materialize', stage, index, completed: stage === 'confirmed' ? index + 1 : index,
       total, materialTotal: total, id }); } catch { /* display only */ }
+  };
+  const diagnose = (phase, status, ref, index, detail = {}) => {
+    try { Promise.resolve(onDiagnostic({ phase: `materialize-${phase}`, status,
+      source: ref.pile, definitionId: ref.definitionId, offset: index, count: 1, ...detail })).catch(() => {}); }
+    catch { /* diagnostic only */ }
   };
   const assert = () => {
     runtime();
@@ -165,6 +194,8 @@ export async function createFc27StreamlinedMaterializer(root, { canWrite = () =>
           // entity may move even if Storage still holds that version.
           if (before.length) fail('MATERIALIZE_DUPLICATE_BLOCKED');
           checkSource(ref, source);
+          assert();
+          if (clearStaleDuplicate(source)) diagnose('duplicate-refresh', 'verified', ref, index);
           entry ??= { id: ref.id, definitionId: ref.definitionId, pile: ref.pile,
             setId: plan.challenge.setId, challengeId: plan.challenge.id };
           if (!record.entries.includes(entry)) {
@@ -176,7 +207,13 @@ export async function createFc27StreamlinedMaterializer(root, { canWrite = () =>
           report('move-request', index, external.length, ref.id);
           const reply = await observe(() => service.move(source, root.ItemPile.CLUB));
           assert();
-          if (reply?.success === false) { entry.state = 'rejected'; await save(record); fail('MATERIALIZE_MOVE_REJECTED'); }
+          const detail = moveResponseDetail(reply);
+          diagnose('response', reply?.success === true ? 'accepted' : reply?.success === false ? 'rejected' : 'unknown', ref, index, detail);
+          if (reply?.success === false) {
+            entry.state = 'rejected'; await save(record);
+            throw Object.assign(Error('FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED'), detail,
+              { definitionId: ref.definitionId, source: ref.pile, offset: index });
+          }
           if (reply?.success !== true || !Array.isArray(reply.data?.itemIds)
               || !reply.data.itemIds.map(Number).includes(ref.id)) fail('MATERIALIZE_UNCONFIRMED');
           report('move-acknowledged', index, external.length, ref.id);

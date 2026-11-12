@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.102
+// @version      27.0.108
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.102", at: Date.now(), status: 'started',
+    state = { version: "27.0.108", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -4308,8 +4308,11 @@
   // src/fc27/puzzle-preview.js
   var PUZZLE_SEARCH_STAGES = Object.freeze([5e4, 1e5, 2e5]);
   var searchBudgets = /* @__PURE__ */ new WeakSet();
-  function createFc27PuzzleSearchBudget() {
+  function createFc27PuzzleSearchBudget({ refinementReserve = 0 } = {}) {
+    if (!Number.isSafeInteger(refinementReserve) || refinementReserve < 0 || refinementReserve >= PUZZLE_SEARCH_STAGES[0])
+      throw new Error("FC27_PUZZLE_BUDGET_INVALID");
     let nodes = 0, stage = 0, feasible = false;
+    const searchCeiling = () => feasible ? Math.max(nodes, PUZZLE_SEARCH_STAGES[stage] - refinementReserve) : PUZZLE_SEARCH_STAGES.at(-1);
     const snapshot = () => ({
       budgetNodes: nodes,
       maxNodes: PUZZLE_SEARCH_STAGES[stage],
@@ -4321,10 +4324,12 @@
       cap: PUZZLE_SEARCH_STAGES.at(-1),
       snapshot,
       remaining: () => Math.max(0, (feasible ? PUZZLE_SEARCH_STAGES[stage] : PUZZLE_SEARCH_STAGES.at(-1)) - nodes),
+      remainingForSearch: () => Math.max(0, searchCeiling() - nodes),
       markFeasible: () => {
         feasible = true;
       },
       takeNode: () => {
+        if (feasible && nodes >= searchCeiling()) return false;
         if (nodes === PUZZLE_SEARCH_STAGES[stage]) {
           if (feasible || stage === PUZZLE_SEARCH_STAGES.length - 1) return false;
           stage++;
@@ -6325,12 +6330,54 @@
   var MAX_PUZZLE_QUOTE_PRICE2 = 15e6;
   var PUZZLE_MARKET_READ_LIMIT = 25;
   var isPuzzleQuoteCeiling = (value) => value === null || Number.isSafeInteger(value) && value >= 150 && value <= MAX_PUZZLE_QUOTE_PRICE2;
-  var DEFAULT_PUZZLE_OBJECTIVE = "additional-coins";
+  var DEFAULT_PUZZLE_OBJECTIVE = "material-value";
   var isPuzzleObjective = (value) => ["additional-coins", "material-value"].includes(value);
 
   // src/fc27/puzzle-query-affinity.js
   var quality = (rating) => rating < 65 ? 1 : rating < 75 ? 2 : 3;
   var level = (tier) => ({ 1: "bronze", 2: "silver", 3: "gold" })[tier];
+  function planPuzzleNationalMinimumAffinity({
+    candidates = [],
+    rules = [],
+    required: required2,
+    usedQueries = [],
+    allowedLevels = [],
+    excludedLeagueIds = []
+  } = {}) {
+    if (!Number.isSafeInteger(required2) || required2 < 1) return null;
+    const minimum = Math.max(0, ...rules.filter((rule) => rule.kind === "same-nation" && rule.mode !== "max").map((rule) => rule.value));
+    const cap = Math.min(required2, ...rules.filter((rule) => rule.kind === "same-league" && rule.mode !== "min").map((rule) => rule.value));
+    if (!(cap > 0 && cap < minimum)) return null;
+    const groups = /* @__PURE__ */ new Map();
+    for (const item2 of candidates) {
+      if (!Number.isSafeInteger(item2.nationId) || item2.nationId <= 0 || !Number.isSafeInteger(item2.leagueId) || item2.leagueId <= 0 || excludedLeagueIds.includes(item2.leagueId)) continue;
+      if (!groups.has(item2.nationId)) groups.set(item2.nationId, /* @__PURE__ */ new Map());
+      groups.get(item2.nationId).set(item2.definitionId, item2);
+    }
+    const nations = [...groups].map(([nation, byId]) => {
+      const items = [...byId.values()], leagues = /* @__PURE__ */ new Map();
+      for (const item2 of items) leagues.set(item2.leagueId, (leagues.get(item2.leagueId) ?? 0) + 1);
+      return {
+        nation,
+        items,
+        capacity: [...leagues.values()].reduce((n, count3) => n + Math.min(cap, count3), 0),
+        leagueCapacity: leagues.size * cap
+      };
+    });
+    if (nations.some((nation) => nation.capacity >= minimum)) return null;
+    const qualityRules = rules.filter((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count > 0 && rule.qualities.length === 1).sort((a, b) => b.count - a.count);
+    for (const rule of qualityRules) {
+      const laneLevel = level(rule.qualities[0]);
+      if (!allowedLevels.includes(laneLevel) || !usedQueries.some((query2) => query2.level === laneLevel && !query2.team && !query2.nation && !query2.league)) continue;
+      const ranked = nations.map((nation) => ({
+        ...nation,
+        tierCount: nation.items.filter((item2) => quality(item2.rating) === rule.qualities[0]).length
+      })).filter((nation) => nation.tierCount > 0 && nation.leagueCapacity >= minimum).sort((a, b) => b.capacity - a.capacity || b.tierCount - a.tierCount || a.nation - b.nation);
+      const query = ranked.map(({ nation }) => ({ start: 0, count: 20, level: laneLevel, nation })).find((next) => !usedQueries.some((old) => JSON.stringify(old) === JSON.stringify(next)));
+      if (query) return query;
+    }
+    return null;
+  }
   function planPuzzleLeagueMinimumAffinity({ candidates = [], material = [], rules = [], formation, brickIndices, usedQueries = [], excludedLeagueIds = [], resolveClub } = {}) {
     if (!Array.isArray(formation?.positions) || !Array.isArray(brickIndices) || typeof resolveClub !== "function" || !rules.some((rule) => rule.kind === "same-league" && rule.mode === "min" && rule.value > 1)) return null;
     const slots = formation.positions.filter((_position, index) => !brickIndices.includes(index));
@@ -7270,6 +7317,19 @@
       for (let index = 1; index < 3; index++) for (const lane of lanes) if (lane[index]) add3(lane[index]);
     }
     if (!cappedClubs && chemistryNeeded && !parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind))) {
+      const nationalLane = planPuzzleNationalMinimumAffinity({
+        candidates: [...pool.candidates, ...marketCandidates(input, entries2)],
+        rules: parsed.rules,
+        required: required(input),
+        usedQueries,
+        allowedLevels: allowedFc27MarketTiers(parsed.rules, input.policy).map((tier) => tier.level),
+        excludedLeagueIds: input.policy.excludedLeagueIds
+      });
+      if (nationalLane && tiers2.length < 3) {
+        for (const level2 of tiers2) add3({ start: 0, count: 20, level: level2 });
+        add3(nationalLane);
+        return { status: "ready", executable: false, queries, complete: false };
+      }
       const lane = planPuzzleLeagueMinimumAffinity({
         candidates: [...pool.candidates, ...marketCandidates(input, entries2)],
         material,
@@ -7968,7 +8028,18 @@
   var localReadCancellation = (reason) => ["FC27_PUZZLE_FILL_TARGET_CHANGED", "FC27_PUZZLE_FILL_INPUTS_CHANGED"].includes(reason);
   var refinementCards = (plan) => plan.purchases.filter((card) => card.estimatedUnitPrice > (card.rating < 75 ? 300 : 600)).sort((a, b) => b.estimatedUnitPrice - a.estimatedUnitPrice);
   var matchesQuery = (card, query) => (!query.team || query.team === card.teamId) && (!query.league || query.league === card.leagueId) && (!query.nation || query.nation === card.nationId) && query.level === (card.rating < 65 ? "bronze" : card.rating < 75 ? "silver" : "gold");
-  function refinementQueries(plan, pages, used, input) {
+  function nationalCostDiscovery(input) {
+    const parsed = parseFc27SbcRequirements(
+      input.challenge.rawRequirements,
+      input.challenge.slotCount - input.challenge.brickIndices.length
+    );
+    if (parsed.status !== "observed") return false;
+    if (parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations", "distinct-clubs"].includes(rule.kind))) return false;
+    const nation = parsed.rules.find((rule) => rule.kind === "same-nation" && ["min", "exact"].includes(rule.mode));
+    const league = parsed.rules.find((rule) => rule.kind === "same-league" && ["max", "exact"].includes(rule.mode));
+    return Boolean(nation && league && nation.value > league.value);
+  }
+  function refinementQueries(plan, pages, used, input, { materialValue = false } = {}) {
     const queries = [];
     const add3 = (query) => {
       if (!used.some((old) => same12(old, query)) && !queries.some((old) => same12(old, query))) queries.push(query);
@@ -7977,6 +8048,18 @@
     const required2 = input.challenge.slotCount - input.challenge.brickIndices.length;
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required2);
     const rating = parsed.status === "observed" ? Math.max(0, ...parsed.rules.filter((rule) => ["min-team-rating", "exact-team-rating"].includes(rule.kind)).map((rule) => rule.value)) : 0;
+    if (materialValue && parsed.status === "observed" && rating <= 75) {
+      const allowed = allowedFc27MarketTiers(parsed.rules, input.policy);
+      for (const card of cards) {
+        if (!id3(card.nationId)) continue;
+        const lower = allowed.filter((tier) => tier.max < card.rating && !parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count >= required2 && !rule.qualities.includes(tier.level === "bronze" ? 1 : tier.level === "silver" ? 2 : 3)));
+        for (const tier of lower) {
+          add3({ start: 0, count: 20, level: tier.level, nation: card.nationId });
+          if (queries.length === 2) return queries;
+        }
+      }
+      if (queries.length) return queries;
+    }
     if (cards.length && rating > 0 && rating <= 75 || cards.some((card) => card.rating >= 75) && parsed.status === "observed" && rating <= 75 && (plan.purchaseCount === 0 || parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind) && rule.mode !== "max" && rule.count > 0))) {
       const lower = allowedFc27MarketTiers(parsed.rules, input.policy).find((tier) => tier.max < 75 && !parsed.rules.some((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.count >= required2 && !rule.qualities.includes(tier.level === "bronze" ? 1 : 2)));
       const league = parsed.rules.find((rule) => rule.kind === "from-leagues" && rule.mode === "min" && rule.count > 0)?.ids[0] ?? plan.purchases.map((card) => card.leagueId).sort((a, b) => plan.purchases.filter((card) => card.leagueId === b).length - plan.purchases.filter((card) => card.leagueId === a).length)[0];
@@ -8338,9 +8421,10 @@
           const positionSkipped = /* @__PURE__ */ new Set();
           const pages = [];
           let searchSpent = 0;
-          adaptiveBudget = adaptiveSearch === true && seed.status !== "ready" && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget() : null;
+          adaptiveBudget = adaptiveSearch === true && seed.status !== "ready" && !hasOwnedIncumbent ? createFc27PuzzleSearchBudget({ refinementReserve: optimizeMaterialValue && loadPublicPrices ? 6e3 : 0 }) : null;
           const searchBudget = adaptiveBudget?.cap ?? (seed.status === "ready" ? 2e4 : 5e4);
           const searchRemaining = () => adaptiveBudget?.remaining() ?? Math.max(0, searchBudget - searchSpent);
+          const baseSearchRemaining = () => adaptiveBudget?.remainingForSearch() ?? searchRemaining();
           const accountFixedNodes = (cumulative) => {
             if (adaptiveBudget && Number.isSafeInteger(cumulative)) {
               const delta = cumulative - adaptiveBudget.snapshot().budgetNodes;
@@ -8352,6 +8436,7 @@
           const references = /* @__PURE__ */ new Map();
           let publicPolicy = null;
           const valueRequested = optimizeMaterialValue === true && typeof loadPublicPrices === "function";
+          diagnostics.requestedObjective = optimizeMaterialValue === true ? "material-value" : "additional-coins";
           totalValueMode = valueRequested;
           diagnostics.objective = "additional-coins";
           diagnostics.ownedValueCandidateCount = 0;
@@ -8404,6 +8489,7 @@
             diagnostics.scopeTruncated = diagnostics.unknownCount > 0;
             diagnostics.objective = totalValueMode ? "material-value" : "additional-coins";
           }
+          if (adaptiveBudget && !totalValueMode) adaptiveBudget = createFc27PuzzleSearchBudget();
           if (totalValueMode && ownedIncumbent?.status === "preview") {
             const safe3 = puzzleOwnedValueCandidates(input);
             const selectedOwned = ownedIncumbent.selected.map((ref) => safe3.find((item2) => item2.id === ref.id && item2.definitionId === ref.definitionId && item2.pile === ref.pile && item2.rating === ref.rating));
@@ -8460,6 +8546,7 @@
           let jointSearch = ownedIncumbent?.status === "preview" || seed.status !== "ready";
           diagnostics.incumbentProvided = ownedIncumbent?.status === "preview";
           const objective = () => totalValueMode ? "material-value" : "additional-coins";
+          const connectedCostDiscovery = () => Boolean(totalValueMode && adaptiveBudget && nationalCostDiscovery(input));
           const planCost = (plan) => totalValueMode ? plan.materialValue : plan.estimatedCost;
           const refinementPlan = (plan) => !totalValueMode ? plan : { ...plan, purchases: [
             ...plan.purchases,
@@ -8549,7 +8636,8 @@
               diagnostics.nodes = searchSpent;
               if (searchRemaining() === 0) return;
             }
-            const directions = hint.queries.length ? hint.queries : refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input).sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
+            const direct = refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() });
+            const directions = connectedCostDiscovery() ? [...direct, ...hint.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index).slice(0, 2) : hint.queries.length ? hint.queries : direct.sort((a, b) => ["team", "nation", "league"].filter((key2) => b[key2]).length - ["team", "nation", "league"].filter((key2) => a[key2]).length).slice(0, 2);
             if (!directions.length) return;
             catalogTotal = usedQueries.length + directions.filter((query) => !usedQueries.some((used) => same12(used, query))).length;
             if (totalValueMode) diagnostics.initialMaterialValue = incumbent[0].materialValue;
@@ -8810,7 +8898,7 @@
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same12(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
             assertOptimization();
-            if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+            if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
               diagnostics.optimizationBudgetExhausted = true;
               diagnostics.searchComplete = false;
               diagnostics.optimalWithinPool = false;
@@ -8841,7 +8929,7 @@
               diagnostics.stage = "local-market-search";
               const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
               const prices = loadPublicPrices ? new Map([...quotes].map(([id14, quote2]) => [id14, quote2.price])) : null;
-              if ((loadPublicPrices || adaptiveBudget) && searchRemaining() === 0) {
+              if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
@@ -8853,7 +8941,7 @@
               const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
               const passBudget = Math.max(1, Math.min(
                 adaptiveBudget && !adaptivePass ? 5e4 : Infinity,
-                Math.floor(searchRemaining() / remainingLanes)
+                Math.floor(baseSearchRemaining() / remainingLanes)
               ));
               const searchOptions = loadPublicPrices || adaptiveBudget ? {
                 costCeiling: incumbent ? planCost(incumbent[0]) : totalValueMode ? materialCeiling : null,
@@ -8876,7 +8964,7 @@
               };
               const selectedOwnedDefinitions = new Set(incumbent?.[0]?.selectedOwned?.map((item2) => item2.definitionId) ?? []);
               const hasQuotedLowerTierOwned = totalValueMode && Boolean(incumbent) && ownedPool.some((item2) => !selectedOwnedDefinitions.has(item2.definitionId) && item2.rating < 75 && validPublicValue(materialPrices?.get(item2.definitionId)));
-              const localOnlyMaterial = totalValueMode && hasOwnedIncumbent && Boolean(incumbent) && !hasQuotedLowerTierOwned && incumbent[0].selectedOwned.every((item2) => validPublicValue(materialPrices?.get(item2.definitionId))) && incumbent[0].purchases.every((item2) => validPublicValue(prices?.get(item2.definitionId)));
+              const localOnlyMaterial = totalValueMode && (hasOwnedIncumbent || connectedCostDiscovery()) && Boolean(incumbent) && !hasQuotedLowerTierOwned && incumbent[0].selectedOwned.every((item2) => validPublicValue(materialPrices?.get(item2.definitionId))) && incumbent[0].purchases.every((item2) => validPublicValue(prices?.get(item2.definitionId)));
               reportProgress();
               const suggestion = await measure("searchMs", () => !jointSearch ? suggestFc27PuzzlePurchasesCooperatively(input, seed, available, {
                 ...searchOptions,
@@ -8887,7 +8975,7 @@
                 ...searchOptions,
                 assertCurrent: assertOptimization,
                 prices,
-                incumbent: hasOwnedIncumbent || !totalValueMode ? incumbent ? {
+                incumbent: hasOwnedIncumbent || !totalValueMode || connectedCostDiscovery() ? incumbent ? {
                   status: "preview",
                   selected: [...incumbent[0].selectedOwned, ...incumbent[0].purchases]
                 } : ownedIncumbent : null,
@@ -9000,6 +9088,7 @@
               }).filter((plan) => !totalValueMode || Number.isSafeInteger(plan.materialValue) && (materialCeiling === null || plan.materialValue < materialCeiling)).sort((a, b) => comparePuzzlePlans(a, b, objective()));
               if (priced3.length) {
                 adaptiveBudget?.markFeasible();
+                if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 3e4);
                 diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
                 if (!incumbent || comparePuzzlePlans(priced3[0], incumbent[0], objective()) < 0) incumbent = priced3;
                 diagnostics.estimatedCost = incumbent[0].estimatedCost;
@@ -9019,13 +9108,13 @@
             }
             if (incumbent) {
               if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
-              if (searchRemaining() === 0) {
+              if (baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
                 diagnostics.searchComplete = false;
                 diagnostics.optimalWithinPool = false;
                 return await finishIncumbent();
               }
-              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
+              pendingQueries = [...refinementQueries(refinementPlan(incumbent[0]), pages, usedQueries, input, { materialValue: connectedCostDiscovery() }), ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same12(used, candidate)) && all.findIndex((other) => same12(other, candidate)) === index);
             } else if (seed.status !== "ready" && usedQueries.length < 3) {
               const nextRoute = planFc27PuzzleShortageQueries(
                 input,
@@ -11053,16 +11142,19 @@
           return service.bid(item2, entry.price);
         }, true);
         const confirmed = reply?.success === true && Array.isArray(reply.data?.itemIds) && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId;
+        const itemEvidence = reply?.data?.itemIds;
+        const contradictory = itemEvidence != null && (!Array.isArray(itemEvidence) || itemEvidence.length > 0);
+        const rejected = reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 429, 461].includes(reply.status);
         diagnostic("bid", {
           definitionId: entry.definitionId,
           price: entry.price,
           ...responseCodes(reply),
-          status: confirmed ? "bought" : reply?.success === false ? "rejected" : "unknown"
+          status: confirmed ? "bought" : rejected ? "rejected" : "unknown"
         });
         if (confirmed) {
           return { status: "bought", itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
         }
-        if (reply?.success === false) {
+        if (rejected) {
           const reason = reply.error?.code !== void 0 && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED ? "FC27_BUY_LISTING_UNAVAILABLE" : "FC27_BUY_REJECTED";
           if (reason === "FC27_BUY_LISTING_UNAVAILABLE" && ![401, 403, 429].includes(reply.status)) rememberRejected(entry);
           return { status: "rejected", ...responseCodes(reply), reason };
@@ -13022,7 +13114,7 @@
           unchanged();
         } });
         privateData = { inputs, preview };
-        const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview";
+        const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview" && typeof publicPrices2?.load === "function";
         if (inputs.squadEmpty === true && (compareOwnedCost || [
           "SAFE_MATERIAL_SHORTAGE",
           "FC27_PUZZLE_CONSTRAINT_SHORTAGE",
@@ -13849,6 +13941,7 @@
             budgetStages: d?.budgetStages,
             nodeCap: d?.nodeCap,
             objective: d?.objective,
+            requestedObjective: d?.requestedObjective,
             materialValue: d?.materialValue,
             unknownCount: d?.unknownCount,
             scopeTruncated: d?.scopeTruncated,
@@ -14347,15 +14440,15 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       </section>
       <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
         <div class="section-heading"><div><p class="eyebrow">SETTINGS</p><h2>\u8BBE\u7F6E\u4E0E\u8BCA\u65AD</h2></div></div>
-        <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u300CSBC \u89E3\u9898\u300D\u9875\u8BBE\u7F6E\u3002</p></div>
+        <div class="feature-grid"><div class="card"><h3>\u5F53\u524D\u7248\u672C</h3><p id="workbench-version"></p><small id="workbench-mode"></small><p class="module-note">\u89E3\u9898\u4E0E\u91C7\u8D2D\u53C2\u6570\u5728\u672C\u9875\u4E0B\u65B9\u8BBE\u7F6E\u3002</p></div>
         <div id="diagnostic-export-card" class="card"><h3>\u79BB\u7EBF\u8BCA\u65AD</h3><p>\u5BFC\u51FA\u6700\u8FD1\u7684\u8131\u654F\u8FD0\u884C\u4E8B\u4EF6\uFF0C\u7528\u4E8E\u79BB\u7EBF\u8C03\u67E5 Gallery \u56DE\u9000\u3001\u9650\u6D41\u548C\u7F51\u7EDC\u9519\u8BEF\u3002</p><small>\u4E0D\u5305\u542B URL\u3001\u54CD\u5E94\u6B63\u6587\u3001\u51ED\u8BC1\u3001\u8D26\u53F7\u6807\u8BC6\u6216\u5B8C\u6574\u7403\u5458\u6570\u636E\u3002</small><div class="row"><button id="export-diagnostics" class="primary">\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7</button></div><output id="diagnostic-export-status" aria-live="polite"></output></div>
         ${installationChecks ? '<div class="card"><h3>\u5B89\u88C5\u4E0E\u591A\u6807\u7B7E\u68C0\u67E5</h3><p>\u4EC5\u5728\u9700\u8981\u6392\u67E5\u5B58\u50A8\u6216\u591A\u6807\u7B7E\u5360\u7528\u95EE\u9898\u65F6\u8FD0\u884C\u3002</p><div class="row"><button id="gm">\u68C0\u67E5\u811A\u672C\u5B58\u50A8</button><button id="hold">\u68C0\u67E5\u6807\u7B7E\u9501</button></div></div>' : ""}</div>
         <div id="puzzle-settings" class="card card-block"><h3>\u89E3\u9898\u4E0E\u91C7\u8D2D\u8BBE\u7F6E</h3><div class="settings-grid">
-          <label>\u89E3\u9898\u4F18\u5316\u76EE\u6807<select id="puzzle-objective"><option value="additional-coins">\u6700\u4F4E\u8D2D\u5361\u652F\u51FA</option><option value="material-value">\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C</option></select><small>\u8D2D\u5361\u652F\u51FA\u53EA\u8BA1\u5F85\u8D2D\u5361\uFF1B\u6750\u6599\u603B\u4EF7\u503C\u5305\u542B\u5E93\u5B58\u4F30\u503C\u3002</small></label>
+          <label>\u89E3\u9898\u4F18\u5316\u76EE\u6807<select id="puzzle-objective"><option value="additional-coins" ${DEFAULT_PUZZLE_OBJECTIVE === "additional-coins" ? "selected" : ""}>\u6700\u4F4E\u8D2D\u5361\u652F\u51FA</option><option value="material-value" ${DEFAULT_PUZZLE_OBJECTIVE === "material-value" ? "selected" : ""}>\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF08\u9ED8\u8BA4\uFF09</option></select><small>\u65B0\u9ED8\u8BA4\u5305\u542B\u5E93\u5B58\u4F30\u503C\uFF1B\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u4ECD\u4FDD\u7559\u3002</small></label>
           <label>\u91D1\u5361\u6700\u9AD8\u8BC4\u5206<input id="puzzle-rating" type="number" min="1" max="99" step="1" value="82"><small>\u9ED8\u8BA4 82\uFF1B\u5DF2\u4FDD\u5B58\u7684\u66F4\u4F4E\u4E0A\u9650\u7EE7\u7EED\u6709\u6548\u3002</small></label>
           <label id="puzzle-quote-setting">\u8865\u5361\u5355\u5361\u62A5\u4EF7\u4E0A\u9650\uFF08\u91D1\u5E01\uFF09<input id="puzzle-quote-ceiling" type="number" min="150" max="15000000" step="1" placeholder="\u4E0D\u9650"><small>\u7559\u7A7A\u4E3A\u4E0D\u9650\uFF1B\u6B64\u9879\u7528\u4E8E\u8865\u5361\u89C4\u5212\u3002</small></label>
           <label id="puzzle-queries-setting">\u8D2D\u4E70\u67E5\u4EF7\u6B21\u6570<input id="puzzle-queries" type="number" min="1" step="1" value="5"><small>\u9ED8\u8BA4 5 \u6B21\u3002</small></label>
-        </div><small>\u94DC\u94F6\u5361\u6309\u539F\u751F\u54C1\u8D28\u8981\u6C42\u9009\u6750\uFF1B\u6700\u4F4E\u94F6\u5361\uFF0B\u81F3\u5C11 2 \u91D1\u6309 2 \u91D1\uFF0B\u5176\u4F59\u94F6\u5361\u89E3\u9898\u3002\u91D1\u5361\u4ECD\u53D7 FSU \u8303\u56F4\u9650\u5236\uFF0C\u7F3A\u6599\u4E0D\u81EA\u52A8\u589E\u52A0\u91D1\u5361\u6216\u63D0\u9AD8\u8BC4\u5206\u3002</small><div class="row"><button id="puzzle-policy-save" class="primary">\u4FDD\u5B58\u89E3\u9898\u8BBE\u7F6E</button></div></div>
+        </div><p id="puzzle-objective-note" role="status" aria-live="polite"></p><small>\u94DC\u94F6\u5361\u6309\u539F\u751F\u54C1\u8D28\u8981\u6C42\u9009\u6750\uFF1B\u6700\u4F4E\u94F6\u5361\uFF0B\u81F3\u5C11 2 \u91D1\u6309 2 \u91D1\uFF0B\u5176\u4F59\u94F6\u5361\u89E3\u9898\u3002\u91D1\u5361\u4ECD\u53D7 FSU \u8303\u56F4\u9650\u5236\uFF0C\u7F3A\u6599\u4E0D\u81EA\u52A8\u589E\u52A0\u91D1\u5361\u6216\u63D0\u9AD8\u8BC4\u5206\u3002</small><div class="row"><button id="puzzle-policy-save" class="primary">\u4FDD\u5B58\u89E3\u9898\u8BBE\u7F6E</button></div></div>
         <div id="settings-bottom" class="settings-bottom"></div>
       </section>
     </div><div class="operation-status" aria-live="polite">\u6700\u8FD1\u4E00\u6B21\u5DE5\u4F5C\u53F0\u64CD\u4F5C<output id="status">\u5C1A\u65E0\u64CD\u4F5C</output></div>
@@ -27875,6 +27968,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     });
     const node = (id14) => shadow.getElementById(id14);
+    const renderPuzzleObjective = () => {
+      node("puzzle-objective-note").textContent = node("puzzle-objective").value === "additional-coins" ? "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\uFF1A\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8981\u4FDD\u7559\u8D35\u5E93\u5B58\uFF0C\u8BF7\u6539\u9009\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF1A\u540C\u65F6\u6BD4\u8F83\u5E93\u5B58\u4F30\u503C\u4E0E\u5F85\u8D2D\u5361\u4EF7\u683C\uFF0C\u53EF\u80FD\u591A\u4E70\u4FBF\u5B9C\u5361\u4EE5\u4FDD\u7559\u8D35\u5E93\u5B58\uFF1B\u4ECD\u9075\u5B88\u539F\u91C7\u8D2D\u9650\u4EF7\u548C\u4FDD\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002";
+    };
+    node("puzzle-objective").addEventListener("change", renderPuzzleObjective);
+    renderPuzzleObjective();
     node("workbench-version").textContent = version ?? title;
     node("workbench-mode").textContent = liveEnabled === true ? "\u5DF2\u5F00\u653E\u73B0\u6709\u5355\u6B21\u64CD\u4F5C\uFF1B\u63D0\u4EA4\u9700\u5355\u72EC\u786E\u8BA4\u3002" : "\u5F53\u524D\u4E3A\u53EA\u8BFB\u6A21\u5F0F\u3002";
     node("diagnostic-export-card").hidden = typeof exportDiagnostics !== "function";
@@ -28066,7 +28164,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           queriesNumber: Number(node("puzzle-queries").value),
           objective: node("puzzle-objective").value
         }) : await setPuzzleMaxRating(value);
-        return { ...result, reason: result.status === "observed" ? `\u89E3\u9898\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1A\u6700\u9AD8\u8BC4\u5206 ${result.maxRating}\uFF1B\u8865\u5361\u5355\u5361\u62A5\u4EF7${result.quoteCeiling == null ? "\u4E0D\u9650" : `\u4E0A\u9650 ${result.quoteCeiling} \u91D1\u5E01`}` : result.reason };
+        return { ...result, reason: result.status === "observed" ? `\u89E3\u9898\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF1A${result.objective ? `\u76EE\u6807 ${result.objective === "material-value" ? "\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C" : "\u6700\u4F4E\u8D2D\u5361\u652F\u51FA"}\uFF1B` : ""}\u6700\u9AD8\u8BC4\u5206 ${result.maxRating}\uFF1B\u8865\u5361\u5355\u5361\u62A5\u4EF7${result.quoteCeiling == null ? "\u4E0D\u9650" : `\u4E0A\u9650 ${result.quoteCeiling} \u91D1\u5E01`}` : result.reason };
       });
     });
     shadow.querySelector("details").addEventListener("toggle", () => {
@@ -28077,7 +28175,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           node("puzzle-rating").value = String(result.maxRating);
           node("puzzle-quote-ceiling").value = result.quoteCeiling == null ? "" : String(result.quoteCeiling);
           node("puzzle-queries").value = String(result.queriesNumber ?? 5);
-          node("puzzle-objective").value = result.objective ?? "additional-coins";
+          node("puzzle-objective").value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+          renderPuzzleObjective();
         }
         return result;
       });
@@ -28192,7 +28291,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             node("puzzle-rating").value = String(result.maxRating);
             node("puzzle-quote-ceiling").value = result.quoteCeiling == null ? "" : String(result.quoteCeiling);
             node("puzzle-queries").value = String(result.queriesNumber ?? 5);
-            node("puzzle-objective").value = result.objective ?? "additional-coins";
+            node("puzzle-objective").value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+            renderPuzzleObjective();
           }
           return result;
         });
@@ -28353,9 +28453,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const summary3 = result?.procurementSummary;
     const costReason = summary3?.diagnostics?.localReason ?? summary3?.reason ?? result?.valueReason;
     const saved = ["filled", "concept-filled"].includes(result?.status);
+    const effectiveObjective = summary3?.diagnostics?.objective ?? result?.objective;
+    const objectiveNotice = !saved ? "" : effectiveObjective === "additional-coins" ? summary3?.diagnostics?.requestedObjective === "material-value" ? "\n\u672C\u8F6E\u672A\u5B8C\u6210\u6750\u6599\u603B\u503C\u6BD4\u8F83\uFF0C\u5F53\u524D\u53EA\u5217\u8D2D\u5361\u652F\u51FA\uFF1B\u4E0D\u662F\u6700\u4F4E\u6750\u6599\u6210\u672C\u7ED3\u8BBA\u3002" : "\n\u5F53\u524D\u6309\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\u8BA1\u7B97\uFF0C\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8BF7\u5230 FCAT \u8BBE\u7F6E \u2192 \u89E3\u9898\u4F18\u5316\u76EE\u6807\uFF0C\u9009\u62E9\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF0C\u518D\u91CD\u65B0\u89E3\u9898\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "";
     const costNotice = saved && costReason === "FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT" ? "\n\u8FDB\u4E00\u6B65\u964D\u4EF7\u641C\u7D22\u5DF2\u8FBE\u523030\u79D2\uFF0C\u672C\u6B21\u91C7\u7528\u5DF2\u9A8C\u8BC1\u65B9\u6848\uFF0C\u5C1A\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : saved && (summary3?.status === "blocked" || result?.valueReason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") ? `
 \u964D\u4EF7\u4F18\u5316\u672A\u5B8C\u6210\uFF1A${purchaseReasons[costReason] ?? "\u65E0\u6CD5\u5B8C\u6210\u6210\u672C\u6BD4\u8F83"}\u3002\u672C\u6B21\u4FDD\u7559\u539F\u5408\u89C4\u9635\u5BB9\uFF0C\u4E0D\u4EE3\u8868\u6700\u4F4E\u6210\u672C\u3002` : "";
-    const message = resultText(result) + costNotice + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
+    const message = resultText(result) + objectiveNotice + costNotice + (exhaustedCostSearch ? "\n\u641C\u7D22\u9884\u7B97\u5DF2\u7528\u5C3D\uFF0C\u5F53\u524D\u4EC5\u4E3A\u5DF2\u627E\u5230\u7684\u53EF\u884C\u65B9\u6848\uFF0C\u672A\u786E\u8BA4\u6700\u4F4E\u6750\u6599\u6210\u672C\u3002" : "");
     const purchase = result?.purchaseSuggestion;
     if (purchase?.status !== "blocked") return message;
     const reason = code(purchase.reason);
@@ -37466,7 +37568,7 @@ ${version ?? ""}`;
   var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile", "grade-plan", "grade-overview"].includes(entry.event);
   var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || roadmapEntry(entry) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
-  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "endpoint", "incumbentRejectReason"]);
+  var STRING_FIELDS = Object.freeze(["area", "event", "source", "phase", "transportPhase", "status", "reason", "localReason", "route", "mismatch", "priceSource", "objective", "requestedObjective", "endpoint", "incumbentRejectReason"]);
   var NUMBER_FIELDS = Object.freeze([
     "httpStatus",
     "errorCode",
@@ -38651,1086 +38753,24 @@ ${version ?? ""}`;
     } };
   }
 
-  // src/adapters/browser/fc27-streamlined-panel.js
-  var number3 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "\u672A\u77E5";
-  var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
-  function streamlinedConfirmedContribution(result) {
-    const value = result?.confirmation;
-    if (value?.finalizationPending !== true || !Number.isSafeInteger(value.submittedScore) || value.submittedScore <= 0 || !Number.isSafeInteger(value.targetScore) || value.targetScore <= 0) return null;
-    return {
-      submittedScore: value.submittedScore,
-      targetScore: value.targetScore,
-      message: `${value.submittedScore >= value.targetScore ? "SBC \u5DF2\u5B8C\u6210" : "\u672C\u6279\u8D21\u732E\u5DF2\u786E\u8BA4"}\uFF08${number3(value.submittedScore)} / ${number3(value.targetScore)} \u5206\uFF09\u3002\u4EC5\u672C\u5730\u754C\u9762\u540C\u6B65\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u8D21\u732E\u5931\u8D25\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002\u53EF\u5237\u65B0\u9875\u9762\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002\u5956\u52B1\u662F\u5426\u9886\u53D6\u8BF7\u53E6\u884C\u67E5\u770B\u3002`
-    };
+  // src/streamlined/scoring.js
+  function scoreStreamlinedItems(items = []) {
+    if (!Array.isArray(items) || items.some((item2) => !integer5(item2?.points, 1))) fail4("SCORE_UNKNOWN");
+    const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
+    if (!integer5(total)) fail4("SCORE_UNKNOWN");
+    return { status: "observed", total, count: items.length };
   }
-  function streamlinedMarketMessage(result) {
-    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
-    if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
-      return `${source} \u8865\u5361\u62A5\u4EF7\u5728\u7B49\u5F85\u4E2D\u5230\u671F\uFF0C\u5237\u65B0\u540E\u4ECD\u672A\u53D6\u5F97\u5B8C\u6574\u6709\u6548\u62A5\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u4E0D\u4F1A\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u6216\u81EA\u52A8\u5207\u6362\u6765\u6E90\u3002`;
+  function streamlinedResourceCost(plan) {
+    return unknownValue(plan) > 0 || plan.materialValue == null ? Infinity : plan.purchaseCost + plan.materialValue;
+  }
+  var unknownValue = (plan) => plan.unknownValue ?? plan.unknownValueCount ?? Number(plan.materialValue == null);
+  function compareStreamlinedPlans(a, b, objective = "lowest-value") {
+    if (objective === "fewest-cards" && a.count !== b.count) return a.count - b.count;
+    if (objective === "lowest-value") {
+      const cost = streamlinedResourceCost(a) - streamlinedResourceCost(b);
+      if (cost) return cost;
     }
-    if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ""))) {
-      return `${source} \u8865\u5361\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u8BE5\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002`;
-    }
-    return "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u8865\u5361\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u5019\u9009\u76EE\u5F55\u8FDE\u63A5\uFF08FUT.GG\uFF09\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002";
-  }
-  function streamlinedRouteSummary(route) {
-    const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
-    const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
-    return `\u603B\u4EF7\u503C ${number3(total)} \u25C9 \xB7 \u5F85\u8D2D ${number3(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number3(cap)} \xB7 ${number3(route.score)} \u5206 \xB7 ${number3(route.count)} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${number3(route.minBatches)} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
-  }
-  function streamlinedPurchaseBudgetPreview(plan) {
-    const base = (plan?.route?.groups ?? []).filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
-    const reserve = Math.ceil(base * 15 / 100), budget = base + reserve;
-    if (!Number.isSafeInteger(base) || base < 0 || !Number.isSafeInteger(budget)) throw Error("FC27_STREAMLINED_PURCHASE_BUDGET_UNVERIFIED");
-    return { base, reserve, budget };
-  }
-  function streamlinedInventoryPreview(plan, indices = null, record = null) {
-    const market = plan?.route?.groups?.some((group) => group.source === "market");
-    const selected = new Set((market || indices === null ? plan?.items ?? [] : indices.flatMap((index) => plan?.batches?.[index] ?? [])).map((item2) => item2.id));
-    const consumed = new Set(record?.consumedIds ?? []);
-    record?.batches?.forEach((batch, index) => {
-      if (batch.state === "confirmed") for (const item2 of plan?.batches?.[index] ?? []) consumed.add(item2.id);
-    });
-    return (plan?.items ?? []).filter((item2) => item2.source === "inventory" && (selected.has(item2.id) || consumed.has(item2.id))).map((item2) => ({ ...item2, consumed: consumed.has(item2.id) }));
-  }
-  function streamlinedExecutionProgress(p = {}) {
-    const stages = {
-      "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
-      "checking-club": "\u6838\u5BF9 Club",
-      "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
-      "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
-      "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
-      "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
-      confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
-    };
-    const label = p.phase === "partial-ready" && p.waitMs === 0 ? "\u672C\u6279\u5DF2\u5C31\u7EEA\uFF0C\u7ACB\u5373\u8D21\u732E" : p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
-      preflight: "\u51C6\u5907\u6267\u884C\uFF1A\u6838\u5BF9\u65B9\u6848\u4E0E\u6062\u590D\u8BB0\u5F55",
-      "checking-state": "\u6838\u5BF9\u5E93\u5B58\u4E0E\u5269\u4F59\u5BB9\u91CF",
-      search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
-      buying: "\u4E70\u5165\u4E2D",
-      moving: "\u79FB\u5165 Club",
-      "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
-      validation: "\u590D\u6838\u6750\u6599",
-      contribution: "\u8D21\u732E\u4E2D",
-      reconciliation: "\u6838\u5BF9\u56DE\u6267",
-      confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4",
-      recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55",
-      "batch-cooldown": "\u5DF2\u786E\u8BA4\u4E0A\u4E00\u6279\uFF0C\u6279\u6B21\u95F4\u51B7\u5374",
-      "progress-backoff": "\u8BFB\u53D6\u8FDB\u5EA6\u6682\u672A\u6210\u529F\uFF0C\u9000\u907F\u540E\u91CD\u8BD5",
-      replanning: "\u9009\u62E9\u6388\u6743\u8303\u56F4\u5185\u7684\u6700\u4F4E\u6210\u672C\u66FF\u4EE3\u65B9\u6848",
-      "waiting-supply": "\u7B49\u5F85\u540E\u91CD\u8BD5\u5E02\u573A\u4F9B\u5E94",
-      "search-result": "\u672C\u6B21\u641C\u7D22\u5B8C\u6210",
-      "checking-holdings": "\u6838\u5BF9 Club \u7248\u672C\u6301\u6709",
-      "purchase-rejected": "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u8BF7\u6C42"
-    }[p.phase] ?? "\u6267\u884C\u4E2D";
-    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number3(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
-    if (p.phase === "checking-holdings") text5 += `
-\u7248\u672C\u6838\u5BF9 ${number3(p.holdingsBatch)} / ${number3(p.holdingsBatchTotal)} \u7EC4 \xB7 \u7B2C ${number3(Math.floor((p.offset ?? 0) / 250) + 1)} \u9875`;
-    if (p.playerName || Number.isSafeInteger(p.rating)) text5 += `
-\u5F53\u524D\u5019\u9009\uFF1A${p.playerName ?? "\u59D3\u540D\u672A\u53D6\u5F97"} \xB7 ${number3(p.rating)} OVR \xB7 \u4E0A\u9650 ${number3(p.maxBuy)} \u91D1\u5E01 \xB7 \u5C1D\u8BD5 ${number3(p.attempt)} / ${number3(p.attemptLimit)}`;
-    if (p.purchaseTarget !== void 0) text5 += `
-\u5DF2\u8D2D ${number3(p.purchased)} / ${number3(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number3(p.spent)} / ${number3(p.budget)} \u91D1\u5E01`;
-    text5 += `
-${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contributed)} \u5F20 \xB7 ` : ""}\u5DF2\u786E\u8BA4 ${number3(p.submittedScore)} / ${number3(p.targetScore)} \u5206`;
-    if (p.readyCount !== void 0) text5 += `
-\u672C\u6279\u5C31\u7EEA ${number3(p.readyCount)} / ${number3(p.selectionLimit)} \u5F20 \xB7 ${number3(p.readyPoints)} \u5206`;
-    if (p.phase === "materialize") text5 += `
-\u5916\u90E8\u5361 ${number3(p.completed)} / ${number3(p.materialTotal)} \u5F20`;
-    if (p.phase === "waiting-supply") text5 += `
-\u4F9B\u5E94\u91CD\u8BD5 ${number3(p.attempt)} / ${number3(p.attemptLimit)}`;
-    if (p.phase === "progress-backoff") text5 += `
-\u51C6\u5907\u7B2C ${number3(p.attempt + 1)} / ${number3(p.attemptLimit)} \u6B21\u8BFB\u53D6 \xB7 \u7B49\u5F85 ${number3(Math.ceil(p.waitMs / 1e3))} \u79D2`;
-    return text5;
-  }
-  function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
-    const seconds = (ms) => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1e3);
-    let text5 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
-    if (active) text5 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
-    if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
-    }
-    if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
-    }
-    if (active && ["batch-cooldown", "progress-backoff"].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
-      text5 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
-    }
-    return text5;
-  }
-  function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
-    if (reason === "FC27_STREAMLINED_FSU_NOT_READY") {
-      return "FSU \u7684\u5F53\u524D\u8D5B\u5B63\u3001\u521D\u59CB\u5316\u6216\u5E93\u5B58\u7F13\u5B58\u5C1A\u672A\u5C31\u7EEA\uFF0C\u5DF2\u6682\u505C\u540E\u7EED\u64CD\u4F5C\u3002\u8BF7\u786E\u8BA4 FSU \u589E\u5F3A\u811A\u672C\u5DF2\u542F\u7528\u4E14\u65E0\u91CD\u590D\u7248\u672C\uFF0C\u5237\u65B0 EA \u9875\u9762\u5E76\u7B49\u5E93\u5B58\u52A0\u8F7D\u5B8C\u6210\u540E\u91CD\u8BD5\uFF1B\u6301\u7EED\u51FA\u73B0\u65F6\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002\u5DF2\u786E\u8BA4\u7684\u8D21\u732E\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u52FF\u624B\u52A8\u91CD\u590D\u6295\u5165\u3002";
-    }
-    if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
-      const evidence = normalizeStreamlinedProtectionFailure(protection);
-      const labels2 = {
-        "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
-        "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
-        "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
-        "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number3(evidence?.count)} / ${number3(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
-        "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
-        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5148\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u5237\u65B0\u5217\u8868\uFF1B\u4ECD\u5931\u8D25\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002"
-      };
-      return `${labels2[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
-    }
-    if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
-      const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? ` (Set ${recovery.setId} / Challenge ${recovery.challengeId})` : "";
-      const phase = { "save-pending": "\u9635\u5BB9\u66FF\u6362\u4FDD\u5B58\u5C1A\u672A\u6838\u5BF9", ready: "\u8D2D\u4E70\u6216\u5165\u5E93\u5C1A\u672A\u6838\u5BF9", saved: "\u8D2D\u4E70\u6062\u590D\u6807\u8BB0\u5C1A\u672A\u7ED3\u6E05" }[recovery?.phase];
-      const labels2 = {
-        waiting: "\u672A\u8D2D\u4E70",
-        "buy-pending": "\u6210\u4EA4\u5F85\u6838\u5BF9",
-        bought: "\u5DF2\u8D2D\u5F85\u5165\u5E93",
-        "move-pending": "\u5165\u5E93\u5F85\u6838\u5BF9",
-        "move-rejected": "\u5165\u5E93\u88AB\u62D2",
-        club: "\u5DF2\u5165\u5E93"
-      };
-      const counts = Object.entries(labels2).flatMap(([state, label]) => {
-        const count3 = recovery?.states?.[state];
-        return Number.isSafeInteger(count3) && count3 > 0 && count3 <= 32 ? [`${label} ${count3}`] : [];
-      });
-      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`\u5DF2\u786E\u8BA4\u66FF\u6362 ${recovery.applied}`);
-      return `\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Puzzle \u8D2D\u5361\u8BB0\u5F55${target}${phase ? `: ${phase}` : ""}. ${counts.length ? `\u8BB0\u5F55\u72B6\u6001\uFF1A${counts.join(", ")}. ` : ""}\u8BF7\u5148\u56DE\u5BF9\u5E94 SBC \u7684\u6279\u91CF\u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u82E5\u8BE5 SBC \u5DF2\u4E0B\u67B6\uFF0C\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002\u672C\u6B21\u672A\u6295\u5165\u6750\u6599\u3002`;
-    }
-    const messages2 = {
-      FC27_STREAMLINED_EXTERNAL_SELECTION_CHANGED: "\u6240\u9009\u5361\u3001Club \u524D\u7F6E\u5361\u6216\u6750\u6599\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u5217\u8868\u540E\u91CD\u65B0\u9009\u62E9\uFF1B\u672A\u79FB\u52A8\u6216\u8D21\u732E\u3002",
-      FC27_STREAMLINED_EXTERNAL_SELECTION_INVALID: "\u8BF7\u9009\u62E9\u5F53\u524D\u5217\u8868\u4E2D\u53EF\u7528\u7684\u5916\u90E8\u5361\u3002",
-      FC27_STREAMLINED_EXTERNAL_BATCH_ORDER: "\u5916\u90E8\u5361\u987B\u6309\u5B8C\u6574\u6279\u6B21\u987A\u5E8F\u6267\u884C\uFF0C\u5148\u786E\u8BA4 Club \u524D\u7F6E\u5361\u6D88\u8017\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u4F1A\u81EA\u52A8\u8DF3\u8FC7\u3002",
-      FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\u3002\u6709\u672A\u51B3\u56DE\u6267\u65F6\u5148\u6838\u5BF9\uFF0C\u5426\u5219\u53EF\u76F4\u63A5\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u65B9\u6848\u6CA1\u6709\u53EF\u6267\u884C\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\u3002",
-      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "\u6709\u9650\u91CD\u8BD5\u540E\u4ECD\u65E0\u6388\u6743\u8303\u56F4\u5185\u7684\u9650\u4EF7\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u53EF\u7A0D\u540E\u91CD\u8BD5\u6216\u751F\u6210\u65B0\u65B9\u6848\uFF1B\u666E\u901A\u7F3A\u8D27\u4E0D\u9700\u8981\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u3002",
-      FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "\u672A\u5206\u914D\u533A\u5DF2\u6EE1\u3002\u8BF7\u624B\u52A8\u817E\u51FA\u7A7A\u95F4\u540E\u91CD\u8BD5\uFF1B\u672A\u641C\u7D22\u5E02\u573A\uFF0C\u4E5F\u672A\u81EA\u52A8\u4E22\u5F03\u5361\u7247\u3002",
-      FC27_STREAMLINED_PURCHASE_VERSION_HELD: "\u5269\u4F59\u7248\u672C\u5DF2\u5728 Club \u6301\u6709\uFF0C\u4F46\u672A\u88AB\u9009\u4E3A\u672C\u6B21\u5E93\u5B58\u6750\u6599\u3002\u8BF7\u9009\u62E9\u5176\u4ED6\u8DEF\u7EBF\uFF0C\u6216\u91CD\u65B0\u751F\u6210\u65B9\u6848\u660E\u786E\u9009\u62E9\u8FD9\u4E9B\u5E93\u5B58\u5361\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6D88\u8017\u3002",
-      FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "\u5269\u4F59\u9884\u7B97\u4E0D\u8DB3\u4EE5\u5B8C\u6210\u672C\u6B21\u8D2D\u4E70\uFF0C\u672A\u63D0\u9AD8\u9650\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u660E\u786E\u8C03\u6574\u9884\u7B97\u3002",
-      FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: "\u8D2D\u4E70\u62A5\u4EF7\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u672A\u6309\u8BE5\u62A5\u4EF7\u4E70\u5165\u3002\u8BF7\u5237\u65B0\u65B9\u6848\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: "Club \u7248\u672C\u6301\u6709\u8BFB\u53D6\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u5DF2\u6682\u505C\uFF1B\u672C\u6B21\u68C0\u67E5\u672A\u53D1\u51FA\u8D2D\u4E70\u6216\u732E\u796D\u8BF7\u6C42\u3002\u53EF\u76F4\u63A5\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u5DF2\u6709\u672A\u51B3\u4EA4\u6613\u4ECD\u987B\u5148\u6838\u5BF9\u3002",
-      FC27_BUY_SEARCH_FAILED: "EA \u62D2\u7EDD\u4E86\u5E02\u573A\u641C\u7D22\uFF1B\u672A\u4E3A\u8FD9\u6B21\u641C\u7D22\u53D1\u9001\u4E70\u5165\u8BF7\u6C42\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF1B\u8FD9\u4E0D\u662F\u672A\u77E5\u56DE\u6267\uFF0C\u4E5F\u4E0D\u7B49\u4E8E\u5E02\u573A\u7F3A\u8D27\u3002",
-      FC27_BUY_NATIVE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_BUY_INSUFFICIENT_COINS: "EA \u8FD4\u56DE\u91D1\u5E01\u4E0D\u8DB3\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u672A\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\u6216\u603B\u9884\u7B97\u3002",
-      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF1B\u65E0\u672A\u51B3\u56DE\u6267\u65F6\u53EF\u518D\u6B21\u70B9\u51FB\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF0C\u4E0D\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u3002",
-      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
-      FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED: "\u65E7\u4EFB\u52A1\u5DF2\u9000\u51FA\u5E76\u5F52\u6863\uFF0C\u4E0D\u518D\u963B\u6B62\u5176\u4ED6 SBC \u7684\u65B0\u91C7\u8D2D\u3002\u65E7\u56DE\u6267\u548C\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u672A\u6838\u5BF9\u6750\u6599\u4ECD\u6309\u5B9E\u4F53\u9694\u79BB\uFF0C\u4E0D\u4F1A\u91CD\u4E70\u6216\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u5E76\u786E\u8BA4\u65B0\u9884\u7B97\u3002",
-      FC27_STREAMLINED_PURCHASE_HISTORY_RETIRED: "\u65E7\u4EFB\u52A1\u5DF2\u5F52\u6863\uFF0C\u4E0D\u518D\u7EE7\u7EED\u6267\u884C\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u3002",
-      FC27_STREAMLINED_HISTORY_TARGET_UNRESOLVED: "\u8FD9\u4E2A SBC \u7684\u65E7\u8D21\u732E\u7ED3\u679C\u4ECD\u5F85\u6838\u5BF9\uFF0C\u6682\u4E0D\u5728\u540C\u4E00 SBC \u5F00\u65B0\u4EFB\u52A1\u3002\u5176\u4ED6 SBC \u53EF\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u65E7\u6750\u6599\u4FDD\u6301\u9694\u79BB\u3002",
-      FC27_STREAMLINED_PURCHASE_ARCHIVE_INVALID: "\u65E7\u4EFB\u52A1\u5F52\u6863\u6570\u636E\u6821\u9A8C\u672A\u901A\u8FC7\uFF0C\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_ARCHIVE_CONFLICT: "\u65E7\u8BB0\u5F55\u5728\u6838\u5BF9\u540E\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6838\u5BF9\uFF0C\u4E0D\u4F1A\u8986\u76D6\u8BB0\u5F55\u3002",
-      FC27_STREAMLINED_PURCHASE_ARCHIVE_FULL: "\u5F52\u6863\u6570\u91CF\u5DF2\u8FBE\u4E0A\u9650\uFF0C\u672A\u5220\u9664\u4EFB\u4F55\u4EA4\u6613\u8BC1\u636E\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
-      FC27_STREAMLINED_PURCHASE_REMAINDER_RECOVERY_REQUIRED: "\u5F53\u524D\u8D21\u732E\u8BB0\u5F55\u8FD8\u6709\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u672A\u6267\u884C\u4F59\u6279\uFF0C\u8BF7\u5148\u6838\u5BF9\u6062\u590D\u5E76\u5B8C\u6210\u5E93\u5B58\u4F59\u6279\uFF0C\u518D\u6267\u884C\u542B\u8865\u5361\u7684\u65B0\u8DEF\u7EBF\u3002\u672C\u6B21\u5C1A\u672A\u4E70\u5361\u6216\u79FB\u52A8\u6750\u6599\u3002",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\uFF0C\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u672A\u6295\u5165\u65B0\u6750\u6599\u3002",
-      FC27_STREAMLINED_POLICY_CHANGED: "\u9009\u6750\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u65E7\u65B9\u6848\u672A\u7EE7\u7EED\u6295\u5165\u3002\u8BF7\u751F\u6210\u65B0\u65B9\u6848\u5E76\u786E\u8BA4\u6267\u884C\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u65E7\u8BB0\u5F55\u4F1A\u5148\u5F52\u6863\uFF0C\u672A\u5B8C\u6210\u7684\u7EAF\u5E93\u5B58\u6279\u6B21\u53EF\u91CD\u65B0\u89C4\u5212\u3002",
-      FC27_STREAMLINED_MATERIAL_CHANGED: "\u9009\u4E2D\u6750\u6599\u5DF2\u53D8\u5316\u6216\u53D7\u5230\u9501\u5361/\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u6838\u5BF9\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
-      FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
-      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
-      FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
-      FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
-      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
-      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
-      FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: "EA \u5DF2\u8FD4\u56DE\u672C\u6279\u5B8C\u6210\u56DE\u6267\uFF0C\u4F46\u5F52\u96F6\u540E\u7684 SBC \u72B6\u6001\u5B58\u5728\u51B2\u7A81\uFF0C\u6682\u672A\u7ED3\u6E05\u8BB0\u5F55\u3002\u4E0D\u8981\u91CD\u65B0\u4E70\u5361\u6216\u91CD\u590D\u6295\u5165\uFF1B\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002",
-      FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: "EA \u8FD4\u56DE\u7684 SBC \u5B8C\u6210\u6B21\u6570\u683C\u5F0F\u5F02\u5E38\uFF0C\u5DF2\u4FDD\u7559\u672C\u6279\u8BB0\u5F55\u3002\u8BF7\u52FF\u91CD\u590D\u6295\u5165\uFF1B\u53EF\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-      FC27_STREAMLINED_PROGRESS_READ_FAILED: "EA \u8FDB\u5EA6\u8BFB\u53D6\u672A\u6210\u529F\u3002\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\uFF1B\u8BF7\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-      FC27_STREAMLINED_PROGRESS_READ_TIMEOUT: "EA \u8FDB\u5EA6\u8BFB\u53D6\u8D85\u65F6\u3002\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u79EF\u5206\u4FDD\u7559\uFF1B\u8BF7\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\uFF0C\u4E0D\u8981\u91CD\u65B0\u6295\u5165\u65E7\u6279\u6B21\u3002",
-      FC27_STREAMLINED_RECOVERY_REQUIRED: "\u5DF2\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u67E5\u770B\u5DF2\u786E\u8BA4\u8FDB\u5EA6\u548C\u5269\u4F59\u6279\u6B21\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u5DF2\u786E\u8BA4\u7684\u5361\u3002",
-      FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
-      FC27_STREAMLINED_JOURNAL_ARCHIVE_FAILED: "\u65E7\u65B9\u6848\u8BB0\u5F55\u5C1A\u672A\u6210\u529F\u5F52\u6863\uFF0C\u672C\u6B21\u672A\u53D1\u51FA\u8D21\u732E\u8BF7\u6C42\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF1B\u4E0D\u4F1A\u4E22\u5F03\u65E7\u8BB0\u5F55\u6216\u91CD\u590D\u6295\u5165\u3002",
-      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u65E7 SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF0C${number3(recovery?.currentScore)} / ${number3(recovery?.targetScore)} \u5206\uFF09\u963B\u65AD\u672C\u6B21\u8D21\u732E\uFF1A\u5DF2\u786E\u8BA4 ${number3(recovery?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(recovery?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(recovery?.pendingWriteCount)} \u6279\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u68C0\u67E5\u65E7\u8BB0\u5F55\uFF1B\u672C\u6B21\u5C1A\u672A\u79FB\u52A8\u6216\u8D21\u732E\u5361\u7247\u3002`,
-      FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED: "\u65E7\u8D21\u732E\u56DE\u6267\u5DF2\u5B8C\u6574\u5F52\u6863\uFF0C\u672A\u53D1\u9001\u4F59\u6279\u5DF2\u7ED3\u675F\u3002\u8BF7\u5237\u65B0\u5217\u8868\u5E76\u91CD\u65B0\u9009\u62E9\u5F53\u524D\u5361\u7247\uFF1B\u4E0D\u4F1A\u91CD\u65B0\u8D21\u732E\u65E7\u5361\u3002",
-      FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `\u672C\u5730\u5386\u53F2 SBC${typeof recovery?.name === "string" ? `\u300C${recovery.name.slice(0, 160)}\u300D` : ""}\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u8BB0\u5F55\u4E2D\u8FD8\u6709 ${recovery?.pendingWriteCount ?? "?"} \u7B14\u5F85\u6838\u5BF9\u8BF7\u6C42\u3001${recovery?.unconsumedPurchaseCount ?? "?"} \u5F20\u91C7\u8D2D\u6750\u6599\u5F85\u5904\u7406\u3002\u8BE5\u8BB0\u5F55\u4E0D\u4EE3\u8868\u4EFB\u52A1\u4ECD\u5728\u8FD0\u884C\uFF1B\u5F53\u524D\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u6216\u6295\u5165\u3002`,
-      FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED: "\u5DF2\u6062\u590D\u5F53\u524D SBC \u7684\u5269\u4F59\u5E93\u5B58\u6279\u6B21\u3002\u5386\u53F2\u5F85\u6838\u5BF9\u8BB0\u5F55\u5DF2\u9694\u79BB\u4FDD\u7559\uFF1B\u672C\u6B21\u53EA\u7528\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\uFF0C\u4E0D\u4E70\u5361\u3001\u4E0D\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u70B9\u51FB\u201C\u8D21\u732E\u6240\u9009\u6279\u6B21\u201D\u7EE7\u7EED\u3002",
-      FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED: "\u5F53\u524D\u5269\u4F59\u6279\u6B21\u5305\u542B\u65E7\u4EFB\u52A1\u5F85\u6838\u5BF9\u7684\u540C\u4E00\u5F20\u5361\uFF0C\u6682\u4E0D\u6295\u5165\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u548C\u65E7\u8BB0\u5F55\u5747\u4FDD\u7559\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5361\u6216\u6D88\u8017\u8FD9\u5F20\u5361\u3002",
-      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_BLOCKED: "\u65E7\u4EFB\u52A1\u4ECD\u5F85\u6838\u5BF9\uFF1B\u672C\u6B21\u53EA\u5141\u8BB8\u6062\u590D\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\u3002\u542B\u8865\u5361\u3001\u5916\u90E8\u5361\u79FB\u52A8\u6216\u91C7\u8D2D\u56DE\u6267\u7684\u8DEF\u7EBF\u6682\u4E0D\u6267\u884C\u3002",
-      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_UNVERIFIED: "\u65E7\u4EFB\u52A1\u7684\u7CBE\u786E\u6750\u6599\u8303\u56F4\u5C1A\u672A\u6838\u9A8C\uFF0C\u6682\u4E0D\u6295\u5165\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4E0E\u65E7\u8BB0\u5F55\u4FDD\u7559\u3002",
-      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
-      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
-      FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED: "\u4E0A\u4E00\u8F6E\u8D21\u732E\u5DF2\u786E\u8BA4\u5B8C\u6210\uFF0C\u5F53\u524D\u9875\u9762\u79EF\u5206\u5DF2\u56DE\u5230\u65B0\u4E00\u8F6E\uFF1B\u4E0D\u662F\u4E0A\u6B21\u63D0\u4EA4\u5931\u8D25\u3002\u5DF2\u786E\u8BA4\u8BB0\u5F55\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u6295\u3002\u8BF7\u901A\u8FC7 EA \u539F\u751F\u5165\u53E3\u5F00\u59CB\u672C\u8F6E\uFF0C\u518D\u751F\u6210\u65B0\u65B9\u6848\u3002",
-      FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
-    };
-    return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
-  }
-  function mountFc27StreamlinedPanel({
-    document,
-    readTarget,
-    session: session2,
-    nativeRenderer = null,
-    schedule = setInterval,
-    unschedule = clearInterval,
-    now = () => Date.now()
-  } = {}) {
-    if (!document?.body || document.getElementById("fcat-streamlined-entry")) return null;
-    const add3 = (parent, tag, value = "") => {
-      const node2 = document.createElement(tag);
-      node2.textContent = value;
-      parent.append(node2);
-      return node2;
-    };
-    const entry = document.createElement("button");
-    entry.id = "fcat-streamlined-entry";
-    entry.type = "button";
-    entry.textContent = "FCAT \u79EF\u5206\u89E3\u9898";
-    entry.className = "btn-standard call-to-action";
-    entry.style.cssText = "margin:8px;min-height:38px";
-    const externalEntry = document.createElement("button");
-    externalEntry.id = "fcat-streamlined-external-entry";
-    externalEntry.type = "button";
-    externalEntry.className = "ea-filter-bar-item-view";
-    externalEntry.textContent = "Transfer / Unassigned";
-    externalEntry.setAttribute("aria-haspopup", "dialog");
-    const host = document.createElement("div");
-    host.id = "fcat-streamlined-panel";
-    document.body.append(host);
-    const shadow = host.attachShadow({ mode: "closed" });
-    shadow.innerHTML = `<style>
-    *{box-sizing:border-box} [hidden]{display:none!important}
-    dialog{width:min(720px,94vw);max-width:94vw;max-height:88vh;overflow:hidden;background:#17232c;color:#ecf2f5;border:1px solid #53636d;border-radius:10px;padding:16px;font:14px/1.5 Arial,sans-serif}
-    dialog::backdrop{background:#000a}header,footer,.tabs{display:flex;gap:10px;align-items:center}header{margin-bottom:12px}header strong{flex:1}footer{position:sticky;bottom:-16px;background:#17232c;padding:12px 0;justify-content:flex-end;border-top:1px solid #46545d}
-    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;flex-wrap:wrap;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:12px;min-height:92px;padding:8px 0;border-top:1px solid #364956}.player-card{flex:0 0 64px;position:relative;width:64px;height:88px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.4444444);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 76px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 82px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:8px}.player-card{flex-basis:54px;width:54px;height:74px}.player-card slot{transform:scale(.375)}.player-points{flex-basis:62px}.player-price{flex-basis:68px}dialog{padding:12px}}
-    .player-row{display:grid;grid-template-columns:104px minmax(0,1fr) 90px 112px;min-height:156px}
-    .player-card{width:104px;height:145px}.player-card slot{transform:scale(.7222222)}
-    .player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75);transform-origin:top left}
-    .player-text strong{white-space:normal;overflow-wrap:anywhere;font-size:16px}.player-text span{font-size:14px}
-    .player-points,.player-price{font-size:15px}.player-price small{margin:3px 0;font-size:12px}
-    dialog[open]{display:flex;flex-direction:column}.panel-body{min-height:0;overflow:auto;overscroll-behavior:contain}
-    footer{display:block;position:static;flex-shrink:0;padding:10px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
-    footer output{margin:0 0 6px;max-height:10em;overflow:auto;font-size:13px}footer small{margin:4px 0 8px;font-size:12px}footer progress{display:block;margin:6px 0}
-    .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
-    .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
-    .external-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}.external-row{display:grid;grid-template-columns:104px minmax(0,1fr);align-items:center;gap:12px;padding:8px 0;border-top:1px solid #364956}.external-choice{display:flex;align-items:center;gap:8px}.external-choice input{flex-shrink:0}.external-row .player-text span{white-space:normal;overflow-wrap:anywhere}
-    @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
-  </style><dialog aria-label="FCAT \u79EF\u5206\u89E3\u9898"><div class="panel-body"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
-    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
-    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="inventory-first">\u5E93\u5B58\u4F18\u5148\uFF1AStorage \u2192 Club \u2192 \u7F3A\u53E3\u8865\u5361</option><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
-    <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58+\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u5E02\u573A\u8865\u5361</option></select></label>
-    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650\uFF08\u79D2\uFF0C\u5DF2\u641C\u5C3D\u65F6\u8DF3\u8FC7\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
-    <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
-    <section data-result></section></div>
-    <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
-      <small data-history-note hidden>\u786E\u8BA4\u5DF2\u4E0D\u518D\u6267\u884C\u8FD9\u9879\u5386\u53F2\u4EFB\u52A1\u65F6\uFF0C\u53EF\u5C06\u5B83\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002</small>
-      <div class="actions"><button data-external-refresh hidden>\u5237\u65B0\u5217\u8868</button><button data-external-prepare class="primary" hidden disabled>\u51C6\u5907\u8D21\u732E\u9884\u89C8</button><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-archive-history hidden>\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
-    const node = (key2) => shadow.querySelector(`[data-${key2}]`), dialog = shadow.querySelector("dialog");
-    let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
-    const rendered = /* @__PURE__ */ new Set();
-    let renderGeneration = 0;
-    let shown = null, selected = /* @__PURE__ */ new Set();
-    let externalMode = false, externalList = null;
-    let executionProgress = null;
-    const resetProgress = () => {
-      executionProgress = null;
-      node("clock").hidden = true;
-      node("final-progress").hidden = true;
-    };
-    const refreshClock = () => {
-      if (!executionProgress || executionProgress.serial !== opened) return;
-      const current2 = executionProgress.active ? now() : executionProgress.endedAt;
-      node("clock").textContent = streamlinedExecutionClock(
-        executionProgress.progress,
-        current2 - executionProgress.startedAt,
-        current2 - executionProgress.phaseAt,
-        executionProgress.active
-      );
-      node("clock").hidden = false;
-    };
-    const beginProgress = (result, phase = "preflight") => {
-      resetProgress();
-      const submittedScore = result?.record?.submittedScore ?? result?.plan?.challenge.submittedScore;
-      const targetScore = result?.plan?.challenge.targetScore;
-      const start = now();
-      executionProgress = { serial: opened, startedAt: start, phaseAt: start, active: true, progress: { phase, submittedScore, targetScore } };
-      node("status").textContent = streamlinedExecutionProgress(executionProgress.progress);
-      const bar = shadow.querySelector("progress");
-      bar.max = targetScore || 1;
-      if (Number.isSafeInteger(submittedScore)) bar.value = submittedScore;
-      else bar.removeAttribute("value");
-      bar.hidden = false;
-      refreshClock();
-    };
-    const executionStep = (p) => {
-      if (!executionProgress || executionProgress.serial !== opened || !executionProgress.active) return;
-      if (p.phase !== executionProgress.progress.phase) executionProgress.phaseAt = now();
-      executionProgress.progress = p;
-      refreshClock();
-    };
-    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
-    const clearRendered = () => {
-      node("archive-history").hidden = true;
-      node("history-note").hidden = true;
-      externalList?.dispose();
-      externalList = null;
-      renderGeneration++;
-      for (const dispose of rendered) dispose();
-      rendered.clear();
-    };
-    const renderCard = (parent, item2, generation = renderGeneration) => {
-      const card = add3(parent, "div");
-      card.className = "player-card";
-      const fallback = add3(card, "span", number3(item2.rating));
-      fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
-      const slot = add3(card, "slot");
-      slot.name = `streamlined-card-${generation}-${item2.key}`;
-      let native = null, failed2 = false, retired = false;
-      const release = () => {
-        if (native) {
-          try {
-            native.__fcatDealloc?.();
-          } catch {
-          }
-          native.remove();
-          native = null;
-        }
-      };
-      const dispose = () => {
-        retired = true;
-        rendered.delete(dispose);
-        release();
-      };
-      const unavailable = () => {
-        if (retired) return;
-        failed2 = true;
-        release();
-        rendered.delete(dispose);
-        if (generation === renderGeneration && !disposed) {
-          fallback.hidden = false;
-          slot.remove();
-        }
-      };
-      try {
-        const raw = session2.resolveDisplayItem?.(item2);
-        if (raw) native = (item2.source === "market" ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({
-          parent: host,
-          raw,
-          slot: slot.name,
-          label: item2.name ?? `\u7248\u672C ${item2.definitionId}`,
-          onUnavailable: unavailable
-        });
-      } catch {
-        unavailable();
-      }
-      if (native && !failed2) {
-        rendered.add(dispose);
-        fallback.hidden = true;
-      } else unavailable();
-      return dispose;
-    };
-    const read = () => {
-      try {
-        return readTarget();
-      } catch {
-        return null;
-      }
-    };
-    const same32 = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
-    const setBusy = (value) => {
-      busy = value;
-      entry.disabled = value;
-      externalEntry.disabled = value;
-      for (const control of shadow.querySelectorAll("[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover],[data-archive-history]")) control.disabled = value;
-      for (const control of shadow.querySelectorAll("[data-result] input")) control.disabled = value || control.dataset.settled === "true";
-      node("contribute").disabled = value || !contributionReady();
-      node("external-refresh").disabled = value;
-      node("external-prepare").disabled = value || !externalList?.keys().length;
-      externalList?.setBusy();
-      node("stop").hidden = !value;
-      shadow.querySelector("progress").hidden = !value && !executionProgress;
-    };
-    const close = () => {
-      opened++;
-      session2.stop();
-      resetProgress();
-      clearRendered();
-      session2.clearPreview?.();
-      dialog.close();
-      origin = null;
-    };
-    const update = () => {
-      target = read();
-      if (!target?.anchor?.isConnected) {
-        entry.remove();
-        externalEntry.remove();
-      } else {
-        if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
-        const menu = target.anchor.querySelector(".ut-one-click-sbc-work-area-view--tabs > .menu-container");
-        if (menu && externalEntry.parentNode !== menu) {
-          menu.querySelector("#fcat-streamlined-external-entry")?.remove();
-          menu.append(externalEntry);
-        } else if (!menu) externalEntry.remove();
-      }
-      if (origin && !same32(origin, target)) close();
-      refreshClock();
-    };
-    const applySettings = (s) => {
-      node("objective").value = s.objective;
-      node("mode").value = s.mode;
-      node("rating").value = String(s.maxRating);
-      node("market-rating").value = String(s.marketMaxRating ?? 99);
-      node("wait").value = String(s.partialWaitMs / 1e3);
-      for (const key2 of ["club", "storage", "unassigned", "transfer"]) node(key2).checked = s.sources.includes(key2);
-    };
-    const selectScope = (value) => {
-      global = value;
-      node("local").setAttribute("aria-pressed", String(!value));
-      node("global").setAttribute("aria-pressed", String(value));
-    };
-    const loadScope = async (value) => {
-      if (busy) return;
-      const serial = opened;
-      setBusy(true);
-      try {
-        const result = await session2.readSettings(value);
-        if (serial === opened) {
-          selectScope(value);
-          applySettings(result.settings);
-        }
-      } catch (error2) {
-        if (serial === opened) node("status").textContent = safeReason9(error2);
-      } finally {
-        setBusy(false);
-      }
-    };
-    const config = () => ({
-      objective: node("objective").value,
-      mode: node("mode").value,
-      maxRating: Number(node("rating").value),
-      marketMaxRating: Number(node("market-rating").value),
-      partialWaitMs: Number(node("wait").value) * 1e3,
-      sources: ["club", "storage", "unassigned", "transfer"].filter((key2) => node(key2).checked)
-    });
-    const on = (key2, handler) => node(key2).addEventListener("click", (event) => {
-      if (event.isTrusted) void handler();
-    });
-    const setExternalMode = (value) => {
-      externalMode = value;
-      node("settings").hidden = value;
-      shadow.querySelector(".tabs").hidden = value;
-      node("solve").hidden = value;
-      node("external-refresh").hidden = !value;
-      node("external-prepare").hidden = !value;
-      node("review-stock").hidden = true;
-      shadow.querySelector("header strong").textContent = value ? "Transfer / Unassigned" : "FCAT \u79EF\u5206\u89E3\u9898";
-    };
-    on("close", close);
-    dialog.addEventListener("cancel", (event) => {
-      event.preventDefault();
-      close();
-    });
-    on("local", () => loadScope(false));
-    on("global", () => loadScope(true));
-    on("stop", () => session2.stop());
-    on("review-stock", () => {
-      const review = shadow.querySelector("[data-inventory-review]");
-      if (review) {
-        review.open = true;
-        review.scrollIntoView({ block: "start" });
-      }
-    });
-    entry.addEventListener("click", async (event) => {
-      if (!event.isTrusted || disposed || busy) return;
-      update();
-      if (!target) return;
-      setExternalMode(false);
-      shown = null;
-      resetProgress();
-      session2.clearPreview?.();
-      origin = target;
-      const serial = ++opened;
-      dialog.showModal();
-      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u9700\u6C42\u2026";
-      node("result").replaceChildren();
-      node("contribute").hidden = true;
-      clearRendered();
-      setBusy(true);
-      try {
-        const result = await session2.readSettings();
-        if (serial !== opened) return;
-        const c = result.challenge, s = result.settings;
-        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number3(c.submittedScore)} / ${number3(c.targetScore)} \xB7 \u5269\u4F59 ${number3(c.remainingScore)}`;
-        applySettings(s);
-        node("status").textContent = "\u89C4\u5212\u4E0D\u4F1A\u9009\u5361\u6216\u63D0\u4EA4\u3002";
-        selectScope(false);
-      } catch (error2) {
-        if (serial === opened) node("status").textContent = safeReason9(error2);
-      } finally {
-        setBusy(false);
-      }
-    });
-    const readExternal = async () => {
-      const serial = opened;
-      setBusy(true);
-      clearRendered();
-      session2.clearPreview?.();
-      resetProgress();
-      shown = null;
-      node("result").replaceChildren();
-      node("contribute").hidden = true;
-      node("external-prepare").hidden = false;
-      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u5916\u90E8\u5E93\u5B58\u2026";
-      try {
-        const result = await session2.readSettings();
-        if (serial !== opened) return;
-        const c = result.challenge;
-        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number3(c.submittedScore)} / ${number3(c.targetScore)} \xB7 \u5269\u4F59 ${number3(c.remainingScore)}`;
-        const snapshot = await session2.readExternalInventory(result.settings);
-        if (serial !== opened) return;
-        if (snapshot.status !== "observed") {
-          node("status").textContent = streamlinedExecutionMessage(snapshot.reason, null, snapshot.protectionFailure);
-          return;
-        }
-        externalList = renderStreamlinedExternalSelection({
-          document,
-          parent: node("result"),
-          snapshot,
-          renderCard,
-          isBusy: () => busy,
-          onSelection: (keys2) => {
-            node("external-prepare").disabled = busy || !keys2.length;
-          }
-        });
-        node("status").textContent = "\u9009\u62E9\u7403\u5458\u540E\u67E5\u770B\u5B8C\u6574\u8D21\u732E\u987A\u5E8F\uFF1B\u6B64\u5904\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D2D\u4E70\u3001\u4E0D\u8D21\u732E\u3002";
-      } catch (error2) {
-        if (serial === opened) node("status").textContent = streamlinedExecutionMessage(safeReason9(error2));
-      } finally {
-        setBusy(false);
-      }
-    };
-    externalEntry.addEventListener("click", async (event) => {
-      if (!event.isTrusted || disposed || busy) return;
-      update();
-      if (!target) return;
-      origin = target;
-      ++opened;
-      setExternalMode(true);
-      dialog.showModal();
-      await readExternal();
-    });
-    on("external-refresh", () => {
-      if (!busy && origin && same32(origin, read())) return readExternal();
-    });
-    on("save", async () => {
-      if (busy) return;
-      setBusy(true);
-      try {
-        await session2.saveSettings(config(), global);
-        node("status").textContent = global ? "\u5168\u5C40\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002\u5F53\u524D SBC \u72EC\u7ACB\u8BBE\u7F6E\u4F18\u5148\u3002" : "\u5F53\u524D SBC \u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002";
-      } catch (error2) {
-        node("status").textContent = safeReason9(error2);
-      } finally {
-        setBusy(false);
-      }
-    });
-    const renderResult = (result) => {
-      clearRendered();
-      node("result").replaceChildren();
-      node("contribute").hidden = true;
-      shown = null;
-      node("review-stock").hidden = true;
-      if (!result.plan) {
-        const output2 = node("result");
-        if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
-          add3(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
-          add3(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
-        } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
-          add3(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
-          if (result.marketError) add3(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
-        } else if (result.reason) {
-          add3(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason) ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
-          if (["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason)) add3(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
-        }
-        return;
-      }
-      shown = result;
-      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
-      const orderedExternal = result.externalSelection === true;
-      node("contribute").textContent = marketRun ? "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : orderedExternal ? "\u6309\u987A\u5E8F\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
-      const output = node("result"), p = result.progress;
-      if (result.plan.execution?.quoteLimited === true) {
-        const warning = add3(output, "section");
-        warning.className = "inventory-warning";
-        add3(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
-        for (const [key2, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
-          const coverage = result.quoteCoverage?.[key2];
-          if (coverage) add3(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number3(coverage.valid)} / ${number3(coverage.requested)} \xB7 \u5931\u8D25 ${number3(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number3(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
-        }
-        add3(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
-      }
-      const inventoryReview = add3(output, "details");
-      inventoryReview.className = "inventory-review";
-      inventoryReview.dataset.inventoryReview = "";
-      inventoryReview.open = true;
-      const inventorySummary = add3(inventoryReview, "summary"), inventoryList = add3(inventoryReview, "div");
-      let inventoryPage = 0;
-      const updateInventoryReview = () => {
-        inventoryList.replaceChildren();
-        const rows = streamlinedInventoryPreview(result.plan, [...selected], result.record);
-        const remaining = rows.filter((item2) => !item2.consumed).length, consumed = rows.length - remaining;
-        inventorySummary.textContent = `\u672C\u65B9\u6848\u5C06\u6D88\u8017\u7684\u73B0\u6709\u5E93\u5B58\u5361\uFF1A${number3(remaining)} \u5F20${consumed ? ` \xB7 \u5DF2\u6D88\u8017 ${number3(consumed)} \u5F20` : ""}`;
-        node("review-stock").textContent = `\u5E93\u5B58 ${number3(remaining)} \u5F20\uFF08\u67E5\u770B\uFF09`;
-        node("review-stock").hidden = false;
-        if (!rows.length) {
-          add3(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
-          return;
-        }
-        if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
-          add3(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
-        }
-        inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
-        for (const item2 of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
-          const row = add3(inventoryList, "div");
-          row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
-          add3(row, "strong", number3(item2.rating));
-          const text5 = add3(row, "div");
-          add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
-          const pile = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D \u2192 Club", transfer: "\u8F6C\u4F1A\u5217\u8868 \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
-          add3(text5, "small", `${pile} \xB7 ${number3(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number3(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
-        }
-        if (rows.length > 50) {
-          add3(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
-          for (const [label, delta] of [["\u4E0A\u4E00\u9875", -1], ["\u4E0B\u4E00\u9875", 1]]) {
-            const button = add3(inventoryList, "button", label);
-            button.type = "button";
-            button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
-            button.addEventListener("click", () => {
-              inventoryPage += delta;
-              updateInventoryReview();
-            });
-          }
-        }
-      };
-      if (marketRun) {
-        const label = add3(output, "label", "\u8D2D\u5361\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09"), budget = add3(label, "input");
-        budget.type = "number";
-        budget.min = "0";
-        budget.step = "1";
-        budget.dataset.purchaseBudget = "";
-        const proposal = streamlinedPurchaseBudgetPreview(result.plan);
-        budget.value = String(result.record?.budget ?? proposal.budget);
-        if (result.record) {
-          budget.dataset.settled = "true";
-          budget.disabled = true;
-        }
-        add3(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\u3002\u66F4\u6539\u989D\u5EA6\u9700\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u786E\u8BA4\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6539\u5199\u65E7\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
-        add3(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 10 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
-        const scope2 = result.plan.execution?.purchaseScope;
-        if (scope2) {
-          const pool = add3(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
-          add3(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number3(rows.length)} \u4E2A\u7248\u672C`);
-          add3(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
-          for (const item2 of rows) add3(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number3(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number3(item2.price)} \xB7 \u4E0A\u9650 ${number3(item2.purchaseMaxBuy)} \u91D1\u5E01`);
-        }
-      }
-      if (result.routes?.length) {
-        const routes = add3(output, "div");
-        routes.className = "route-list";
-        for (const route of result.routes) {
-          const button = add3(routes, "button", streamlinedRouteSummary(route));
-          button.type = "button";
-          button.style.cssText = "display:block;width:100%;text-align:left;margin:6px 0";
-          button.setAttribute("aria-pressed", String(route.id === result.selectedRoute));
-          button.addEventListener("click", async (event) => {
-            if (!event.isTrusted || busy) return;
-            const serial = opened;
-            setBusy(true);
-            try {
-              const next = await session2.selectRoute(route.id);
-              if (serial === opened) {
-                renderResult(next);
-                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u8BF7\u6838\u5BF9\u6E05\u5355\uFF0C\u70B9\u51FB\u6267\u884C\u5373\u786E\u8BA4\uFF1B\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002" : next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
-              }
-            } catch (error2) {
-              node("status").textContent = safeReason9(error2);
-            } finally {
-              setBusy(false);
-            }
-          });
-        }
-      }
-      add3(output, "div", `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
-      const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
-      const inventoryFirst = result.plan.objective === "inventory-first";
-      const quoteLabel = inventoryFirst && !marketRun ? "\u5E93\u5B58\u4F18\u5148 \xB7 \u672A\u67E5\u8BE2\u5E02\u573A\u62A5\u4EF7" : String(result.quoteSource).toUpperCase();
-      add3(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number3(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number3(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number3(result.materialValue)} \xB7 ${quoteLabel} \xB7 ${number3(result.items.length)} \u5F20 / ${number3(result.batches.length)} \u6279`);
-      if (orderedExternal) {
-        add3(output, "small", "\u6309\u4E0B\u65B9\u987A\u5E8F\u6267\u884C\u6574\u4EFD\u9009\u5361\u8BA1\u5212\uFF1A\u5148\u8D21\u732E Club \u540C\u7248\u672C\u5E76\u786E\u8BA4\u6D88\u8017\uFF0C\u518D\u5C06\u5916\u90E8\u5361\u9010\u6279\u79FB\u5165 Club \u540E\u8D21\u732E\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u81EA\u52A8\u8DF3\u8FC7\u3002");
-        if (result.selectedCount !== void 0) add3(output, "small", `\u9009\u4E2D\u5916\u90E8\u5361 ${number3(result.selectedCount)} \u5F20 \xB7 Club \u524D\u7F6E ${number3(result.prerequisiteCount)} \u5F20${result.omittedExternalCount ? ` \xB7 \u8FBE\u6807\u540E\u4E0D\u518D\u6295\u5165\u7684\u5916\u90E8\u5361 ${number3(result.omittedExternalCount)} \u5F20` : ""}`);
-      } else if (inventoryFirst) add3(output, "small", "\u5148\u7528\u5408\u89C4 SBC Storage\uFF0C\u518D\u7528 Club \u6750\u6599\uFF1B\u5E93\u5B58\u4E0D\u8DB3\u624D\u8865\u5361\uFF0C\u539F\u6750\u6599\u4FDD\u62A4\u4E0D\u53D8\u3002");
-      if (result.policy) {
-        const stats = result.inventoryStats;
-        const pileLabels = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D", transfer: "\u8F6C\u4F1A\u5217\u8868" };
-        const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pileLabels[pile]} ${number3(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / SBC \u4ED3\u5E93";
-        const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number3(stats.rawByPile.club)} / ${number3(stats.rawByPile.storage)}` : "";
-        add3(output, "small", `FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
-        add3(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
-      }
-      if (!result.searchComplete) add3(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
-      if (!result.poolComplete) add3(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
-      if (result.marketPending) add3(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
-      if (result.quoteReadError) add3(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
-      if (result.marketError) add3(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
-      if (result.unknownValueCount) add3(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
-      const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
-      selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
-      const selection = add3(output, "output");
-      selection.dataset.selection = "";
-      const updateSelection = () => {
-        const items = [...selected].flatMap((index) => result.batches[index]);
-        const points = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-        selection.textContent = marketRun ? "\u70B9\u51FB\u6267\u884C\u5C06\u6388\u6743\u6B64\u76EE\u6807\u3001\u603B\u9884\u7B97\u3001\u5E02\u573A\u66FF\u4EE3\u6C60/\u6BCF\u5361\u4E0A\u9650\u53CA\u6240\u9009\u5E93\u5B58\u5361\uFF1B\u4E0B\u65B9\u6279\u6B21\u4EC5\u4E3A\u9884\u4F30\u3002" : `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number3(points)} \u5206 \xB7 \u8FD8\u5DEE ${number3(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
-        if (marketRun && result.record) {
-          const r = result.record, rows = r.entries ?? [];
-          selection.textContent += `
-\u5DF2\u786E\u8BA4 ${number3(r.submittedScore)} / ${number3(p.target)} \u5206 \xB7 \u5DF2\u82B1\u8D39 ${number3(r.spent)} / ${number3(r.budget)} \u91D1\u5E01
-\u5DF2\u8D2D\u5F85\u5165\u5E93 ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u5C31\u7EEA ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u8D21\u732E ${r.consumedIds?.length ?? 0} \u5F20`;
-        }
-        node("contribute").disabled = busy || !contributionReady();
-        updateInventoryReview();
-      };
-      updateSelection();
-      const generation = renderGeneration;
-      result.batches.forEach((batch, index) => {
-        const details = add3(output, "details");
-        details.open = index === 0;
-        const summary3 = add3(details, "summary"), choice = add3(summary3, "input");
-        choice.type = "checkbox";
-        choice.checked = !settled2(index);
-        if (marketRun || orderedExternal) choice.hidden = true;
-        choice.dataset.settled = String(settled2(index));
-        choice.disabled = busy || settled2(index);
-        choice.setAttribute("aria-label", `\u9009\u62E9\u7B2C ${index + 1} \u6279`);
-        choice.addEventListener("click", (event) => event.stopPropagation());
-        choice.addEventListener("change", () => {
-          if (marketRun || orderedExternal) return;
-          if (choice.checked) selected.add(index);
-          else selected.delete(index);
-          updateSelection();
-        });
-        const pending3 = batch.filter((item2) => item2.source === "market");
-        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${number3(batch.length)} \u5F20\uFF08\u5E93\u5B58 ${batch.length - pending3.length} / \u5F85\u8D2D ${pending3.length}) \xB7 ${number3(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206 \xB7 \u5F85\u8D2D ${number3(pending3.reduce((sum2, item2) => sum2 + item2.price, 0))} \u91D1\u5E01`));
-        let populated = false;
-        const populate = () => {
-          if (populated || !details.open || generation !== renderGeneration || disposed) return;
-          populated = true;
-          const list2 = add3(details, "div");
-          list2.className = "player-list";
-          for (const item2 of batch) {
-            const row = add3(list2, "div");
-            row.className = "player-row";
-            renderCard(row, item2, generation);
-            const text5 = add3(row, "div");
-            text5.className = "player-text";
-            add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
-            add3(text5, "span", `${number3(item2.rating)} OVR \xB7 ${number3(item2.points)} \u5206`);
-            add3(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
-            const points = add3(row, "span", `${number3(item2.points)} \u5206`);
-            points.className = "player-points";
-            const price3 = add3(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number3(item2.price)} \u91D1\u5E01`);
-            price3.className = "player-price";
-            price3.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
-            if (item2.source === "market") add3(price3, "small", `\u4E0A\u9650 ${number3(item2.purchaseMaxBuy)}`);
-          }
-        };
-        details.addEventListener("toggle", populate);
-        populate();
-      });
-      const skipped = Object.entries(result.excluded ?? {}).map(([key2, count3]) => `${key2}: ${count3}`).join(" \xB7 ");
-      if (skipped) {
-        const details = add3(output, "details");
-        add3(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
-        add3(details, "small", skipped);
-      }
-      if (result.policy?.goldRange?.[1] < 99) {
-        add3(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number3(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
-      }
-      const exclusionBuckets = result.inventorySelection?.buckets;
-      if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
-        const details = add3(output, "details");
-        add3(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number3(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
-        const labels2 = {
-          "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
-          untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
-          pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
-          locked: "FSU \u624B\u52A8\u9501\u5361\u4FDD\u62A4",
-          "active-squad": "\u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4",
-          "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
-          "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
-        };
-        add3(details, "small", exclusionBuckets.map(
-          (bucket) => `${labels2[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number3(bucket.rating)}\u7EA7`} \xD7${number3(bucket.count)}`
-        ).join("; "));
-      }
-      add3(output, "small", streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : orderedExternal ? "\u70B9\u51FB\u540E\u6309\u987A\u5E8F\u6C38\u4E45\u6D88\u8017 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\uFF1B\u72EC\u7ACB\u786E\u8BA4\u524D\u6279\u540E\u624D\u79FB\u5165\u4E0B\u4E00\u6279\u3002\u8FBE\u5230\u76EE\u6807\u5373\u505C\u6B62\uFF0C\u505C\u6B62\u6309\u94AE\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`));
-      node("contribute").hidden = false;
-    };
-    on("external-prepare", async () => {
-      if (busy || !externalList?.keys().length || !origin || !same32(origin, read())) return;
-      const keys2 = externalList.keys(), serial = opened;
-      setBusy(true);
-      try {
-        const result = await session2.planExternalSelection(keys2);
-        if (serial !== opened) return;
-        node("external-prepare").hidden = true;
-        renderResult(result);
-        node("status").textContent = result.plan ? "\u8D21\u732E\u9884\u89C8\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u3002\u8BF7\u6838\u5BF9 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\u3002" : streamlinedExecutionMessage(result.reason);
-        if (result.historyAction) showOutcome(result);
-      } catch (error2) {
-        if (serial === opened) node("status").textContent = streamlinedExecutionMessage(safeReason9(error2));
-      } finally {
-        setBusy(false);
-      }
-    });
-    on("solve", async () => {
-      if (busy || !origin || !same32(origin, read())) return;
-      resetProgress();
-      node("review-stock").hidden = true;
-      const serial = opened;
-      shown = null;
-      setBusy(true);
-      clearRendered();
-      node("result").replaceChildren();
-      node("contribute").hidden = true;
-      node("status").textContent = "\u6B63\u5728\u51C6\u5907\u5019\u9009\u2026";
-      try {
-        const result = await session2.plan(config(), { onProgress: (p) => {
-          if (serial !== opened) return;
-          const bar = shadow.querySelector("progress");
-          const stage = p.phase === "market-quotes" && p.refresh ? "\u5237\u65B0\u8FC7\u671F\u8865\u5361\u62A5\u4EF7" : { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
-          bar.max = stage ? p.total || 1 : p.maxNodes || 1;
-          bar.value = stage ? p.completed : p.nodes;
-          node("status").textContent = stage ? `${stage} ${number3(p.completed)} / ${number3(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number3(p.nodes)} / ${number3(p.maxNodes)} \xB7 \u5019\u9009 ${number3(p.candidates)} \xB7 ${number3(p.elapsedMs)} ms`;
-        } });
-        if (serial !== opened) return;
-        node("status").textContent = result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_FSU_NOT_READY" ? "FSU \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u6309\u4E0A\u65B9\u63D0\u793A\u68C0\u67E5\u540E\u91CD\u8BD5\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status;
-        renderResult(result);
-      } catch (error2) {
-        if (serial === opened) node("status").textContent = safeReason9(error2);
-      } finally {
-        setBusy(false);
-      }
-    });
-    const showOutcome = (result) => {
-      if (result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" && !result.record) resetProgress();
-      const canArchive = result.historyAction?.canArchive === true && typeof session2.archiveHistory === "function";
-      const archiveBlocked = result.historyAction?.canArchive === false && result.historyAction.kind === "contribution";
-      node("archive-history").hidden = !canArchive;
-      node("history-note").hidden = !canArchive && !archiveBlocked;
-      if (archiveBlocked) {
-        const labels3 = {
-          FC27_STREAMLINED_HISTORY_NO_CONFIRMED: "\u6CA1\u6709\u8DB3\u591F\u7684\u5DF2\u786E\u8BA4\u8D21\u732E\u8BC1\u636E\u3002",
-          FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING: "\u4ECD\u6709\u8D21\u732E\u8BF7\u6C42\u7ED3\u679C\u672A\u77E5\uFF0C\u9700\u8981\u5148\u6838\u5BF9\u56DE\u6267\u3002",
-          FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL: "\u65E7\u4EFB\u52A1\u5305\u542B\u8D2D\u5165\u6750\u6599\u6216\u672A\u7ED3\u6E05\u7684\u8D2D\u5361\u8BB0\u5F55\uFF0C\u9700\u5148\u6838\u5BF9\u65E7\u91C7\u8D2D\u4EFB\u52A1\u3002",
-          FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED: "\u5DF2\u786E\u8BA4\u6807\u8BB0\u7F3A\u5C11\u5B8C\u6574\u56DE\u6267\uFF0C\u6216\u56DE\u6267\u79EF\u5206\u4E0E\u8BB0\u5F55\u4E0D\u7B26\u3002",
-          FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED: "\u65E7\u4EFB\u52A1\u51FA\u73B0\u8FC7\u79EF\u5206\u53D8\u5316\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u5B9E\u9645\u8D21\u732E\u7ED3\u679C\u3002",
-          FC27_STREAMLINED_HISTORY_NO_REMAINDER: "\u6CA1\u6709\u53EF\u53D6\u6D88\u7684\u672A\u53D1\u9001\u4F59\u6279\u3002",
-          FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED: "\u4F59\u6279\u5E26\u6709\u8BF7\u6C42\u6216\u56DE\u6267\u75D5\u8FF9\uFF0C\u4E0D\u80FD\u5F53\u4F5C\u4ECE\u672A\u53D1\u9001\u3002"
-        };
-        node("history-note").textContent = `\u6682\u4E0D\u80FD\u7ED3\u675F\u65E7\u4EFB\u52A1\uFF1A${labels3[result.historyAction.reason] ?? "\u65E7\u4EFB\u52A1\u72B6\u6001\u672A\u6838\u9A8C\u3002"} \u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\uFF0C\u4E0D\u5FC5\u53CD\u590D\u70B9\u51FB\u6062\u590D\u3002`;
-      }
-      if (canArchive) {
-        const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
-        const name2 = typeof old?.name === "string" ? `\u300C${old.name.slice(0, 160)}\u300D` : "";
-        const contribution = result.historyAction.kind === "contribution";
-        node("archive-history").textContent = contribution ? "\u7ED3\u675F\u65E7\u8D21\u732E\u4F59\u6279\u5E76\u5F52\u6863" : "\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1";
-        node("history-note").textContent = contribution ? `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\uFF0C\u6CA1\u6709\u672A\u77E5\u8BF7\u6C42\u3002\u786E\u8BA4\u4E0D\u518D\u7EE7\u7EED\u65E7\u4EFB\u52A1\u65F6\uFF0C\u53EF\u7ED3\u675F\u4F59\u6279\uFF1B\u5B8C\u6574\u56DE\u6267\u4FDD\u7559\uFF0C\u4E0D\u79FB\u52A8\u6216\u6D88\u8017\u4EFB\u4F55\u5361\u3002` : `\u786E\u8BA4\u4E0D\u518D\u6267\u884C\u5386\u53F2\u4EFB\u52A1${name2}\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u65F6\uFF0C\u53EF\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002`;
-      }
-      const confirmed = streamlinedConfirmedContribution(result);
-      const previousCycle = result.reason === "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED";
-      if (executionProgress) {
-        executionProgress.active = false;
-        executionProgress.endedAt = now();
-        refreshClock();
-        const record = result.record;
-        if (record) {
-          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number3(record.spent)} / ${number3(record.budget)} \u91D1\u5E01` : "";
-          node("final-progress").textContent = `${previousCycle ? "\u4E0A\u4E00\u8F6E\u5DF2\u786E\u8BA4" : "\u5DF2\u786E\u8BA4"} ${number3(confirmed?.submittedScore ?? record.submittedScore)} / ${number3(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} \u5206${spent}`;
-          node("final-progress").hidden = false;
-          const bar = shadow.querySelector("progress");
-          bar.max = record.plan?.challenge.targetScore || 1;
-          if (confirmed || Number.isSafeInteger(record.submittedScore)) bar.value = confirmed?.submittedScore ?? record.submittedScore;
-          else bar.removeAttribute("value");
-        }
-      }
-      const labels2 = {
-        completed: "\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u5956\u52B1\u72B6\u6001\u9700\u53E6\u884C\u6838\u5BF9\u3002",
-        partial: "\u672C\u6B21\u8D21\u732E\u5DF2\u786E\u8BA4\uFF0C\u53EF\u7EE7\u7EED\u5269\u4F59\u6279\u6B21\u3002",
-        stopped: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u7684\u6210\u4EA4\u548C\u8D21\u732E\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
-        recovered: "\u5DF2\u6062\u590D\u8BB0\u5F55\uFF0C\u672A\u91CD\u590D\u8D21\u732E\u3002",
-        observed: "\u5DF2\u8BFB\u53D6\u4E0A\u6B21\u8BB0\u5F55\u3002",
-        absent: "\u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002",
-        "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
-        rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
-      };
-      node("status").textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status;
-      if (archiveBlocked && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
-        const old = result.recovery;
-        node("status").textContent = `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5C1A\u672A\u7ED3\u675F\uFF1A\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(old?.pendingWriteCount)} \u6279\u3002\u963B\u65AD\u539F\u56E0\u89C1\u4E0B\u65B9\u3002`;
-      }
-      if (canArchive && result.historyAction.kind === "contribution" && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
-        node("status").textContent = "\u65E7\u8D21\u732E\u4EFB\u52A1\u5C1A\u6709\u672A\u53D1\u9001\u4F59\u6279\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u7ED3\u675F\u65E7\u8D21\u732E\u4F59\u6279\u5E76\u5F52\u6863\u201D\uFF0C\u518D\u5237\u65B0\u5217\u8868\u91CD\u65B0\u9009\u62E9\uFF1B\u672C\u6B21\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u5361\u7247\u3002";
-      }
-      if (result.warning?.reason === "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED") {
-        node("status").textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
-      }
-      if (result.record) node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${previousCycle ? "\u4E0A\u4E00\u8F6E " : ""}${number3(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number3(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
-    };
-    on("contribute", async () => {
-      if (busy || !contributionReady()) return;
-      const serial = opened, result = shown, indices = result.externalSelection ? result.batches.map((_, index) => index) : [...selected].sort((a, b) => a - b);
-      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
-      setBusy(true);
-      beginProgress(result);
-      try {
-        const outcome = await session2.contribute({
-          fingerprint: result.plan.fingerprint,
-          batchIndices: indices,
-          allowPartial: result.plan.status === "partial",
-          ...marketRun ? { budget: Number(shadow.querySelector("[data-purchase-budget]").value) } : {},
-          acknowledgeQuoteCoverage: true
-        }, {
-          onProgress: (p) => {
-            if (serial !== opened) return;
-            executionStep(p);
-            const materializeLabel = {
-              "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
-              "checking-club": "\u6838\u5BF9 Club",
-              "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
-              "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
-              "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
-              "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
-              confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
-            }[p.stage];
-            if (marketRun || ["batch-cooldown", "progress-backoff"].includes(p.phase)) {
-              node("status").textContent = streamlinedExecutionProgress(p);
-              const bar2 = shadow.querySelector("progress");
-              bar2.max = p.targetScore || 1;
-              bar2.value = p.submittedScore;
-              return;
-            }
-            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "\u590D\u6838\u6750\u6599", materialize: "\u79FB\u5165 Club", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
-            node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number3(p.submittedScore)} \u5206`;
-            const bar = shadow.querySelector("progress");
-            bar.max = indices.length;
-            bar.value = indices.indexOf(p.index) + (p.phase === "confirmed" ? 1 : 0);
-          }
-        });
-        if (serial !== opened) return;
-        renderResult({
-          ...result,
-          record: outcome.record,
-          confirmation: outcome.confirmation,
-          executionReason: outcome.reason ?? (outcome.status === "completed" ? "FC27_STREAMLINED_COMPLETED" : result.executionReason),
-          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status)
-        });
-        showOutcome(outcome);
-      } catch (error2) {
-        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
-      } finally {
-        setBusy(false);
-      }
-    });
-    on("recover", async () => {
-      if (busy) return;
-      const serial = opened;
-      shown = null;
-      selected.clear();
-      session2.clearPreview?.();
-      clearRendered();
-      if (externalMode) node("external-prepare").hidden = true;
-      node("review-stock").hidden = true;
-      node("result").replaceChildren();
-      node("contribute").hidden = true;
-      setBusy(true);
-      beginProgress(null, "recovery");
-      try {
-        const outcome = await session2.recover();
-        if (serial !== opened) return;
-        if (outcome.preview) renderResult(outcome.preview);
-        showOutcome(outcome);
-      } catch (error2) {
-        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
-      } finally {
-        setBusy(false);
-      }
-    });
-    on("archive-history", async () => {
-      if (busy || node("archive-history").hidden) return;
-      const serial = opened;
-      setBusy(true);
-      try {
-        const outcome = await session2.archiveHistory();
-        if (serial !== opened) return;
-        if (outcome.status === "archived") {
-          shown = null;
-          selected.clear();
-          clearRendered();
-          node("result").replaceChildren();
-          node("contribute").hidden = true;
-          node("review-stock").hidden = true;
-          resetProgress();
-          shadow.querySelector("progress").hidden = true;
-        }
-        showOutcome(outcome);
-      } catch (error2) {
-        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
-      } finally {
-        setBusy(false);
-      }
-    });
-    update();
-    const timer = schedule(update, 900);
-    return Object.freeze({ dispose: () => {
-      disposed = true;
-      close();
-      unschedule(timer);
-      entry.remove();
-      externalEntry.remove();
-      host.remove();
-    } });
-  }
-
-  // src/streamlined/settings.js
-  function normalizeStreamlinedSettings(value = {}) {
-    const result = {
-      maxRating: value.maxRating ?? 99,
-      marketMaxRating: value.marketMaxRating ?? 99,
-      objective: value.objective ?? "inventory-first",
-      mode: value.mode ?? "inventory-market",
-      sources: value.sources ?? ["club", "storage"],
-      partialWaitMs: value.partialWaitMs ?? 6e4
-    };
-    if (!integer5(result.maxRating, 1, 99) || !integer5(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer5(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail4("SETTINGS_INVALID");
-    return deepFreeze(structuredClone(result));
-  }
-  function createStreamlinedSettings({ get, set }) {
-    const key2 = (context, challengeId) => contextKey(context, `streamlined-settings:${challengeId ?? "global"}`);
-    const read = async (context, challengeId = null) => {
-      if (challengeId !== null && !integer5(challengeId, 1)) fail4("SETTINGS_INVALID");
-      let value;
-      try {
-        value = await get(key2(context, challengeId), null);
-      } catch {
-        fail4("SETTINGS_READ_FAILED");
-      }
-      if (value === null) return challengeId === null ? normalizeStreamlinedSettings() : read(context);
-      if (![1, 2, 3].includes(value?.schema) || !value.settings) fail4("SETTINGS_INVALID");
-      return normalizeStreamlinedSettings({
-        ...value.settings,
-        ...value.schema < 3 && (value.settings.objective === "lowest-value" || value.schema === 1 && value.settings.objective === "lowest-coins") ? { objective: "inventory-first" } : {}
-      });
-    };
-    return Object.freeze({ read, async save(context, challengeId, value) {
-      if (challengeId !== null && !integer5(challengeId, 1)) fail4("SETTINGS_INVALID");
-      const settings = normalizeStreamlinedSettings(value);
-      try {
-        await set(key2(context, challengeId), { schema: 3, settings });
-        if (!same2(await read(context, challengeId), settings)) fail4("SETTINGS_SAVE_FAILED");
-      } catch {
-        fail4("SETTINGS_SAVE_FAILED");
-      }
-      return settings;
-    } });
+    return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0) || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
   }
 
   // src/streamlined/eligibility.js
@@ -39788,26 +38828,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       } else accepted.push(item2);
     }
     return { status: "observed", items: accepted, excluded, excludedRows };
-  }
-
-  // src/streamlined/scoring.js
-  function scoreStreamlinedItems(items = []) {
-    if (!Array.isArray(items) || items.some((item2) => !integer5(item2?.points, 1))) fail4("SCORE_UNKNOWN");
-    const total = items.reduce((sum2, item2) => sum2 + item2.points, 0);
-    if (!integer5(total)) fail4("SCORE_UNKNOWN");
-    return { status: "observed", total, count: items.length };
-  }
-  function streamlinedResourceCost(plan) {
-    return unknownValue(plan) > 0 || plan.materialValue == null ? Infinity : plan.purchaseCost + plan.materialValue;
-  }
-  var unknownValue = (plan) => plan.unknownValue ?? plan.unknownValueCount ?? Number(plan.materialValue == null);
-  function compareStreamlinedPlans(a, b, objective = "lowest-value") {
-    if (objective === "fewest-cards" && a.count !== b.count) return a.count - b.count;
-    if (objective === "lowest-value") {
-      const cost = streamlinedResourceCost(a) - streamlinedResourceCost(b);
-      if (cost) return cost;
-    }
-    return a.purchaseCost - b.purchaseCost || unknownValue(a) - unknownValue(b) || (a.materialValue ?? 0) - (b.materialValue ?? 0) || a.score - b.score || a.count - b.count || (a.storagePenalty ?? 0) - (b.storagePenalty ?? 0);
   }
 
   // src/streamlined/routes.js
@@ -40274,168 +39294,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     };
   }
 
-  // src/streamlined/planner.js
-  function splitStreamlinedBatches(items, limit) {
-    if (!integer5(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
-    const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
-    const batches = [], nextVersion = /* @__PURE__ */ new Map();
-    let open = 0;
-    for (const item2 of ordered) {
-      let index = ["unassigned", "transfer"].includes(item2.pile) ? Math.max(open, nextVersion.get(item2.definitionId) ?? 0) : open;
-      while (batches[index]?.length >= limit) index++;
-      (batches[index] ??= []).push(item2);
-      nextVersion.set(item2.definitionId, index + 1);
-      while (batches[open]?.length >= limit) open++;
-    }
-    return batches.filter(Boolean);
-  }
-  function* planStreamlinedSteps({
-    challenge,
-    inventory = [],
-    market = [],
-    eligibility,
-    policy,
-    objective = "lowest-value",
-    mode = "inventory-market",
-    maxNodes = 25e4,
-    maxStates = 5e4,
-    allowPartial = true,
-    now = () => Date.now(),
-    maxMs = 4e3,
-    quoteSource = "futgg",
-    quoteAt = now(),
-    inventoryComplete = false,
-    marketComplete = false
-  } = {}) {
-    const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
-    if (challenge?.mechanism !== "streamlined" || !integer5(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer5(maxNodes, 1, 5e6) || !integer5(maxStates, 1, 1e5) || !integer5(maxMs, 1, 6e4) || !integer5(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
-    if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
-    if (!integer5(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
-    if (objective === "inventory-first") {
-      const result = yield* planStreamlinedRoutesSteps(
-        { challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
-        { maxNodes, maxStates, maxMs, now }
-      );
-      const route = result.routes?.[0];
-      if (!route || result.status === "cancelled" || result.status === "partial" && !allowPartial) return { ...result, items: [], batches: [] };
-      return { ...result, ...expandStreamlinedRoute(route, challenge), route };
-    }
-    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
-    if (filtered.status !== "observed") return filtered;
-    const excluded = { ...filtered.excluded };
-    const candidates = filtered.items.filter((item2) => {
-      if (item2.source !== "market") return true;
-      const q = item2.quote;
-      const valid3 = integer5(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer5(q.fetchedAt) && q.fetchedAt <= quoteAt && integer5(q.expiresAt) && q.expiresAt > quoteAt;
-      if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
-      return valid3;
-    }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
-    const target = challenge.remainingScore, started = now();
-    let nodes = 0, processed = 0, budget = null, best = null;
-    const empty2 = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
-    let partial = empty2;
-    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
-    const append = (prev, item2) => ({
-      score: prev.score + item2.points,
-      purchaseCost: prev.purchaseCost + (item2.source === "market" ? item2.price : 0),
-      materialValue: prev.materialValue + (item2.source === "inventory" ? item2.price ?? 0 : 0),
-      unknownValue: prev.unknownValue + Number(item2.source === "inventory" && item2.price == null),
-      storagePenalty: prev.storagePenalty + Number(policy.storageFirst && item2.pile !== "storage"),
-      count: prev.count + 1,
-      prev,
-      item: item2
-    });
-    const remember = (state) => {
-      if (state.score >= target) {
-        if (!best || rank3(state, best) < 0) best = state;
-      } else if (state.score > partial.score || state.score === partial.score && rank3(state, partial) < 0) partial = state;
-    };
-    for (const order2 of [candidates, candidates.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || (a.price ?? Infinity) - (b.price ?? Infinity) || b.points - a.points)]) {
-      let seed = empty2;
-      for (const item2 of order2) {
-        seed = append(seed, item2);
-        remember(seed);
-        if (seed.score >= target) break;
-      }
-    }
-    const states4 = /* @__PURE__ */ new Map([[0, empty2]]);
-    outer: for (const item2 of candidates) {
-      const before = [...states4.values()];
-      for (const state of before) {
-        if (nodes >= maxNodes) {
-          budget = "nodes";
-          break outer;
-        }
-        const candidate = append(state, item2);
-        nodes++;
-        remember(candidate);
-        if (candidate.score < target) {
-          const previous = states4.get(candidate.score);
-          if (!previous || rank3(candidate, previous) < 0) states4.set(candidate.score, candidate);
-        }
-        if (nodes % 256 === 0) {
-          const cancelled = yield {
-            phase: "search",
-            nodes,
-            maxNodes,
-            processed,
-            candidates: candidates.length,
-            elapsedMs: now() - started,
-            bestScore: best?.score ?? partial.score,
-            bestPurchaseCost: best?.purchaseCost ?? null
-          };
-          if (cancelled) {
-            budget = "cancelled";
-            break outer;
-          }
-          if (now() - started >= maxMs) {
-            budget = "time";
-            break outer;
-          }
-        }
-        if (states4.size > maxStates) {
-          budget = "states";
-          break outer;
-        }
-      }
-      processed++;
-    }
-    const chosen = best ?? partial, items = [];
-    for (let state = chosen; state.item; state = state.prev) items.push(state.item);
-    items.reverse();
-    const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
-    const reached = !!best, searchComplete = budget === null;
-    return {
-      status: budget === "cancelled" ? "cancelled" : reached ? "ready" : allowPartial && items.length ? "partial" : "unavailable",
-      reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE",
-      items: batches.flat(),
-      batches,
-      score: chosen.score,
-      purchaseCost: chosen.purchaseCost,
-      materialValue: chosen.unknownValue ? null : chosen.materialValue,
-      unknownValueCount: chosen.unknownValue,
-      progress: streamlinedProgress(challenge, chosen.score),
-      nodes,
-      maxNodes,
-      elapsedMs: now() - started,
-      searchComplete,
-      optimalWithinPricedPool: searchComplete && !chosen.unknownValue,
-      poolComplete: inventoryComplete && (mode === "inventory" || marketComplete),
-      candidateCount: candidates.length,
-      excluded,
-      liveExecutionEnabled: false
-    };
-  }
-  async function runStreamlinedPlan(input, {
-    onProgress = () => {
-    },
-    stopped = () => false,
-    schedule,
-    metricsNow
-  } = {}) {
-    return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
-  }
-
   // src/streamlined/purchase-scope.js
   function createStreamlinedPurchaseScope(input) {
     const { groups } = groupStreamlinedCandidates({ ...input, inventory: [], mode: "market" });
@@ -40557,34 +39415,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return plan;
   }
 
-  // src/streamlined/quotes.js
-  var STREAMLINED_QUOTE_BUDGET_MS = 9e4;
-  var fatalStreamlinedQuoteFailure = (reason) => /(?:CONTEXT_CHANGED|CANCELLED|PRICE_POLICY_CHANGED|_DISABLED|INPUT_INVALID)$/.test(reason ?? "");
-  function streamlinedQuoteCoverage(references, source, ids2, at11) {
-    const result = { requested: new Set(ids2).size, valid: 0, failed: 0, missing: 0 };
-    for (const id14 of new Set(ids2)) {
-      if (validStreamlinedQuote(references[id14]?.quotes?.[source], source, id14, at11)) result.valid++;
-      else if (references[id14]?.quotes?.[source]?.error) result.failed++;
-      else result.missing++;
-    }
-    return result;
-  }
-  function validStreamlinedQuote(q, source, id14, at11) {
-    return q?.definitionId === id14 && q.source === source && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11;
-  }
-  function streamlinedQuoteFailure(references, source, ids2, at11, { requireFresh = true } = {}) {
-    let failure = null;
-    for (const id14 of ids2) {
-      const quote2 = references[id14]?.quotes?.[source];
-      if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") {
-        if (fatalStreamlinedQuoteFailure(quote2.error)) return quote2.error;
-        failure ??= quote2.error;
-      }
-      if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at11 || quote2.expiresAt <= at11)) failure ??= "FC27_STREAMLINED_QUOTES_EXPIRED";
-    }
-    return failure;
-  }
-
   // src/streamlined/contribution.js
   function projectStreamlinedReceipt(receipt, { challengeId, setId, previousScore, itemIds, maxScore }) {
     if (receipt?.schema !== 1 || receipt.status !== "accepted" || receipt.challengeId !== challengeId || receipt.setId !== setId || !same2(receipt.itemIds, itemIds) || !integer5(receipt.submittedScore, previousScore + 1, maxScore) || receipt.code !== null && !integer5(receipt.code, 100, 599) || typeof receipt.transportWarning !== "boolean" || typeof receipt.challengeCompleted !== "boolean" || !integer5(receipt.challengeAwardCount, 0, 100) || !integer5(receipt.setAwardCount, 0, 100) || receipt.challengeCompleted !== (receipt.challengeAwardCount > 0 || receipt.setAwardCount > 0) || receipt.previousTimesCompleted !== void 0 && !integer5(receipt.previousTimesCompleted) || typeof receipt.objectiveUpdatesPresent !== "boolean" || receipt.rewardConfirmed !== false) fail4("RECEIPT_INVALID");
@@ -40672,6 +39502,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return !!record && same2(record.context, plan.context) && record.plan.challenge.setId === plan.challenge.setId && record.plan.challenge.id === plan.challenge.id && record.plan.challenge.targetScore === plan.challenge.targetScore && record.submittedScore === plan.challenge.submittedScore && record.submittedScore < plan.challenge.targetScore && confirmed.length > 0 && confirmed.every((batch) => batch.receipt?.status === "accepted") && Math.max(...confirmed.map((batch) => batch.receipt.submittedScore)) === record.submittedScore && record.batches.some((batch) => batch.state === "waiting") && record.batches.every((batch) => ["waiting", "confirmed", "rejected"].includes(batch.state) && !batch.progressChanged) && stock(record.plan) && stock(plan) && !plan.items.some((item2) => consumed.has(item2.id));
   }
   var states3 = ["waiting", "pending", "confirmed", "rejected", "unknown"];
+  function canRestartStreamlinedRejectedWave(record, plan) {
+    return record?.plan?.fingerprint === plan?.fingerprint && canReplaceStreamlinedRejectedWave(record, plan);
+  }
+  function canReplaceStreamlinedRejectedWave(record, plan) {
+    const batch = record?.batches?.[0];
+    return record?.retired !== true && same2(record?.context, plan?.context) && same2(record?.plan?.challenge, plan?.challenge) && same2(record?.plan?.policy, plan?.policy) && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
+  }
   var refOf = (item2) => ({
     id: item2.id,
     definitionId: item2.definitionId,
@@ -40771,14 +39608,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         });
         return task;
       },
-      async begin(plan, { replaceRemainder = false } = {}) {
+      async begin(plan, { replaceRemainder = false, restartRejected = false, replaceRejected = false, expectedRevision = null } = {}) {
         assertStreamlinedPlan(plan);
         if (plan.items.some((item2) => item2.source !== "inventory")) fail4("PURCHASE_PENDING");
         const prior = await read(plan.context);
+        const restart = prior?.revision === expectedRevision && (restartRejected && canRestartStreamlinedRejectedWave(prior, plan) || replaceRejected && canReplaceStreamlinedRejectedWave(prior, plan));
+        if ((restartRejected || replaceRejected) && !restart) fail4("RECOVERY_REQUIRED");
         const replacement = replaceRemainder && prior?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(prior, plan);
         if (replaceRemainder && !replacement) fail4("RECOVERY_REQUIRED");
         if (prior && !prior.retired && !isUnsentStreamlinedJournal(prior) && prior.batches.some((b) => ["pending", "unknown", "waiting"].includes(b.state)) && !replacement && !await canReplaceArchived(prior)) fail4("RECOVERY_REQUIRED");
-        if (replacement) {
+        if (replacement || restart) {
           const key2 = `${streamlinedJournalKey(plan.context)}:history:${prior.revision}`;
           try {
             const saved = await get(key2, null);
@@ -41035,6 +39874,1315 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     return entry?.state === "club" && entry.tradeId === proof.tradeId && entry.price === proof.price;
   }
 
+  // src/adapters/browser/fc27-streamlined-panel.js
+  var number3 = (value) => Number.isSafeInteger(value) ? value.toLocaleString("en-US") : "\u672A\u77E5";
+  var safeReason9 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_UNAVAILABLE";
+  function streamlinedPurchaseResumeMessage(result) {
+    const record = result?.record, audit = streamlinedPurchaseAudit(record);
+    if (result?.status !== "recovered" || record?.completed === true || audit.pendingWriteCount !== 0 || ![
+      record?.budget,
+      record?.spent,
+      record?.submittedScore,
+      record?.challenge?.targetScore,
+      audit.contributedCount,
+      audit.unconsumedPurchaseCount
+    ].every(Number.isSafeInteger) || record.submittedScore >= record.challenge.targetScore) return null;
+    return `\u5DF2\u6062\u590D\u539F\u8D2D\u5361\u4EFB\u52A1\uFF1A\u5DF2\u786E\u8BA4 ${number3(audit.contributedCount)} \u5F20\u3001${number3(record.submittedScore)} / ${number3(record.challenge.targetScore)} \u5206\uFF1B\u5DF2\u8D2D\u5F85\u5904\u7406 ${number3(audit.unconsumedPurchaseCount)} \u5F20\u3002\u5DF2\u82B1 ${number3(record.spent)} \u91D1\u5E01\uFF0C\u539F\u9884\u7B97\u5269\u4F59 ${number3(record.budget - record.spent)}\u3002\u8BF7\u70B9\u51FB\u201C\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E\u201D\uFF1B\u539F\u9884\u7B97\u548C\u5355\u5361\u4E0A\u9650\u4E0D\u53D8\uFF0C\u5DF2\u786E\u8BA4\u6750\u6599\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002`;
+  }
+  function streamlinedConfirmedContribution(result) {
+    const value = result?.confirmation;
+    if (value?.finalizationPending !== true || !Number.isSafeInteger(value.submittedScore) || value.submittedScore <= 0 || !Number.isSafeInteger(value.targetScore) || value.targetScore <= 0) return null;
+    return {
+      submittedScore: value.submittedScore,
+      targetScore: value.targetScore,
+      message: `${value.submittedScore >= value.targetScore ? "SBC \u5DF2\u5B8C\u6210" : "\u672C\u6279\u8D21\u732E\u5DF2\u786E\u8BA4"}\uFF08${number3(value.submittedScore)} / ${number3(value.targetScore)} \u5206\uFF09\u3002\u4EC5\u672C\u5730\u754C\u9762\u540C\u6B65\u672A\u5B8C\u6210\uFF0C\u4E0D\u4EE3\u8868\u8D21\u732E\u5931\u8D25\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002\u53EF\u5237\u65B0\u9875\u9762\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002\u5956\u52B1\u662F\u5426\u9886\u53D6\u8BF7\u53E6\u884C\u67E5\u770B\u3002`
+    };
+  }
+  function streamlinedMarketMessage(result) {
+    const source = { futbin: "FUTBIN", futgg: "FUT.GG" }[result.quoteSource] ?? "\u6240\u9009\u6765\u6E90";
+    if (result.marketError === "FC27_STREAMLINED_QUOTES_EXPIRED") {
+      return `${source} \u8865\u5361\u62A5\u4EF7\u5728\u7B49\u5F85\u4E2D\u5230\u671F\uFF0C\u5237\u65B0\u540E\u4ECD\u672A\u53D6\u5F97\u5B8C\u6574\u6709\u6548\u62A5\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u4E0D\u4F1A\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u6216\u81EA\u52A8\u5207\u6362\u6765\u6E90\u3002`;
+    }
+    if (/QUOTE|PRICE|REFERENCE/.test(String(result.marketError ?? ""))) {
+      return `${source} \u8865\u5361\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u8BE5\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002`;
+    }
+    return "\u5E02\u573A\u5019\u9009\u672A\u9A8C\u8BC1\uFF0C\u672A\u751F\u6210\u8865\u5361\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u5019\u9009\u76EE\u5F55\u8FDE\u63A5\uFF08FUT.GG\uFF09\uFF0C\u6216\u5C06\u6750\u6599\u8303\u56F4\u5207\u6362\u4E3A\u201C\u4EC5\u5E93\u5B58\u201D\u540E\u91CD\u8BD5\u3002";
+  }
+  function streamlinedRouteSummary(route) {
+    const cap = route.groups.filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
+    const total = route.materialValue == null ? null : route.purchaseCost + route.materialValue;
+    return `\u603B\u4EF7\u503C ${number3(total)} \u25C9 \xB7 \u5F85\u8D2D ${number3(route.purchaseCost)} \xB7 \u4E0A\u9650 ${number3(cap)} \xB7 ${number3(route.score)} \u5206 \xB7 ${number3(route.count)} \u5F20\uFF08\u5E93\u5B58 ${route.inventoryCount} / \u5F85\u8D2D ${route.marketCount}\uFF09\xB7 \u81F3\u5C11 ${number3(route.minBatches)} \u6279${route.repeatPurchaseCount ? ` \xB7 \u91CD\u590D\u8D2D\u5361 ${route.repeatPurchaseCount}` : ""}`;
+  }
+  function streamlinedPurchaseBudgetPreview(plan) {
+    const base = (plan?.route?.groups ?? []).filter((group) => group.source === "market").reduce((sum2, group) => sum2 + group.quantity * Math.max(...group.items.map((item2) => item2.purchaseMaxBuy ?? item2.price)), 0);
+    const reserve = Math.ceil(base * 15 / 100), budget = base + reserve;
+    if (!Number.isSafeInteger(base) || base < 0 || !Number.isSafeInteger(budget)) throw Error("FC27_STREAMLINED_PURCHASE_BUDGET_UNVERIFIED");
+    return { base, reserve, budget };
+  }
+  function streamlinedInventoryPreview(plan, indices = null, record = null) {
+    const market = plan?.route?.groups?.some((group) => group.source === "market");
+    const selected = new Set((market || indices === null ? plan?.items ?? [] : indices.flatMap((index) => plan?.batches?.[index] ?? [])).map((item2) => item2.id));
+    const consumed = new Set(record?.consumedIds ?? []);
+    record?.batches?.forEach((batch, index) => {
+      if (batch.state === "confirmed") for (const item2 of plan?.batches?.[index] ?? []) consumed.add(item2.id);
+    });
+    return (plan?.items ?? []).filter((item2) => item2.source === "inventory" && (selected.has(item2.id) || consumed.has(item2.id))).map((item2) => ({ ...item2, consumed: consumed.has(item2.id) }));
+  }
+  function streamlinedExecutionProgress(p = {}) {
+    const stages = {
+      "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
+      "checking-club": "\u6838\u5BF9 Club",
+      "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
+      "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
+      "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
+      "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
+      confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
+    };
+    const label = p.phase === "partial-ready" && p.waitMs === 0 ? "\u672C\u6279\u5DF2\u5C31\u7EEA\uFF0C\u7ACB\u5373\u8D21\u732E" : p.phase === "materialize" ? stages[p.stage] ?? "\u79FB\u5165 Club" : {
+      preflight: "\u51C6\u5907\u6267\u884C\uFF1A\u6838\u5BF9\u65B9\u6848\u4E0E\u6062\u590D\u8BB0\u5F55",
+      "checking-state": "\u6838\u5BF9\u5E93\u5B58\u4E0E\u5269\u4F59\u5BB9\u91CF",
+      search: "\u641C\u7D22\u9650\u4EF7\u5185\u6302\u724C",
+      buying: "\u4E70\u5165\u4E2D",
+      moving: "\u79FB\u5165 Club",
+      "partial-ready": "\u7B49\u5F85\u90E8\u5206\u6279\u6B21\u6536\u6279",
+      validation: "\u590D\u6838\u6750\u6599",
+      contribution: "\u8D21\u732E\u4E2D",
+      reconciliation: "\u6838\u5BF9\u56DE\u6267",
+      confirmed: "\u8D21\u732E\u5DF2\u786E\u8BA4",
+      recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55",
+      "batch-cooldown": "\u5DF2\u786E\u8BA4\u4E0A\u4E00\u6279\uFF0C\u6279\u6B21\u95F4\u51B7\u5374",
+      "progress-backoff": "\u8BFB\u53D6\u8FDB\u5EA6\u6682\u672A\u6210\u529F\uFF0C\u9000\u907F\u540E\u91CD\u8BD5",
+      replanning: "\u9009\u62E9\u6388\u6743\u8303\u56F4\u5185\u7684\u6700\u4F4E\u6210\u672C\u66FF\u4EE3\u65B9\u6848",
+      "waiting-supply": "\u7B49\u5F85\u540E\u91CD\u8BD5\u5E02\u573A\u4F9B\u5E94",
+      "search-result": "\u672C\u6B21\u641C\u7D22\u5B8C\u6210",
+      "checking-holdings": "\u6838\u5BF9 Club \u7248\u672C\u6301\u6709",
+      "purchase-rejected": "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u8BF7\u6C42"
+    }[p.phase] ?? "\u6267\u884C\u4E2D";
+    let text5 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number3(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
+    if (p.phase === "checking-holdings") text5 += `
+\u7248\u672C\u6838\u5BF9 ${number3(p.holdingsBatch)} / ${number3(p.holdingsBatchTotal)} \u7EC4 \xB7 \u7B2C ${number3(Math.floor((p.offset ?? 0) / 250) + 1)} \u9875`;
+    if (p.playerName || Number.isSafeInteger(p.rating)) text5 += `
+\u5F53\u524D\u5019\u9009\uFF1A${p.playerName ?? "\u59D3\u540D\u672A\u53D6\u5F97"} \xB7 ${number3(p.rating)} OVR \xB7 \u4E0A\u9650 ${number3(p.maxBuy)} \u91D1\u5E01 \xB7 \u5C1D\u8BD5 ${number3(p.attempt)} / ${number3(p.attemptLimit)}`;
+    if (p.purchaseTarget !== void 0) text5 += `
+\u5DF2\u8D2D ${number3(p.purchased)} / ${number3(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number3(p.spent)} / ${number3(p.budget)} \u91D1\u5E01`;
+    text5 += `
+${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contributed)} \u5F20 \xB7 ` : ""}\u5DF2\u786E\u8BA4 ${number3(p.submittedScore)} / ${number3(p.targetScore)} \u5206`;
+    if (p.readyCount !== void 0) text5 += `
+\u672C\u6279\u5C31\u7EEA ${number3(p.readyCount)} / ${number3(p.selectionLimit)} \u5F20 \xB7 ${number3(p.readyPoints)} \u5206`;
+    if (p.phase === "materialize") text5 += `
+\u5916\u90E8\u5361 ${number3(p.completed)} / ${number3(p.materialTotal)} \u5F20`;
+    if (p.phase === "waiting-supply") text5 += `
+\u4F9B\u5E94\u91CD\u8BD5 ${number3(p.attempt)} / ${number3(p.attemptLimit)}`;
+    if (p.phase === "progress-backoff") text5 += `
+\u51C6\u5907\u7B2C ${number3(p.attempt + 1)} / ${number3(p.attemptLimit)} \u6B21\u8BFB\u53D6 \xB7 \u7B49\u5F85 ${number3(Math.ceil(p.waitMs / 1e3))} \u79D2`;
+    return text5;
+  }
+  function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
+    const seconds = (ms) => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1e3);
+    let text5 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
+    if (active) text5 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
+    if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
+      text5 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+    }
+    if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
+      text5 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+    }
+    if (active && ["batch-cooldown", "progress-backoff"].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
+      text5 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+    }
+    return text5;
+  }
+  function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+    if (reason === "FC27_STREAMLINED_FSU_NOT_READY") {
+      return "FSU \u7684\u5F53\u524D\u8D5B\u5B63\u3001\u521D\u59CB\u5316\u6216\u5E93\u5B58\u7F13\u5B58\u5C1A\u672A\u5C31\u7EEA\uFF0C\u5DF2\u6682\u505C\u540E\u7EED\u64CD\u4F5C\u3002\u8BF7\u786E\u8BA4 FSU \u589E\u5F3A\u811A\u672C\u5DF2\u542F\u7528\u4E14\u65E0\u91CD\u590D\u7248\u672C\uFF0C\u5237\u65B0 EA \u9875\u9762\u5E76\u7B49\u5E93\u5B58\u52A0\u8F7D\u5B8C\u6210\u540E\u91CD\u8BD5\uFF1B\u6301\u7EED\u51FA\u73B0\u65F6\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u65E5\u5FD7\u3002\u5DF2\u786E\u8BA4\u7684\u8D21\u732E\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u52FF\u624B\u52A8\u91CD\u590D\u6295\u5165\u3002";
+    }
+    if (reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED") {
+      const evidence = normalizeStreamlinedProtectionFailure(protection);
+      const labels2 = {
+        "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
+        "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
+        "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+        "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number3(evidence?.count)} / ${number3(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
+        "protection-slot-id": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u4E2D\u7684\u7269\u54C1\u6807\u8BC6\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-fsu-roster": "FSU \u4E3B\u9635\u5BB9\u5FEB\u7167\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
+        "protection-cache": "\u539F\u751F\u4E3B\u9635\u5BB9\u7F13\u5B58\u7F3A\u5931\uFF0C\u4E14\u6CA1\u6709\u5F53\u524D\u8D26\u53F7/\u4E3B\u9635\u5BB9\u7684\u6709\u6548\u5DF2\u6838\u9A8C\u5FEB\u7167\u3002\u8BF7\u5148\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u5237\u65B0\u5217\u8868\uFF1B\u4ECD\u5931\u8D25\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002"
+      };
+      return `${labels2[evidence?.phase] ?? "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002"} \u672C\u6B21\u672A\u6295\u5165\u65B0\u6750\u6599\u3002`;
+    }
+    if (reason === "FC27_BUY_RECOVERY_REQUIRED") {
+      const target = recovery?.kind === "puzzle-purchase" && Number.isSafeInteger(recovery.setId) && Number.isSafeInteger(recovery.challengeId) ? ` (Set ${recovery.setId} / Challenge ${recovery.challengeId})` : "";
+      const phase = { "save-pending": "\u9635\u5BB9\u66FF\u6362\u4FDD\u5B58\u5C1A\u672A\u6838\u5BF9", ready: "\u8D2D\u4E70\u6216\u5165\u5E93\u5C1A\u672A\u6838\u5BF9", saved: "\u8D2D\u4E70\u6062\u590D\u6807\u8BB0\u5C1A\u672A\u7ED3\u6E05" }[recovery?.phase];
+      const labels2 = {
+        waiting: "\u672A\u8D2D\u4E70",
+        "buy-pending": "\u6210\u4EA4\u5F85\u6838\u5BF9",
+        bought: "\u5DF2\u8D2D\u5F85\u5165\u5E93",
+        "move-pending": "\u5165\u5E93\u5F85\u6838\u5BF9",
+        "move-rejected": "\u5165\u5E93\u88AB\u62D2",
+        club: "\u5DF2\u5165\u5E93"
+      };
+      const counts = Object.entries(labels2).flatMap(([state, label]) => {
+        const count3 = recovery?.states?.[state];
+        return Number.isSafeInteger(count3) && count3 > 0 && count3 <= 32 ? [`${label} ${count3}`] : [];
+      });
+      if (Number.isSafeInteger(recovery?.applied) && recovery.applied >= 0 && recovery.applied <= 32) counts.push(`\u5DF2\u786E\u8BA4\u66FF\u6362 ${recovery.applied}`);
+      return `\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Puzzle \u8D2D\u5361\u8BB0\u5F55${target}${phase ? `: ${phase}` : ""}. ${counts.length ? `\u8BB0\u5F55\u72B6\u6001\uFF1A${counts.join(", ")}. ` : ""}\u8BF7\u5148\u56DE\u5BF9\u5E94 SBC \u7684\u6279\u91CF\u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u82E5\u8BE5 SBC \u5DF2\u4E0B\u67B6\uFF0C\u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002\u672C\u6B21\u672A\u6295\u5165\u6750\u6599\u3002`;
+    }
+    const messages2 = {
+      FC27_STREAMLINED_EXTERNAL_SELECTION_CHANGED: "\u6240\u9009\u5361\u3001Club \u524D\u7F6E\u5361\u6216\u6750\u6599\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u5217\u8868\u540E\u91CD\u65B0\u9009\u62E9\uFF1B\u672A\u79FB\u52A8\u6216\u8D21\u732E\u3002",
+      FC27_STREAMLINED_EXTERNAL_SELECTION_INVALID: "\u8BF7\u9009\u62E9\u5F53\u524D\u5217\u8868\u4E2D\u53EF\u7528\u7684\u5916\u90E8\u5361\u3002",
+      FC27_STREAMLINED_EXTERNAL_BATCH_ORDER: "\u5916\u90E8\u5361\u987B\u6309\u5B8C\u6574\u6279\u6B21\u987A\u5E8F\u6267\u884C\uFF0C\u5148\u786E\u8BA4 Club \u524D\u7F6E\u5361\u6D88\u8017\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u4F1A\u81EA\u52A8\u8DF3\u8FC7\u3002",
+      FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\u3002\u6709\u672A\u51B3\u56DE\u6267\u65F6\u5148\u6838\u5BF9\uFF0C\u5426\u5219\u53EF\u76F4\u63A5\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u65B9\u6848\u6CA1\u6709\u53EF\u6267\u884C\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\u3002",
+      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "\u6709\u9650\u91CD\u8BD5\u540E\u4ECD\u65E0\u6388\u6743\u8303\u56F4\u5185\u7684\u9650\u4EF7\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u53EF\u7A0D\u540E\u91CD\u8BD5\u6216\u751F\u6210\u65B0\u65B9\u6848\uFF1B\u666E\u901A\u7F3A\u8D27\u4E0D\u9700\u8981\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u3002",
+      FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "\u672A\u5206\u914D\u533A\u5DF2\u6EE1\u3002\u8BF7\u624B\u52A8\u817E\u51FA\u7A7A\u95F4\u540E\u91CD\u8BD5\uFF1B\u672A\u641C\u7D22\u5E02\u573A\uFF0C\u4E5F\u672A\u81EA\u52A8\u4E22\u5F03\u5361\u7247\u3002",
+      FC27_STREAMLINED_PURCHASE_VERSION_HELD: "\u5269\u4F59\u7248\u672C\u5DF2\u5728 Club \u6301\u6709\uFF0C\u4F46\u672A\u88AB\u9009\u4E3A\u672C\u6B21\u5E93\u5B58\u6750\u6599\u3002\u8BF7\u9009\u62E9\u5176\u4ED6\u8DEF\u7EBF\uFF0C\u6216\u91CD\u65B0\u751F\u6210\u65B9\u6848\u660E\u786E\u9009\u62E9\u8FD9\u4E9B\u5E93\u5B58\u5361\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6D88\u8017\u3002",
+      FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "\u5269\u4F59\u9884\u7B97\u4E0D\u8DB3\u4EE5\u5B8C\u6210\u672C\u6B21\u8D2D\u4E70\uFF0C\u672A\u63D0\u9AD8\u9650\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u660E\u786E\u8C03\u6574\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_PRICE_UNVERIFIED: "\u8D2D\u4E70\u62A5\u4EF7\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u672A\u6309\u8BE5\u62A5\u4EF7\u4E70\u5165\u3002\u8BF7\u5237\u65B0\u65B9\u6848\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_HOLDINGS_UNVERIFIED: "Club \u7248\u672C\u6301\u6709\u8BFB\u53D6\u672A\u901A\u8FC7\u6838\u9A8C\uFF0C\u5DF2\u6682\u505C\uFF1B\u672C\u6B21\u68C0\u67E5\u672A\u53D1\u51FA\u8D2D\u4E70\u6216\u732E\u796D\u8BF7\u6C42\u3002\u53EF\u76F4\u63A5\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u5DF2\u6709\u672A\u51B3\u4EA4\u6613\u4ECD\u987B\u5148\u6838\u5BF9\u3002",
+      FC27_BUY_SEARCH_FAILED: "EA \u62D2\u7EDD\u4E86\u5E02\u573A\u641C\u7D22\uFF1B\u672A\u4E3A\u8FD9\u6B21\u641C\u7D22\u53D1\u9001\u4E70\u5165\u8BF7\u6C42\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF0C\u6301\u7EED\u51FA\u9519\u65F6\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF1B\u8FD9\u4E0D\u662F\u672A\u77E5\u56DE\u6267\uFF0C\u4E5F\u4E0D\u7B49\u4E8E\u5E02\u573A\u7F3A\u8D27\u3002",
+      FC27_BUY_NATIVE_REJECTED: "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u5C1D\u8BD5\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_BUY_INSUFFICIENT_COINS: "EA \u8FD4\u56DE\u91D1\u5E01\u4E0D\u8DB3\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\uFF0C\u672A\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\u6216\u603B\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED: "\u672C\u6B21\u6267\u884C\u6388\u6743\u5DF2\u5230\u671F\u3002\u5DF2\u53D1\u751F\u7684\u4EA4\u6613\u4FDD\u7559\uFF1B\u65E0\u672A\u51B3\u56DE\u6267\u65F6\u53EF\u518D\u6B21\u70B9\u51FB\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PURCHASE_QUOTE_EXPIRED: "\u516C\u5171\u62A5\u4EF7\u5DF2\u8FC7\u671F\u4E14\u672A\u80FD\u66F4\u65B0\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF0C\u4E0D\u4F7F\u7528\u8FC7\u671F\u62A5\u4EF7\u3002",
+      FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED: "\u8D2D\u4E70\u6216\u5165\u5E93\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u3002",
+      FC27_STREAMLINED_PURCHASE_HISTORY_ARCHIVED: "\u65E7\u4EFB\u52A1\u5DF2\u9000\u51FA\u5E76\u5F52\u6863\uFF0C\u4E0D\u518D\u963B\u6B62\u5176\u4ED6 SBC \u7684\u65B0\u91C7\u8D2D\u3002\u65E7\u56DE\u6267\u548C\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u672A\u6838\u5BF9\u6750\u6599\u4ECD\u6309\u5B9E\u4F53\u9694\u79BB\uFF0C\u4E0D\u4F1A\u91CD\u4E70\u6216\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u5E76\u786E\u8BA4\u65B0\u9884\u7B97\u3002",
+      FC27_STREAMLINED_PURCHASE_HISTORY_RETIRED: "\u65E7\u4EFB\u52A1\u5DF2\u5F52\u6863\uFF0C\u4E0D\u518D\u7EE7\u7EED\u6267\u884C\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u5F53\u524D\u65B9\u6848\u3002",
+      FC27_STREAMLINED_HISTORY_TARGET_UNRESOLVED: "\u8FD9\u4E2A SBC \u7684\u65E7\u8D21\u732E\u7ED3\u679C\u4ECD\u5F85\u6838\u5BF9\uFF0C\u6682\u4E0D\u5728\u540C\u4E00 SBC \u5F00\u65B0\u4EFB\u52A1\u3002\u5176\u4ED6 SBC \u53EF\u91CD\u65B0\u751F\u6210\u65B9\u6848\uFF1B\u65E7\u6750\u6599\u4FDD\u6301\u9694\u79BB\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_INVALID: "\u65E7\u4EFB\u52A1\u5F52\u6863\u6570\u636E\u6821\u9A8C\u672A\u901A\u8FC7\uFF0C\u8BB0\u5F55\u4FDD\u7559\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_CONFLICT: "\u65E7\u8BB0\u5F55\u5728\u6838\u5BF9\u540E\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6838\u5BF9\uFF0C\u4E0D\u4F1A\u8986\u76D6\u8BB0\u5F55\u3002",
+      FC27_STREAMLINED_PURCHASE_ARCHIVE_FULL: "\u5F52\u6863\u6570\u91CF\u5DF2\u8FBE\u4E0A\u9650\uFF0C\u672A\u5220\u9664\u4EFB\u4F55\u4EA4\u6613\u8BC1\u636E\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_CONTRIBUTION_RECOVERY_REQUIRED: "\u672C\u6279\u8D21\u732E\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PURCHASE_REMAINDER_RECOVERY_REQUIRED: "\u5F53\u524D\u8D21\u732E\u8BB0\u5F55\u8FD8\u6709\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u672A\u6267\u884C\u4F59\u6279\uFF0C\u8BF7\u5148\u6838\u5BF9\u6062\u590D\u5E76\u5B8C\u6210\u5E93\u5B58\u4F59\u6279\uFF0C\u518D\u6267\u884C\u542B\u8865\u5361\u7684\u65B0\u8DEF\u7EBF\u3002\u672C\u6B21\u5C1A\u672A\u4E70\u5361\u6216\u79FB\u52A8\u6750\u6599\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_READ_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6062\u590D\u6216\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PURCHASE_JOURNAL_WRITE_FAILED: "\u8D2D\u4E70\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u540E\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_PROGRESS_CHANGED: "\u5F53\u524D\u79EF\u5206\u4E0E\u65B9\u6848\u4E0D\u4E00\u81F4\uFF0C\u5DF2\u505C\u6B62\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_STREAMLINED_PROTECTION_UNVERIFIED: "\u9501\u5361\u6216\u5F53\u524D\u4E3B\u9635\u5BB9\u4FE1\u606F\u5C1A\u672A\u6838\u9A8C\uFF0C\u8BF7\u5148\u6253\u5F00 EA \u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\uFF1B\u672A\u6295\u5165\u65B0\u6750\u6599\u3002",
+      FC27_STREAMLINED_POLICY_CHANGED: "\u9009\u6750\u8BBE\u7F6E\u5DF2\u53D8\u5316\uFF0C\u65E7\u65B9\u6848\u672A\u7EE7\u7EED\u6295\u5165\u3002\u8BF7\u751F\u6210\u65B0\u65B9\u6848\u5E76\u786E\u8BA4\u6267\u884C\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u65E7\u8BB0\u5F55\u4F1A\u5148\u5F52\u6863\uFF0C\u672A\u5B8C\u6210\u7684\u7EAF\u5E93\u5B58\u6279\u6B21\u53EF\u91CD\u65B0\u89C4\u5212\u3002",
+      FC27_STREAMLINED_MATERIAL_CHANGED: "\u9009\u4E2D\u6750\u6599\u5DF2\u53D8\u5316\u6216\u53D7\u5230\u9501\u5361/\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF0C\u5DF2\u505C\u6B62\uFF1B\u8BF7\u6838\u5BF9\u8BB0\u5F55\u540E\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED: "\u5916\u90E8\u5361\u79FB\u5165 Club \u88AB\u539F\u751F\u63A5\u53E3\u62D2\u7EDD\uFF0C\u672C\u6279\u5C1A\u672A\u8D21\u732E\u3002\u6B64\u524D\u5DF2\u786E\u8BA4\u7684\u8D21\u732E\u4FDD\u7559\uFF1B\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u68C0\u67E5\u5269\u4F59\u6279\u6B21\u3002",
+      FC27_STREAMLINED_MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED: "\u5916\u90E8\u5361\u7684\u91CD\u590D\u6807\u8BB0\u65E0\u6CD5\u5B89\u5168\u66F4\u65B0\uFF0C\u672C\u6B21\u672A\u79FB\u52A8\u8BE5\u5361\u3002\u6B64\u524D\u5DF2\u786E\u8BA4\u7684\u8D21\u732E\u4FDD\u7559\uFF1B\u8BF7\u5237\u65B0\u539F\u751F Transfer / Unassigned \u5217\u8868\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_BUY_JOURNAL_READ_FAILED: "Puzzle \u8D2D\u4E70\u8BB0\u5F55\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u6216\u5BFC\u51FA\u8BCA\u65AD\uFF1B\u672A\u6E05\u9664\u8BB0\u5F55\u3001\u672A\u6295\u5165\u6750\u6599\u3002",
+      FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684 Gallery \u8D2D\u5361\u8BB0\u5F55\uFF0C\u8BF7\u5148\u5230 Gallery \u8D2D\u4E70\u7A97\u53E3\u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70\u3002",
+      FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
+      FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
+      FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
+      FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: "EA \u5DF2\u8FD4\u56DE\u672C\u6279\u5B8C\u6210\u56DE\u6267\uFF0C\u4F46\u5F52\u96F6\u540E\u7684 SBC \u72B6\u6001\u5B58\u5728\u51B2\u7A81\uFF0C\u6682\u672A\u7ED3\u6E05\u8BB0\u5F55\u3002\u4E0D\u8981\u91CD\u65B0\u4E70\u5361\u6216\u91CD\u590D\u6295\u5165\uFF1B\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002",
+      FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: "EA \u8FD4\u56DE\u7684 SBC \u5B8C\u6210\u6B21\u6570\u683C\u5F0F\u5F02\u5E38\uFF0C\u5DF2\u4FDD\u7559\u672C\u6279\u8BB0\u5F55\u3002\u8BF7\u52FF\u91CD\u590D\u6295\u5165\uFF1B\u53EF\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_STREAMLINED_PROGRESS_READ_FAILED: "EA \u8FDB\u5EA6\u8BFB\u53D6\u672A\u6210\u529F\u3002\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\uFF1B\u8BF7\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+      FC27_STREAMLINED_PROGRESS_READ_TIMEOUT: "EA \u8FDB\u5EA6\u8BFB\u53D6\u8D85\u65F6\u3002\u5DF2\u786E\u8BA4\u6279\u6B21\u548C\u79EF\u5206\u4FDD\u7559\uFF1B\u8BF7\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\uFF0C\u4E0D\u8981\u91CD\u65B0\u6295\u5165\u65E7\u6279\u6B21\u3002",
+      FC27_STREAMLINED_RECOVERY_REQUIRED: "\u5DF2\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u67E5\u770B\u5DF2\u786E\u8BA4\u8FDB\u5EA6\u548C\u5269\u4F59\u6279\u6B21\uFF1B\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u5DF2\u786E\u8BA4\u7684\u5361\u3002",
+      FC27_STREAMLINED_CONTEXT_CHANGED: "\u8D26\u53F7\u3001SBC \u6216\u79EF\u5206\u72B6\u6001\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u6253\u5F00\u5F53\u524D SBC \u5E76\u751F\u6210\u65B9\u6848\u3002",
+      FC27_STREAMLINED_JOURNAL_ARCHIVE_FAILED: "\u65E7\u65B9\u6848\u8BB0\u5F55\u5C1A\u672A\u6210\u529F\u5F52\u6863\uFF0C\u672C\u6B21\u672A\u53D1\u51FA\u8D21\u732E\u8BF7\u6C42\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF1B\u4E0D\u4F1A\u4E22\u5F03\u65E7\u8BB0\u5F55\u6216\u91CD\u590D\u6295\u5165\u3002",
+      FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED: `\u65E7 SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF0C${number3(recovery?.currentScore)} / ${number3(recovery?.targetScore)} \u5206\uFF09\u963B\u65AD\u672C\u6B21\u8D21\u732E\uFF1A\u5DF2\u786E\u8BA4 ${number3(recovery?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(recovery?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(recovery?.pendingWriteCount)} \u6279\u3002\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\u68C0\u67E5\u65E7\u8BB0\u5F55\uFF1B\u672C\u6B21\u5C1A\u672A\u79FB\u52A8\u6216\u8D21\u732E\u5361\u7247\u3002`,
+      FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED: "\u65E7\u8D21\u732E\u56DE\u6267\u5DF2\u5B8C\u6574\u5F52\u6863\uFF0C\u672A\u53D1\u9001\u4F59\u6279\u5DF2\u7ED3\u675F\u3002\u8BF7\u5237\u65B0\u5217\u8868\u5E76\u91CD\u65B0\u9009\u62E9\u5F53\u524D\u5361\u7247\uFF1B\u4E0D\u4F1A\u91CD\u65B0\u8D21\u732E\u65E7\u5361\u3002",
+      FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED: `\u672C\u5730\u5386\u53F2 SBC${typeof recovery?.name === "string" ? `\u300C${recovery.name.slice(0, 160)}\u300D` : ""}\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u8BB0\u5F55\u4E2D\u8FD8\u6709 ${recovery?.pendingWriteCount ?? "?"} \u7B14\u5F85\u6838\u5BF9\u8BF7\u6C42\u3001${recovery?.unconsumedPurchaseCount ?? "?"} \u5F20\u91C7\u8D2D\u6750\u6599\u5F85\u5904\u7406\u3002\u8BE5\u8BB0\u5F55\u4E0D\u4EE3\u8868\u4EFB\u52A1\u4ECD\u5728\u8FD0\u884C\uFF1B\u5F53\u524D\u5DF2\u786E\u8BA4\u79EF\u5206\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5165\u6216\u6295\u5165\u3002`,
+      FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED: "\u5DF2\u6062\u590D\u5F53\u524D SBC \u7684\u5269\u4F59\u5E93\u5B58\u6279\u6B21\u3002\u5386\u53F2\u5F85\u6838\u5BF9\u8BB0\u5F55\u5DF2\u9694\u79BB\u4FDD\u7559\uFF1B\u672C\u6B21\u53EA\u7528\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\uFF0C\u4E0D\u4E70\u5361\u3001\u4E0D\u91CD\u8DD1\u65E7\u4EFB\u52A1\u3002\u70B9\u51FB\u201C\u8D21\u732E\u6240\u9009\u6279\u6B21\u201D\u7EE7\u7EED\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_MATERIAL_RESERVED: "\u5F53\u524D\u5269\u4F59\u6279\u6B21\u5305\u542B\u65E7\u4EFB\u52A1\u5F85\u6838\u5BF9\u7684\u540C\u4E00\u5F20\u5361\uFF0C\u6682\u4E0D\u6295\u5165\u3002\u5DF2\u786E\u8BA4\u79EF\u5206\u548C\u65E7\u8BB0\u5F55\u5747\u4FDD\u7559\uFF1B\u4E0D\u4F1A\u91CD\u590D\u4E70\u5361\u6216\u6D88\u8017\u8FD9\u5F20\u5361\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_BLOCKED: "\u65E7\u4EFB\u52A1\u4ECD\u5F85\u6838\u5BF9\uFF1B\u672C\u6B21\u53EA\u5141\u8BB8\u6062\u590D\u4E0D\u91CD\u53E0\u7684 Club/SBC \u4ED3\u5E93\u5361\u3002\u542B\u8865\u5361\u3001\u5916\u90E8\u5361\u79FB\u52A8\u6216\u91C7\u8D2D\u56DE\u6267\u7684\u8DEF\u7EBF\u6682\u4E0D\u6267\u884C\u3002",
+      FC27_STREAMLINED_FOREIGN_PURCHASE_SCOPE_UNVERIFIED: "\u65E7\u4EFB\u52A1\u7684\u7CBE\u786E\u6750\u6599\u8303\u56F4\u5C1A\u672A\u6838\u9A8C\uFF0C\u6682\u4E0D\u6295\u5165\uFF1B\u5DF2\u786E\u8BA4\u79EF\u5206\u4E0E\u65E7\u8BB0\u5F55\u4FDD\u7559\u3002",
+      FC27_STREAMLINED_MATERIALIZE_RECOVERY_REQUIRED: `\u53E6\u4E00\u4E2A SBC\uFF08Set ${recovery?.setId ?? "?"} / Challenge ${recovery?.challengeId ?? "?"}\uFF09\u4ECD\u6709\u672A\u6838\u5BF9\u7684\u5916\u90E8\u5361\u79FB\u52A8\u8BB0\u5F55\uFF08${recovery?.pendingCount ?? "?"} \u5F20\uFF09\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF1B\u8FD9\u91CC\u53EA\u68C0\u67E5\u662F\u5426\u5DF2\u8FDB\u5165 Club\uFF0C\u4E0D\u4F1A\u91CD\u590D\u79FB\u52A8\u3001\u8D2D\u4E70\u6216\u8D21\u732E\u3002`,
+      FC27_STREAMLINED_COMPLETED: "\u6240\u9009\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u65E0\u9700\u518D\u6B21\u8D21\u732E\u3002",
+      FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED: "\u4E0A\u4E00\u8F6E\u8D21\u732E\u5DF2\u786E\u8BA4\u5B8C\u6210\uFF0C\u5F53\u524D\u9875\u9762\u79EF\u5206\u5DF2\u56DE\u5230\u65B0\u4E00\u8F6E\uFF1B\u4E0D\u662F\u4E0A\u6B21\u63D0\u4EA4\u5931\u8D25\u3002\u5DF2\u786E\u8BA4\u8BB0\u5F55\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u91CD\u6295\u3002\u8BF7\u901A\u8FC7 EA \u539F\u751F\u5165\u53E3\u5F00\u59CB\u672C\u8F6E\uFF0C\u518D\u751F\u6210\u65B0\u65B9\u6848\u3002",
+      FC27_STREAMLINED_PURCHASE_PENDING: "\u6B64\u8DEF\u7EBF\u542B\u5F85\u8D2D\u6750\u6599\uFF1B\u5148\u5B8C\u6210\u8D2D\u4E70\u5E76\u6838\u5BF9\u771F\u5B9E\u5B9E\u4F53\uFF0C\u624D\u80FD\u8D21\u732E\u3002"
+    };
+    return messages2[reason] ?? reason ?? "\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u6216\u6838\u5BF9\u6267\u884C\u7ED3\u679C\u3002";
+  }
+  function mountFc27StreamlinedPanel({
+    document,
+    readTarget,
+    session: session2,
+    nativeRenderer = null,
+    schedule = setInterval,
+    unschedule = clearInterval,
+    now = () => Date.now()
+  } = {}) {
+    if (!document?.body || document.getElementById("fcat-streamlined-entry")) return null;
+    const add3 = (parent, tag, value = "") => {
+      const node2 = document.createElement(tag);
+      node2.textContent = value;
+      parent.append(node2);
+      return node2;
+    };
+    const entry = document.createElement("button");
+    entry.id = "fcat-streamlined-entry";
+    entry.type = "button";
+    entry.textContent = "FCAT \u79EF\u5206\u89E3\u9898";
+    entry.className = "btn-standard call-to-action";
+    entry.style.cssText = "margin:8px;min-height:38px";
+    const externalEntry = document.createElement("button");
+    externalEntry.id = "fcat-streamlined-external-entry";
+    externalEntry.type = "button";
+    externalEntry.className = "ea-filter-bar-item-view";
+    externalEntry.textContent = "Transfer / Unassigned";
+    externalEntry.setAttribute("aria-haspopup", "dialog");
+    const host = document.createElement("div");
+    host.id = "fcat-streamlined-panel";
+    document.body.append(host);
+    const shadow = host.attachShadow({ mode: "closed" });
+    shadow.innerHTML = `<style>
+    *{box-sizing:border-box} [hidden]{display:none!important}
+    dialog{width:min(720px,94vw);max-width:94vw;max-height:88vh;overflow:hidden;background:#17232c;color:#ecf2f5;border:1px solid #53636d;border-radius:10px;padding:16px;font:14px/1.5 Arial,sans-serif}
+    dialog::backdrop{background:#000a}header,footer,.tabs{display:flex;gap:10px;align-items:center}header{margin-bottom:12px}header strong{flex:1}footer{position:sticky;bottom:-16px;background:#17232c;padding:12px 0;justify-content:flex-end;border-top:1px solid #46545d}
+    button,select,input{font:inherit;color:inherit;background:#25353f;border:1px solid #536570;border-radius:5px;padding:6px 9px;min-height:34px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}button[aria-pressed=true]{color:#b4f2d7;border-color:#b4f2d7}button.primary{background:#b4f2d7;color:#15251f}label{display:grid;gap:5px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}.sources{display:flex;flex-wrap:wrap;gap:12px}.sources label{display:flex;align-items:center}input[type=checkbox]{min-height:0}small{display:block;color:#b4c4cd;margin:8px 0}output{display:block;white-space:pre-line;overflow-wrap:anywhere;margin:10px 0}.player-row{display:flex;align-items:center;gap:12px;min-height:92px;padding:8px 0;border-top:1px solid #364956}.player-card{flex:0 0 64px;position:relative;width:64px;height:88px;display:grid;place-items:center}.player-card slot{display:block;position:absolute;inset:0;width:144px;height:200px;transform:scale(.4444444);transform-origin:top left}.player-text{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}.player-text strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.player-text span{font-size:12px;color:#b4c4cd}.player-points{flex:0 0 76px;text-align:right;color:#b4f2d7;font-variant-numeric:tabular-nums}.player-price{flex:0 0 82px;text-align:right;font-variant-numeric:tabular-nums}summary{padding:10px 0;cursor:pointer}.result-summary{font-size:16px;color:#b4f2d7}progress{width:100%;height:8px;accent-color:#b4f2d7} @media(max-width:500px){.fields{grid-template-columns:1fr}.player-row{gap:8px}.player-card{flex-basis:54px;width:54px;height:74px}.player-card slot{transform:scale(.375)}.player-points{flex-basis:62px}.player-price{flex-basis:68px}dialog{padding:12px}}
+    .player-row{display:grid;grid-template-columns:104px minmax(0,1fr) 90px 112px;min-height:156px}
+    .player-card{width:104px;height:145px}.player-card slot{transform:scale(.7222222)}
+    .player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75);transform-origin:top left}
+    .player-text strong{white-space:normal;overflow-wrap:anywhere;font-size:16px}.player-text span{font-size:14px}
+    .player-points,.player-price{font-size:15px}.player-price small{margin:3px 0;font-size:12px}
+    dialog[open]{display:flex;flex-direction:column}.panel-body{min-height:0;overflow:auto;overscroll-behavior:contain}
+    footer{display:block;position:static;flex-shrink:0;padding:10px 0 0}.actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+    footer output{margin:0 0 6px;max-height:10em;overflow:auto;font-size:13px}footer small{margin:4px 0 8px;font-size:12px}footer progress{display:block;margin:6px 0}
+    .inventory-review{border:1px solid #536570;border-radius:6px;padding:0 10px;margin:12px 0}.inventory-review summary{font-weight:bold;color:#b4f2d7}
+    .inventory-row{display:grid;grid-template-columns:42px minmax(0,1fr);gap:8px;padding:8px 0;border-top:1px solid #364956}.inventory-row strong{overflow-wrap:anywhere}.inventory-row small{margin:3px 0 0}.inventory-row.consumed{opacity:.65}.inventory-warning{color:#ffd48a}
+    .external-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}.external-row{display:grid;grid-template-columns:104px minmax(0,1fr);align-items:center;gap:12px;padding:8px 0;border-top:1px solid #364956}.external-choice{display:flex;align-items:center;gap:8px}.external-choice input{flex-shrink:0}.external-row .player-text span{white-space:normal;overflow-wrap:anywhere}
+    @media(max-width:500px){.player-row{grid-template-columns:88px minmax(0,1fr);gap:4px 12px;min-height:136px}.player-card{grid-row:1/4;width:88px;height:123px}.player-card slot{transform:scale(.6111111)}.player-card slot::slotted(.gallery-native-card.owned-card){transform:scale(1.75)}.player-text{grid-column:2}.player-points,.player-price{grid-column:2;text-align:left}.player-price small{display:inline;margin-left:8px}}
+  </style><dialog aria-label="FCAT \u79EF\u5206\u89E3\u9898"><div class="panel-body"><header><strong>FCAT \u79EF\u5206\u89E3\u9898</strong><button data-close aria-label="\u5173\u95ED">\xD7</button></header>
+    <div data-target></div><div class="tabs"><button data-local aria-pressed="true">\u5F53\u524D SBC</button><button data-global aria-pressed="false">\u5168\u5C40\u8BBE\u7F6E</button></div>
+    <section data-settings><div class="fields"><label>\u89C4\u5212\u76EE\u6807<select data-objective><option value="inventory-first">\u5E93\u5B58\u4F18\u5148\uFF1AStorage \u2192 Club \u2192 \u7F3A\u53E3\u8865\u5361</option><option value="lowest-value">\u6700\u4F4E\u603B\u6750\u6599\u4EF7\u503C\uFF08\u5E93\u5B58+\u5F85\u8D2D\uFF09</option><option value="lowest-coins">\u5148\u6700\u4F4E\u8D2D\u5361\u91D1\u5E01\uFF0C\u518D\u5E93\u5B58\u4EF7\u503C</option><option value="fewest-cards">\u6700\u5C11\u5361\u6570</option></select></label>
+    <label>\u6750\u6599\u8303\u56F4<select data-mode><option value="inventory-market">\u5E93\u5B58+\u8865\u5361</option><option value="inventory">\u4EC5\u5E93\u5B58</option><option value="market">\u4EC5\u5E02\u573A\u8865\u5361</option></select></label>
+    <label>\u5E93\u5B58\u6700\u9AD8\u8BC4\u5206<input data-rating type="number" min="1" max="99" step="1"></label><label>\u8865\u5361\u6700\u9AD8\u8BC4\u5206<input data-market-rating type="number" min="1" max="99" step="1"></label><label>\u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650\uFF08\u79D2\uFF0C\u5DF2\u641C\u5C3D\u65F6\u8DF3\u8FC7\uFF09<input data-wait type="number" min="0" max="3600" step="1"></label></div><div class="sources"><label><input data-club type="checkbox">Club</label><label><input data-storage type="checkbox">SBC \u4ED3\u5E93</label><label><input data-unassigned type="checkbox">\u672A\u5206\u914D</label><label><input data-transfer type="checkbox">\u8F6C\u4F1A\u5217\u8868</label></div>
+    <small>\u5E93\u5B58\u9075\u5FAA FSU \u6750\u6599\u4FDD\u62A4\uFF1B\u8865\u5361\u6309\u5F53\u524D\u8D2D\u4E70\u62A5\u4EF7\u6765\u6E90\u89C4\u5212\u3002\u8DEF\u7EBF\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\uFF0C\u9009\u62E9\u8DEF\u7EBF\u4E0D\u4F1A\u8D2D\u4E70\u6216\u8D21\u732E\u3002</small><button data-save>\u4FDD\u5B58\u8BBE\u7F6E</button></section>
+    <section data-result></section></div>
+    <footer><output data-status aria-live="polite"></output><progress aria-label="\u6267\u884C\u8FDB\u5EA6" hidden></progress><small data-clock hidden></small><small data-final-progress hidden></small>
+      <small data-history-note hidden>\u786E\u8BA4\u5DF2\u4E0D\u518D\u6267\u884C\u8FD9\u9879\u5386\u53F2\u4EFB\u52A1\u65F6\uFF0C\u53EF\u5C06\u5B83\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002</small>
+      <div class="actions"><button data-external-refresh hidden>\u5237\u65B0\u5217\u8868</button><button data-external-prepare class="primary" hidden disabled>\u51C6\u5907\u8D21\u732E\u9884\u89C8</button><button data-review-stock hidden>\u67E5\u770B\u5E93\u5B58\u5361</button><button data-stop hidden>\u505C\u6B62</button><button data-recover>\u6838\u5BF9\u5E76\u6062\u590D</button><button data-archive-history hidden>\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1</button><button data-solve class="primary">\u751F\u6210\u65B9\u6848</button><button data-contribute disabled hidden>\u8D21\u732E\u6240\u9009\u6279\u6B21</button></div></footer></dialog>`;
+    const node = (key2) => shadow.querySelector(`[data-${key2}]`), dialog = shadow.querySelector("dialog");
+    let target = null, origin = null, busy = false, disposed = false, global = false, opened = 0;
+    const rendered = /* @__PURE__ */ new Set();
+    let renderGeneration = 0;
+    let shown = null, selected = /* @__PURE__ */ new Set();
+    let externalMode = false, externalList = null;
+    let executionProgress = null;
+    const resetProgress = () => {
+      executionProgress = null;
+      node("clock").hidden = true;
+      node("final-progress").hidden = true;
+    };
+    const refreshClock = () => {
+      if (!executionProgress || executionProgress.serial !== opened) return;
+      const current2 = executionProgress.active ? now() : executionProgress.endedAt;
+      node("clock").textContent = streamlinedExecutionClock(
+        executionProgress.progress,
+        current2 - executionProgress.startedAt,
+        current2 - executionProgress.phaseAt,
+        executionProgress.active
+      );
+      node("clock").hidden = false;
+    };
+    const beginProgress = (result, phase = "preflight") => {
+      resetProgress();
+      const submittedScore = result?.record?.submittedScore ?? result?.plan?.challenge.submittedScore;
+      const targetScore = result?.plan?.challenge.targetScore;
+      const start = now();
+      executionProgress = { serial: opened, startedAt: start, phaseAt: start, active: true, progress: { phase, submittedScore, targetScore } };
+      node("status").textContent = streamlinedExecutionProgress(executionProgress.progress);
+      const bar = shadow.querySelector("progress");
+      bar.max = targetScore || 1;
+      if (Number.isSafeInteger(submittedScore)) bar.value = submittedScore;
+      else bar.removeAttribute("value");
+      bar.hidden = false;
+      refreshClock();
+    };
+    const executionStep = (p) => {
+      if (!executionProgress || executionProgress.serial !== opened || !executionProgress.active) return;
+      if (p.phase !== executionProgress.progress.phase) executionProgress.phaseAt = now();
+      executionProgress.progress = p;
+      refreshClock();
+    };
+    const contributionReady = () => shown?.liveExecutionEnabled === true && (shown.plan.route?.groups?.some((g) => g.source === "market") ? (shown.record?.submittedScore ?? shown.plan.challenge.submittedScore) < shown.plan.challenge.targetScore : selected.size > 0);
+    const clearRendered = () => {
+      node("archive-history").hidden = true;
+      node("history-note").hidden = true;
+      externalList?.dispose();
+      externalList = null;
+      renderGeneration++;
+      for (const dispose of rendered) dispose();
+      rendered.clear();
+    };
+    const renderCard = (parent, item2, generation = renderGeneration) => {
+      const card = add3(parent, "div");
+      card.className = "player-card";
+      const fallback = add3(card, "span", number3(item2.rating));
+      fallback.title = "\u5361\u9762\u4E0D\u53EF\u7528";
+      const slot = add3(card, "slot");
+      slot.name = `streamlined-card-${generation}-${item2.key}`;
+      let native = null, failed2 = false, retired = false;
+      const release = () => {
+        if (native) {
+          try {
+            native.__fcatDealloc?.();
+          } catch {
+          }
+          native.remove();
+          native = null;
+        }
+      };
+      const dispose = () => {
+        retired = true;
+        rendered.delete(dispose);
+        release();
+      };
+      const unavailable = () => {
+        if (retired) return;
+        failed2 = true;
+        release();
+        rendered.delete(dispose);
+        if (generation === renderGeneration && !disposed) {
+          fallback.hidden = false;
+          slot.remove();
+        }
+      };
+      try {
+        const raw = session2.resolveDisplayItem?.(item2);
+        if (raw) native = (item2.source === "market" ? nativeRenderer?.render : nativeRenderer?.renderOwned)?.({
+          parent: host,
+          raw,
+          slot: slot.name,
+          label: item2.name ?? `\u7248\u672C ${item2.definitionId}`,
+          onUnavailable: unavailable
+        });
+      } catch {
+        unavailable();
+      }
+      if (native && !failed2) {
+        rendered.add(dispose);
+        fallback.hidden = true;
+      } else unavailable();
+      return dispose;
+    };
+    const read = () => {
+      try {
+        return readTarget();
+      } catch {
+        return null;
+      }
+    };
+    const same32 = (a, b) => !!a && !!b && a.anchor === b.anchor && a.setId === b.setId && a.challengeId === b.challengeId;
+    const setBusy = (value) => {
+      busy = value;
+      entry.disabled = value;
+      externalEntry.disabled = value;
+      for (const control of shadow.querySelectorAll("[data-settings] input,[data-settings] select,[data-settings] button,.tabs button,[data-solve],[data-recover],[data-archive-history]")) control.disabled = value;
+      for (const control of shadow.querySelectorAll("[data-result] input")) control.disabled = value || control.dataset.settled === "true";
+      node("contribute").disabled = value || !contributionReady();
+      node("external-refresh").disabled = value;
+      node("external-prepare").disabled = value || !externalList?.keys().length;
+      externalList?.setBusy();
+      node("stop").hidden = !value;
+      shadow.querySelector("progress").hidden = !value && !executionProgress;
+    };
+    const close = () => {
+      opened++;
+      session2.stop();
+      resetProgress();
+      clearRendered();
+      session2.clearPreview?.();
+      dialog.close();
+      origin = null;
+    };
+    const update = () => {
+      target = read();
+      if (!target?.anchor?.isConnected) {
+        entry.remove();
+        externalEntry.remove();
+      } else {
+        if (entry.parentNode !== target.anchor) target.anchor.prepend(entry);
+        const menu = target.anchor.querySelector(".ut-one-click-sbc-work-area-view--tabs > .menu-container");
+        if (menu && externalEntry.parentNode !== menu) {
+          menu.querySelector("#fcat-streamlined-external-entry")?.remove();
+          menu.append(externalEntry);
+        } else if (!menu) externalEntry.remove();
+      }
+      if (origin && !same32(origin, target)) close();
+      refreshClock();
+    };
+    const applySettings = (s) => {
+      node("objective").value = s.objective;
+      node("mode").value = s.mode;
+      node("rating").value = String(s.maxRating);
+      node("market-rating").value = String(s.marketMaxRating ?? 99);
+      node("wait").value = String(s.partialWaitMs / 1e3);
+      for (const key2 of ["club", "storage", "unassigned", "transfer"]) node(key2).checked = s.sources.includes(key2);
+    };
+    const selectScope = (value) => {
+      global = value;
+      node("local").setAttribute("aria-pressed", String(!value));
+      node("global").setAttribute("aria-pressed", String(value));
+    };
+    const loadScope = async (value) => {
+      if (busy) return;
+      const serial = opened;
+      setBusy(true);
+      try {
+        const result = await session2.readSettings(value);
+        if (serial === opened) {
+          selectScope(value);
+          applySettings(result.settings);
+        }
+      } catch (error2) {
+        if (serial === opened) node("status").textContent = safeReason9(error2);
+      } finally {
+        setBusy(false);
+      }
+    };
+    const config = () => ({
+      objective: node("objective").value,
+      mode: node("mode").value,
+      maxRating: Number(node("rating").value),
+      marketMaxRating: Number(node("market-rating").value),
+      partialWaitMs: Number(node("wait").value) * 1e3,
+      sources: ["club", "storage", "unassigned", "transfer"].filter((key2) => node(key2).checked)
+    });
+    const on = (key2, handler) => node(key2).addEventListener("click", (event) => {
+      if (event.isTrusted) void handler();
+    });
+    const setExternalMode = (value) => {
+      externalMode = value;
+      node("settings").hidden = value;
+      shadow.querySelector(".tabs").hidden = value;
+      node("solve").hidden = value;
+      node("external-refresh").hidden = !value;
+      node("external-prepare").hidden = !value;
+      node("review-stock").hidden = true;
+      shadow.querySelector("header strong").textContent = value ? "Transfer / Unassigned" : "FCAT \u79EF\u5206\u89E3\u9898";
+    };
+    on("close", close);
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      close();
+    });
+    on("local", () => loadScope(false));
+    on("global", () => loadScope(true));
+    on("stop", () => session2.stop());
+    on("review-stock", () => {
+      const review = shadow.querySelector("[data-inventory-review]");
+      if (review) {
+        review.open = true;
+        review.scrollIntoView({ block: "start" });
+      }
+    });
+    entry.addEventListener("click", async (event) => {
+      if (!event.isTrusted || disposed || busy) return;
+      update();
+      if (!target) return;
+      setExternalMode(false);
+      shown = null;
+      resetProgress();
+      session2.clearPreview?.();
+      origin = target;
+      const serial = ++opened;
+      dialog.showModal();
+      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u9700\u6C42\u2026";
+      node("result").replaceChildren();
+      node("contribute").hidden = true;
+      clearRendered();
+      setBusy(true);
+      try {
+        const result = await session2.readSettings();
+        if (serial !== opened) return;
+        const c = result.challenge, s = result.settings;
+        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number3(c.submittedScore)} / ${number3(c.targetScore)} \xB7 \u5269\u4F59 ${number3(c.remainingScore)}`;
+        applySettings(s);
+        node("status").textContent = "\u89C4\u5212\u4E0D\u4F1A\u9009\u5361\u6216\u63D0\u4EA4\u3002";
+        selectScope(false);
+      } catch (error2) {
+        if (serial === opened) node("status").textContent = safeReason9(error2);
+      } finally {
+        setBusy(false);
+      }
+    });
+    const readExternal = async () => {
+      const serial = opened;
+      setBusy(true);
+      clearRendered();
+      session2.clearPreview?.();
+      resetProgress();
+      shown = null;
+      node("result").replaceChildren();
+      node("contribute").hidden = true;
+      node("external-prepare").hidden = false;
+      node("status").textContent = "\u8BFB\u53D6\u5F53\u524D\u5916\u90E8\u5E93\u5B58\u2026";
+      try {
+        const result = await session2.readSettings();
+        if (serial !== opened) return;
+        const c = result.challenge;
+        node("target").textContent = `${c.name ?? "Streamlined SBC"} \xB7 ${number3(c.submittedScore)} / ${number3(c.targetScore)} \xB7 \u5269\u4F59 ${number3(c.remainingScore)}`;
+        const snapshot = await session2.readExternalInventory(result.settings);
+        if (serial !== opened) return;
+        if (snapshot.status !== "observed") {
+          node("status").textContent = streamlinedExecutionMessage(snapshot.reason, null, snapshot.protectionFailure);
+          return;
+        }
+        externalList = renderStreamlinedExternalSelection({
+          document,
+          parent: node("result"),
+          snapshot,
+          renderCard,
+          isBusy: () => busy,
+          onSelection: (keys2) => {
+            node("external-prepare").disabled = busy || !keys2.length;
+          }
+        });
+        node("status").textContent = "\u9009\u62E9\u7403\u5458\u540E\u67E5\u770B\u5B8C\u6574\u8D21\u732E\u987A\u5E8F\uFF1B\u6B64\u5904\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D2D\u4E70\u3001\u4E0D\u8D21\u732E\u3002";
+      } catch (error2) {
+        if (serial === opened) node("status").textContent = streamlinedExecutionMessage(safeReason9(error2));
+      } finally {
+        setBusy(false);
+      }
+    };
+    externalEntry.addEventListener("click", async (event) => {
+      if (!event.isTrusted || disposed || busy) return;
+      update();
+      if (!target) return;
+      origin = target;
+      ++opened;
+      setExternalMode(true);
+      dialog.showModal();
+      await readExternal();
+    });
+    on("external-refresh", () => {
+      if (!busy && origin && same32(origin, read())) return readExternal();
+    });
+    on("save", async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await session2.saveSettings(config(), global);
+        node("status").textContent = global ? "\u5168\u5C40\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002\u5F53\u524D SBC \u72EC\u7ACB\u8BBE\u7F6E\u4F18\u5148\u3002" : "\u5F53\u524D SBC \u8BBE\u7F6E\u5DF2\u4FDD\u5B58\u3002";
+      } catch (error2) {
+        node("status").textContent = safeReason9(error2);
+      } finally {
+        setBusy(false);
+      }
+    });
+    const renderResult = (result) => {
+      clearRendered();
+      node("result").replaceChildren();
+      node("contribute").hidden = true;
+      shown = null;
+      node("review-stock").hidden = true;
+      if (!result.plan) {
+        const output2 = node("result");
+        if (result.reason === "FC27_STREAMLINED_QUOTES_UNAVAILABLE") {
+          add3(output2, "div", "\u62A5\u4EF7\u8BFB\u53D6\u5931\u8D25\u6216\u5DF2\u8FC7\u671F\uFF0C\u672A\u751F\u6210\u65B9\u6848\u3002\u8BF7\u68C0\u67E5\u6240\u9009\u62A5\u4EF7\u6765\u6E90\u8FDE\u63A5\u540E\u91CD\u65B0\u751F\u6210\u3002").className = "result-summary";
+          add3(output2, "small", `${String(result.quoteSource).toUpperCase()} \xB7 ${result.quoteReadError}`);
+        } else if (result.reason === "FC27_STREAMLINED_MARKET_UNAVAILABLE") {
+          add3(output2, "div", streamlinedMarketMessage(result)).className = "result-summary";
+          if (result.marketError) add3(output2, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u5931\u8D25\uFF1A${result.marketError}`);
+        } else if (result.reason) {
+          add3(output2, "div", `\u672A\u751F\u6210\u65B9\u6848\uFF1A${["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason) ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason}`).className = "result-summary";
+          if (["FC27_STREAMLINED_PROTECTION_UNVERIFIED", "FC27_STREAMLINED_FSU_NOT_READY"].includes(result.reason)) add3(output2, "small", `${result.reason}${result.protectionFailure?.phase ? ` \xB7 ${result.protectionFailure.phase}` : ""}`);
+        }
+        return;
+      }
+      shown = result;
+      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
+      const orderedExternal = result.externalSelection === true;
+      node("contribute").textContent = marketRun ? result.record ? "\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : "\u6309\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E" : orderedExternal ? "\u6309\u987A\u5E8F\u8D21\u732E" : "\u8D21\u732E\u6240\u9009\u6279\u6B21";
+      const output = node("result"), p = result.progress;
+      if (result.plan.execution?.quoteLimited === true) {
+        const warning = add3(output, "section");
+        warning.className = "inventory-warning";
+        add3(warning, "strong", "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u5F85\u786E\u8BA4\u65B9\u6848\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E93\u5B58/\u5168\u5E02\u573A\u6700\u4F4E\u4EF7\u3002");
+        for (const [key2, label] of [["inventory", "\u5E93\u5B58"], ["market", "\u8865\u5361"]]) {
+          const coverage = result.quoteCoverage?.[key2];
+          if (coverage) add3(warning, "small", `${label}\u7248\u672C\u62A5\u4EF7\uFF1A\u6709\u6548 ${number3(coverage.valid)} / ${number3(coverage.requested)} \xB7 \u5931\u8D25 ${number3(coverage.failed)} \xB7 \u7F3A\u5931/\u8FC7\u671F ${number3(coverage.missing)}\uFF1B\u672A\u53D6\u5F97\u6709\u6548\u62A5\u4EF7\u7684\u5361\u4E0D\u53C2\u52A0\u672C\u65B9\u6848\u3002`);
+        }
+        add3(warning, "small", "\u8BF7\u6838\u5BF9\u62A5\u4EF7\u8986\u76D6\u3001\u5E93\u5B58\u6E05\u5355\u548C\u8D2D\u4E70\u8303\u56F4\uFF1B\u70B9\u51FB\u6267\u884C\u6309\u94AE\u5373\u786E\u8BA4\u5F53\u524D\u663E\u793A\u5185\u5BB9\uFF0C\u65E0\u9700\u989D\u5916\u52FE\u9009\u3002");
+      }
+      const inventoryReview = add3(output, "details");
+      inventoryReview.className = "inventory-review";
+      inventoryReview.dataset.inventoryReview = "";
+      inventoryReview.open = true;
+      const inventorySummary = add3(inventoryReview, "summary"), inventoryList = add3(inventoryReview, "div");
+      let inventoryPage = 0;
+      const updateInventoryReview = () => {
+        inventoryList.replaceChildren();
+        const rows = streamlinedInventoryPreview(result.plan, [...selected], result.record);
+        const remaining = rows.filter((item2) => !item2.consumed).length, consumed = rows.length - remaining;
+        inventorySummary.textContent = `\u672C\u65B9\u6848\u5C06\u6D88\u8017\u7684\u73B0\u6709\u5E93\u5B58\u5361\uFF1A${number3(remaining)} \u5F20${consumed ? ` \xB7 \u5DF2\u6D88\u8017 ${number3(consumed)} \u5F20` : ""}`;
+        node("review-stock").textContent = `\u5E93\u5B58 ${number3(remaining)} \u5F20\uFF08\u67E5\u770B\uFF09`;
+        node("review-stock").hidden = false;
+        if (!rows.length) {
+          add3(inventoryList, "small", "\u5F53\u524D\u8DEF\u7EBF/\u5DF2\u9009\u6279\u6B21\u4E0D\u6D88\u8017\u73B0\u6709\u5E93\u5B58\u5361\u3002");
+          return;
+        }
+        if (result.plan.policy?.protectFsuLockedPlayers !== true || result.plan.policy?.protectActiveSquad !== true) {
+          add3(inventoryList, "small", "\u65E7\u65B9\u6848\u7684\u4FDD\u62A4\u6807\u8BB0\u672A\u66F4\u65B0\uFF1B\u6267\u884C\u524D\u4F1A\u6309\u5F53\u524D\u9501\u5361\u548C\u4E3B\u9635\u5BB9\u91CD\u65B0\u590D\u6838\u3002\u8BF7\u5148\u9010\u5F20\u6838\u5BF9\u5E93\u5B58\u6E05\u5355\u3002").className = "inventory-warning";
+        }
+        inventoryPage = Math.min(inventoryPage, Math.max(0, Math.ceil(rows.length / 50) - 1));
+        for (const item2 of rows.slice(inventoryPage * 50, (inventoryPage + 1) * 50)) {
+          const row = add3(inventoryList, "div");
+          row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
+          add3(row, "strong", number3(item2.rating));
+          const text5 = add3(row, "div");
+          add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
+          const pile = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D \u2192 Club", transfer: "\u8F6C\u4F1A\u5217\u8868 \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
+          add3(text5, "small", `${pile} \xB7 ${number3(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number3(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
+        }
+        if (rows.length > 50) {
+          add3(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
+          for (const [label, delta] of [["\u4E0A\u4E00\u9875", -1], ["\u4E0B\u4E00\u9875", 1]]) {
+            const button = add3(inventoryList, "button", label);
+            button.type = "button";
+            button.disabled = delta < 0 ? inventoryPage === 0 : (inventoryPage + 1) * 50 >= rows.length;
+            button.addEventListener("click", () => {
+              inventoryPage += delta;
+              updateInventoryReview();
+            });
+          }
+        }
+      };
+      if (marketRun) {
+        const label = add3(output, "label", "\u8D2D\u5361\u603B\u9884\u7B97\uFF08\u91D1\u5E01\uFF09"), budget = add3(label, "input");
+        budget.type = "number";
+        budget.min = "0";
+        budget.step = "1";
+        budget.dataset.purchaseBudget = "";
+        const proposal = streamlinedPurchaseBudgetPreview(result.plan);
+        budget.value = String(result.record?.budget ?? proposal.budget);
+        if (result.record) {
+          budget.dataset.settled = "true";
+          budget.disabled = true;
+        }
+        add3(output, "small", result.record ? `\u6267\u884C\u9884\u7B97\u5DF2\u51BB\u7ED3\uFF1A${number3(result.record.budget)} \u91D1\u5E01\uFF1B\u5DF2\u82B1 ${number3(result.record.spent)}\uFF0C\u5269\u4F59 ${number3(result.record.budget - result.record.spent)}\u3002\u7EE7\u7EED\u4F7F\u7528\u539F\u4EFB\u52A1\u548C\u539F\u5355\u5361\u4E0A\u9650\uFF0C\u4E0D\u56E0\u91CD\u65B0\u751F\u6210\u800C\u589E\u52A0\u9884\u7B97\u3002` : `\u9884\u7B97\u660E\u7EC6\uFF1A\u5355\u5361\u4E0A\u9650\u5408\u8BA1 ${number3(proposal.base)} + 15% \u66FF\u4EE3\u9884\u7559 ${number3(proposal.reserve)} = \u5EFA\u8BAE\u603B\u9884\u7B97 ${number3(proposal.budget)} \u91D1\u5E01\u3002\u9884\u7559\u4EC5\u7528\u4E8E\u6388\u6743\u5E02\u573A\u6C60\u5185\u6362\u5361\uFF0C\u4E0D\u63D0\u9AD8\u5355\u5361\u9650\u4EF7\uFF0C\u4E5F\u4E0D\u8981\u6C42\u82B1\u5B8C\u3002`);
+        add3(output, "small", `\u6BCF\u5361\u6700\u591A\u5C1D\u8BD5 ${number3(result.plan.execution?.purchaseAttempts ?? 3)} \u6B21 \xB7 \u90E8\u5206\u6279\u6B21\u7B49\u5F85\u4E0A\u9650 ${number3((result.plan.execution?.partialWaitMs ?? 6e4) / 1e3)} \u79D2\uFF08\u672C\u6279\u65E0\u66F4\u591A\u5019\u9009\u65F6\u8DF3\u8FC7\uFF09\xB7 \u6BCF\u6B21\u70B9\u51FB\u6388\u6743\u6700\u957F 30 \u5206\u949F\uFF1B\u5230\u671F\u4FDD\u7559\u8FDB\u5EA6\u3002`);
+        const scope2 = result.plan.execution?.purchaseScope;
+        if (scope2) {
+          const pool = add3(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
+          add3(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number3(rows.length)} \u4E2A\u7248\u672C`);
+          add3(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
+          for (const item2 of rows) add3(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number3(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number3(item2.price)} \xB7 \u4E0A\u9650 ${number3(item2.purchaseMaxBuy)} \u91D1\u5E01`);
+        }
+      }
+      if (result.routes?.length) {
+        const routes = add3(output, "div");
+        routes.className = "route-list";
+        for (const route of result.routes) {
+          const button = add3(routes, "button", streamlinedRouteSummary(route));
+          button.type = "button";
+          button.style.cssText = "display:block;width:100%;text-align:left;margin:6px 0";
+          button.setAttribute("aria-pressed", String(route.id === result.selectedRoute));
+          button.addEventListener("click", async (event) => {
+            if (!event.isTrusted || busy) return;
+            const serial = opened;
+            setBusy(true);
+            try {
+              const next = await session2.selectRoute(route.id);
+              if (serial === opened) {
+                renderResult(next);
+                node("status").textContent = next.plan?.execution?.quoteLimited === true ? "\u62A5\u4EF7\u8986\u76D6\u4E0D\u5B8C\u6574\uFF1A\u8BF7\u6838\u5BF9\u6E05\u5355\uFF0C\u70B9\u51FB\u6267\u884C\u5373\u786E\u8BA4\uFF1B\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002" : next.reason ?? "\u5DF2\u9009\u62E9\u8DEF\u7EBF\uFF0C\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002";
+              }
+            } catch (error2) {
+              node("status").textContent = safeReason9(error2);
+            } finally {
+              setBusy(false);
+            }
+          });
+        }
+      }
+      if (result.record && !marketRun) {
+        const waiting = result.record.submittedScore >= p.target ? [] : result.record.batches.flatMap((batch, index) => batch.state === "waiting" ? result.plan.batches[index] : []);
+        const uncertain2 = result.record.batches.filter((batch) => ["pending", "unknown"].includes(batch.state)).length;
+        add3(output, "div", `\u5DF2\u786E\u8BA4 ${number3(result.record.submittedScore)} \u5206 \xB7 \u5F85\u8D21\u732E ${number3(waiting.length)} \u5F20 / ${number3(waiting.reduce((sum2, ref) => sum2 + ref.points, 0))} \u5206 \xB7 \u5F53\u524D\u8FD8\u5DEE ${number3(Math.max(0, p.target - result.record.submittedScore))} \u5206${uncertain2 ? ` \xB7 ${number3(uncertain2)} \u6279\u5F85\u6838\u5BF9` : ""}`).className = "result-summary";
+      } else add3(output, "div", marketRun && result.record ? `\u539F\u65B9\u6848\u7EED\u505A \xB7 \u5DF2\u786E\u8BA4 ${number3(result.record.submittedScore)} / ${number3(result.plan.challenge.targetScore)} \u5206 \xB7 \u8FD8\u5DEE ${number3(Math.max(0, result.plan.challenge.targetScore - result.record.submittedScore))} \u5206` : `${result.status === "ready" ? "\u9884\u8BA1\u8FBE\u6807" : "\u90E8\u5206\u65B9\u6848"} \xB7 ${number3(p.submitted)} \u5DF2\u63D0\u4EA4 + ${number3(p.added)} \u672C\u6B21 \xB7 \u8FD8\u5DEE ${number3(p.remaining)} / \u8D85\u989D ${number3(p.excess)}`).className = "result-summary";
+      const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
+      const inventoryFirst = result.plan.objective === "inventory-first";
+      const quoteLabel = inventoryFirst && !marketRun ? "\u5E93\u5B58\u4F18\u5148 \xB7 \u672A\u67E5\u8BE2\u5E02\u573A\u62A5\u4EF7" : String(result.quoteSource).toUpperCase();
+      add3(output, "small", `\u603B\u6750\u6599\u4EF7\u503C ${number3(total)} \u91D1\u5E01 \xB7 \u5F85\u8D2D ${number3(result.purchaseCost)} \u91D1\u5E01 \xB7 \u5DF2\u6709\u6750\u6599\u4F30\u503C ${number3(result.materialValue)} \xB7 ${quoteLabel} \xB7 ${number3(result.items.length)} \u5F20 / ${number3(result.batches.length)} \u6279`);
+      if (orderedExternal) {
+        add3(output, "small", "\u6309\u4E0B\u65B9\u987A\u5E8F\u6267\u884C\u6574\u4EFD\u9009\u5361\u8BA1\u5212\uFF1A\u5148\u8D21\u732E Club \u540C\u7248\u672C\u5E76\u786E\u8BA4\u6D88\u8017\uFF0C\u518D\u5C06\u5916\u90E8\u5361\u9010\u6279\u79FB\u5165 Club \u540E\u8D21\u732E\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u81EA\u52A8\u8DF3\u8FC7\u3002");
+        if (result.selectedCount !== void 0) add3(output, "small", `\u9009\u4E2D\u5916\u90E8\u5361 ${number3(result.selectedCount)} \u5F20 \xB7 Club \u524D\u7F6E ${number3(result.prerequisiteCount)} \u5F20${result.omittedExternalCount ? ` \xB7 \u8FBE\u6807\u540E\u4E0D\u518D\u6295\u5165\u7684\u5916\u90E8\u5361 ${number3(result.omittedExternalCount)} \u5F20` : ""}`);
+      } else if (inventoryFirst) add3(output, "small", "\u5148\u7528\u5408\u89C4 SBC Storage\uFF0C\u518D\u7528 Club \u6750\u6599\uFF1B\u5E93\u5B58\u4E0D\u8DB3\u624D\u8865\u5361\uFF0C\u539F\u6750\u6599\u4FDD\u62A4\u4E0D\u53D8\u3002");
+      if (result.policy) {
+        const stats = result.inventoryStats;
+        const pileLabels = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D", transfer: "\u8F6C\u4F1A\u5217\u8868" };
+        const pileText = stats?.byPile ? ["club", "storage", "unassigned", "transfer"].map((pile) => `${pileLabels[pile]} ${number3(stats.byPile[pile] ?? 0)}`).join(" / ") : "Club / SBC \u4ED3\u5E93";
+        const raw = stats?.rawByPile ? ` \xB7 \u539F\u59CB ${number3(stats.rawByPile.club)} / ${number3(stats.rawByPile.storage)}` : "";
+        add3(output, "small", `FSU \u4EC5\u4E0D\u53EF\u4EA4\u6613\uFF1A${result.policy.onlyUntradeable ? "\u5F00\u542F" : "\u5173\u95ED"} \xB7 \u8BFB\u53D6\u5E93\u5B58\uFF1A${pileText}${raw}`);
+        add3(output, "small", result.policy.protectFsuLockedPlayers && result.policy.protectActiveSquad ? "\u9501\u5361\u4FDD\u62A4\uFF1A\u5F00\u542F \xB7 \u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4\uFF1A\u5F00\u542F\uFF08\u9996\u53D1/\u66FF\u8865/\u9884\u5907\uFF09" : "\u65E7\u65B9\u6848\uFF1A\u6267\u884C\u524D\u91CD\u65B0\u6838\u9A8C\u5F53\u524D\u9501\u5361\u4E0E\u4E3B\u9635\u5BB9\u4FDD\u62A4\u3002");
+      }
+      if (!result.searchComplete) add3(output, "small", "\u641C\u7D22\u5DF2\u8FBE\u9884\u7B97\uFF1B\u663E\u793A\u6700\u4F73\u5DF2\u77E5\u65B9\u6848\uFF0C\u4E0D\u4EE3\u8868\u5168\u5C40\u6700\u4F18\u3002");
+      if (!result.poolComplete) add3(output, "small", "\u57FA\u4E8E\u5F53\u524D\u53EF\u8BFB\u53D6\u5E93\u5B58\uFF1B\u672A\u786E\u8BA4\u5168\u91CF\u5E93\u5B58\u3002");
+      if (result.marketPending) add3(output, "small", "\u5F53\u524D\u672A\u63A5\u5165\u53EF\u9A8C\u8BC1\u7684\u5E02\u573A\u5019\u9009\uFF1B\u6B64\u7ED3\u679C\u4EC5\u5305\u542B\u5E93\u5B58\u3002");
+      if (result.quoteReadError) add3(output, "small", `\u62A5\u4EF7\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.quoteReadError}`);
+      if (result.marketError) add3(output, "small", `\u8865\u5361\u5019\u9009\u8BFB\u53D6\u672A\u5B8C\u6210\uFF1A${result.marketError}`);
+      if (result.unknownValueCount) add3(output, "small", `${result.unknownValueCount} \u5F20\u6750\u6599\u4F30\u503C\u672A\u77E5\uFF0C\u4E0D\u80FD\u89C6\u4F5C\u96F6\u4EF7\u3002`);
+      const settled2 = (index) => !!result.record && (result.record.submittedScore >= p.target || (marketRun ? result.record.completed === true : result.record.batches?.[index]?.state !== "waiting"));
+      selected = new Set(result.batches.map((_, index) => index).filter((index) => !settled2(index)));
+      const selection = add3(output, "output");
+      selection.dataset.selection = "";
+      const updateSelection = () => {
+        const items = [...selected].flatMap((index) => result.batches[index]);
+        const points = items.reduce((sum2, item2) => sum2 + item2.points, 0);
+        selection.textContent = marketRun ? "\u70B9\u51FB\u6267\u884C\u5C06\u6388\u6743\u6B64\u76EE\u6807\u3001\u603B\u9884\u7B97\u3001\u5E02\u573A\u66FF\u4EE3\u6C60/\u6BCF\u5361\u4E0A\u9650\u53CA\u6240\u9009\u5E93\u5B58\u5361\uFF1B\u4E0B\u65B9\u6279\u6B21\u4EC5\u4E3A\u9884\u4F30\u3002" : `\u5DF2\u9009 ${selected.size} \u6279 \xB7 ${items.length} \u5F20 \xB7 ${number3(points)} \u5206 \xB7 \u8FD8\u5DEE ${number3(Math.max(0, p.target - (result.record?.submittedScore ?? p.submitted) - points))}`;
+        if (marketRun && result.record) {
+          const r = result.record, rows = r.entries ?? [];
+          selection.textContent += `
+\u5DF2\u786E\u8BA4 ${number3(r.submittedScore)} / ${number3(p.target)} \u5206 \xB7 \u5DF2\u82B1\u8D39 ${number3(r.spent)} / ${number3(r.budget)} \u91D1\u5E01
+\u5DF2\u8D2D\u5F85\u5165\u5E93 ${rows.filter((e) => ["bought", "move-pending"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u5C31\u7EEA ${rows.filter((e) => ["ready", "club"].includes(e.state)).length} \u5F20 \xB7 \u5DF2\u8D21\u732E ${r.consumedIds?.length ?? 0} \u5F20`;
+        }
+        node("contribute").disabled = busy || !contributionReady();
+        updateInventoryReview();
+      };
+      updateSelection();
+      const generation = renderGeneration;
+      result.batches.forEach((batch, index) => {
+        const details = add3(output, "details");
+        details.open = index === 0;
+        const summary3 = add3(details, "summary"), choice = add3(summary3, "input");
+        choice.type = "checkbox";
+        choice.checked = !settled2(index);
+        if (marketRun || orderedExternal) choice.hidden = true;
+        choice.dataset.settled = String(settled2(index));
+        choice.disabled = busy || settled2(index);
+        choice.setAttribute("aria-label", `\u9009\u62E9\u7B2C ${index + 1} \u6279`);
+        choice.addEventListener("click", (event) => event.stopPropagation());
+        choice.addEventListener("change", () => {
+          if (marketRun || orderedExternal) return;
+          if (choice.checked) selected.add(index);
+          else selected.delete(index);
+          updateSelection();
+        });
+        const pending3 = batch.filter((item2) => item2.source === "market");
+        summary3.append(document.createTextNode(` \u7B2C ${index + 1} \u6279 \xB7 ${number3(batch.length)} \u5F20\uFF08\u5E93\u5B58 ${batch.length - pending3.length} / \u5F85\u8D2D ${pending3.length}) \xB7 ${number3(batch.reduce((sum2, i) => sum2 + i.points, 0))} \u5206 \xB7 \u5F85\u8D2D ${number3(pending3.reduce((sum2, item2) => sum2 + item2.price, 0))} \u91D1\u5E01`));
+        let populated = false;
+        const populate = () => {
+          if (populated || !details.open || generation !== renderGeneration || disposed) return;
+          populated = true;
+          const list2 = add3(details, "div");
+          list2.className = "player-list";
+          for (const item2 of batch) {
+            const row = add3(list2, "div");
+            row.className = "player-row";
+            renderCard(row, item2, generation);
+            const text5 = add3(row, "div");
+            text5.className = "player-text";
+            add3(text5, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
+            add3(text5, "span", `${number3(item2.rating)} OVR \xB7 ${number3(item2.points)} \u5206`);
+            add3(text5, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            const points = add3(row, "span", `${number3(item2.points)} \u5206`);
+            points.className = "player-points";
+            const price3 = add3(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number3(item2.price)} \u91D1\u5E01`);
+            price3.className = "player-price";
+            price3.title = item2.source === "market" ? "\u5F85\u8D2D\u4F30\u4EF7" : "\u5E93\u5B58\u6750\u6599\u4F30\u503C";
+            if (item2.source === "market") add3(price3, "small", `\u4E0A\u9650 ${number3(item2.purchaseMaxBuy)}`);
+          }
+        };
+        details.addEventListener("toggle", populate);
+        populate();
+      });
+      const skipped = Object.entries(result.excluded ?? {}).map(([key2, count3]) => `${key2}: ${count3}`).join(" \xB7 ");
+      if (skipped) {
+        const details = add3(output, "details");
+        add3(details, "summary", "\u6750\u6599\u6392\u9664\u539F\u56E0");
+        add3(details, "small", skipped);
+      }
+      if (result.policy?.goldRange?.[1] < 99) {
+        add3(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number3(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
+      }
+      const exclusionBuckets = result.inventorySelection?.buckets;
+      if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
+        const details = add3(output, "details");
+        add3(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number3(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
+        const labels2 = {
+          "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
+          untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
+          pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
+          locked: "FSU \u624B\u52A8\u9501\u5361\u4FDD\u62A4",
+          "active-squad": "\u5F53\u524D\u4E3B\u9635\u5BB9\u4FDD\u62A4",
+          "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
+          "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
+        };
+        add3(details, "small", exclusionBuckets.map(
+          (bucket) => `${labels2[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number3(bucket.rating)}\u7EA7`} \xD7${number3(bucket.count)}`
+        ).join("; "));
+      }
+      add3(output, "small", streamlinedConfirmedContribution(result)?.message ?? (result.liveExecutionEnabled ? marketRun ? "\u70B9\u51FB\u540E\u6309\u5F53\u524D\u8DEF\u7EBF\u9010\u6279\u641C\u5361\u3001\u4E70\u65AD\u3001\u5165 Club \u5E76\u8D21\u732E\uFF1B\u5B9E\u9645\u6210\u4EA4\u4E0D\u8D85\u8FC7\u6BCF\u5F20\u5361\u7684\u51BB\u7ED3\u4E0A\u9650\u3002" : orderedExternal ? "\u70B9\u51FB\u540E\u6309\u987A\u5E8F\u6C38\u4E45\u6D88\u8017 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\uFF1B\u72EC\u7ACB\u786E\u8BA4\u524D\u6279\u540E\u624D\u79FB\u5165\u4E0B\u4E00\u6279\u3002\u8FBE\u5230\u76EE\u6807\u5373\u505C\u6B62\uFF0C\u505C\u6B62\u6309\u94AE\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : "\u70B9\u51FB\u8D21\u732E\u5C06\u6C38\u4E45\u6D88\u8017\u6240\u9009\u6279\u6B21\u7684\u5361\u7247\uFF1B\u53EF\u4EE5\u5206\u6279\u8D21\u732E\uFF0C\u505C\u6B62\u4F1A\u7B49\u5F85\u5F53\u524D\u6279\u6B21\u6838\u5BF9\u5B8C\u6210\u3002" : `\u5F53\u524D\u4E0D\u80FD\u8D21\u732E\uFF1A${streamlinedExecutionMessage(result.executionReason, result.executionRecovery)}`));
+      node("contribute").hidden = false;
+    };
+    on("external-prepare", async () => {
+      if (busy || !externalList?.keys().length || !origin || !same32(origin, read())) return;
+      const keys2 = externalList.keys(), serial = opened;
+      setBusy(true);
+      try {
+        const result = await session2.planExternalSelection(keys2);
+        if (serial !== opened) return;
+        node("external-prepare").hidden = true;
+        renderResult(result);
+        node("status").textContent = result.plan ? "\u8D21\u732E\u9884\u89C8\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u3002\u8BF7\u6838\u5BF9 Club \u524D\u7F6E\u53CA\u6240\u9009\u5916\u90E8\u5361\u3002" : streamlinedExecutionMessage(result.reason);
+        if (result.historyAction) showOutcome(result);
+      } catch (error2) {
+        if (serial === opened) node("status").textContent = streamlinedExecutionMessage(safeReason9(error2));
+      } finally {
+        setBusy(false);
+      }
+    });
+    on("solve", async () => {
+      if (busy || !origin || !same32(origin, read())) return;
+      resetProgress();
+      node("review-stock").hidden = true;
+      const serial = opened;
+      shown = null;
+      setBusy(true);
+      clearRendered();
+      node("result").replaceChildren();
+      node("contribute").hidden = true;
+      node("status").textContent = "\u6B63\u5728\u51C6\u5907\u5019\u9009\u2026";
+      try {
+        const result = await session2.plan(config(), { onProgress: (p) => {
+          if (serial !== opened) return;
+          const bar = shadow.querySelector("progress");
+          const stage = p.phase === "market-quotes" && p.refresh ? "\u5237\u65B0\u8FC7\u671F\u8865\u5361\u62A5\u4EF7" : { quotes: "\u5E93\u5B58\u62A5\u4EF7", catalog: "\u5019\u9009\u5206\u7EC4", "market-validation": "\u6838\u5BF9\u5019\u9009\u79EF\u5206", "market-quotes": "\u8865\u5361\u62A5\u4EF7" }[p.phase];
+          bar.max = stage ? p.total || 1 : p.maxNodes || 1;
+          bar.value = stage ? p.completed : p.nodes;
+          node("status").textContent = stage ? `${stage} ${number3(p.completed)} / ${number3(p.total)}${p.source ? ` \xB7 ${String(p.source).toUpperCase()}` : ""}${Number.isFinite(p.elapsedMs) ? ` \xB7 \u5DF2\u7B49\u5F85 ${Math.floor(p.elapsedMs / 1e3)} \u79D2` : ""}` : `\u641C\u7D22\u8282\u70B9 ${number3(p.nodes)} / ${number3(p.maxNodes)} \xB7 \u5019\u9009 ${number3(p.candidates)} \xB7 ${number3(p.elapsedMs)} ms`;
+        } });
+        if (serial !== opened) return;
+        node("status").textContent = streamlinedPurchaseResumeMessage(result) ?? (result.status === "cancelled" ? "\u5DF2\u505C\u6B62\u3002" : result.plan?.execution?.quoteLimited === true ? "\u90E8\u5206\u62A5\u4EF7\u53EF\u7528\uFF1A\u8BF7\u6838\u5BF9\u5E93\u5B58\u6D88\u8017\u548C\u4EF7\u683C\uFF0C\u518D\u786E\u8BA4\u662F\u5426\u6267\u884C\u3002" : result.reason === "FC27_STREAMLINED_FSU_NOT_READY" ? "FSU \u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u6309\u4E0A\u65B9\u63D0\u793A\u68C0\u67E5\u540E\u91CD\u8BD5\u3002" : result.reason === "FC27_STREAMLINED_PROTECTION_UNVERIFIED" ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason ?? { ready: "\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u5C1A\u672A\u8D2D\u4E70\u6216\u8D21\u732E\u3002", partial: "\u90E8\u5206\u65B9\u6848\u5DF2\u751F\u6210\uFF0C\u8BF7\u6838\u5BF9\u6750\u6599\u4E0E\u5269\u4F59\u9700\u6C42\u3002", blocked: "\u672A\u751F\u6210\u53EF\u6267\u884C\u65B9\u6848\u3002" }[result.status] ?? result.status);
+        renderResult(result);
+        if (result.recoveryAttempted) showOutcome(result);
+      } catch (error2) {
+        if (serial === opened) node("status").textContent = safeReason9(error2);
+      } finally {
+        setBusy(false);
+      }
+    });
+    const showOutcome = (result) => {
+      if (result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" && !result.record) resetProgress();
+      const canArchive = result.historyAction?.canArchive === true && typeof session2.archiveHistory === "function";
+      const archiveBlocked = result.historyAction?.canArchive === false && result.historyAction.kind === "contribution";
+      node("archive-history").hidden = !canArchive;
+      node("history-note").hidden = !canArchive && !archiveBlocked;
+      if (archiveBlocked) {
+        const labels3 = {
+          FC27_STREAMLINED_HISTORY_NO_CONFIRMED: "\u6CA1\u6709\u8DB3\u591F\u7684\u5DF2\u786E\u8BA4\u8D21\u732E\u8BC1\u636E\u3002",
+          FC27_STREAMLINED_HISTORY_CONTRIBUTION_PENDING: "\u4ECD\u6709\u8D21\u732E\u8BF7\u6C42\u7ED3\u679C\u672A\u77E5\uFF0C\u9700\u8981\u5148\u6838\u5BF9\u56DE\u6267\u3002",
+          FC27_STREAMLINED_HISTORY_PURCHASE_MATERIAL: "\u65E7\u4EFB\u52A1\u5305\u542B\u8D2D\u5165\u6750\u6599\u6216\u672A\u7ED3\u6E05\u7684\u8D2D\u5361\u8BB0\u5F55\uFF0C\u9700\u5148\u6838\u5BF9\u65E7\u91C7\u8D2D\u4EFB\u52A1\u3002",
+          FC27_STREAMLINED_HISTORY_RECEIPT_UNVERIFIED: "\u5DF2\u786E\u8BA4\u6807\u8BB0\u7F3A\u5C11\u5B8C\u6574\u56DE\u6267\uFF0C\u6216\u56DE\u6267\u79EF\u5206\u4E0E\u8BB0\u5F55\u4E0D\u7B26\u3002",
+          FC27_STREAMLINED_HISTORY_PROGRESS_CHANGED: "\u65E7\u4EFB\u52A1\u51FA\u73B0\u8FC7\u79EF\u5206\u53D8\u5316\uFF0C\u5C1A\u4E0D\u80FD\u786E\u8BA4\u5B9E\u9645\u8D21\u732E\u7ED3\u679C\u3002",
+          FC27_STREAMLINED_HISTORY_NO_REMAINDER: "\u6CA1\u6709\u53EF\u53D6\u6D88\u7684\u672A\u53D1\u9001\u4F59\u6279\u3002",
+          FC27_STREAMLINED_HISTORY_REMAINDER_DISPATCHED: "\u4F59\u6279\u5E26\u6709\u8BF7\u6C42\u6216\u56DE\u6267\u75D5\u8FF9\uFF0C\u4E0D\u80FD\u5F53\u4F5C\u4ECE\u672A\u53D1\u9001\u3002"
+        };
+        node("history-note").textContent = `\u6682\u4E0D\u80FD\u7ED3\u675F\u65E7\u4EFB\u52A1\uFF1A${labels3[result.historyAction.reason] ?? "\u65E7\u4EFB\u52A1\u72B6\u6001\u672A\u6838\u9A8C\u3002"} \u8BF7\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\uFF0C\u4E0D\u5FC5\u53CD\u590D\u70B9\u51FB\u6062\u590D\u3002`;
+      }
+      if (canArchive) {
+        const old = result.recovery ?? result.purchaseRecovery?.recovery ?? result.warning?.recovery;
+        const name2 = typeof old?.name === "string" ? `\u300C${old.name.slice(0, 160)}\u300D` : "";
+        const contribution = result.historyAction.kind === "contribution";
+        node("archive-history").textContent = contribution ? "\u7ED3\u675F\u65E7\u8D21\u732E\u4F59\u6279\u5E76\u5F52\u6863" : "\u9000\u51FA\u5E76\u5F52\u6863\u65E7\u4EFB\u52A1";
+        node("history-note").textContent = contribution ? `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\uFF0C\u6CA1\u6709\u672A\u77E5\u8BF7\u6C42\u3002\u786E\u8BA4\u4E0D\u518D\u7EE7\u7EED\u65E7\u4EFB\u52A1\u65F6\uFF0C\u53EF\u7ED3\u675F\u4F59\u6279\uFF1B\u5B8C\u6574\u56DE\u6267\u4FDD\u7559\uFF0C\u4E0D\u79FB\u52A8\u6216\u6D88\u8017\u4EFB\u4F55\u5361\u3002` : `\u786E\u8BA4\u4E0D\u518D\u6267\u884C\u5386\u53F2\u4EFB\u52A1${name2}\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u65F6\uFF0C\u53EF\u9000\u51FA\u6D3B\u52A8\u961F\u5217\u3002\u5B8C\u6574\u8BB0\u5F55\u4ECD\u4FDD\u7559\uFF0C\u4E0D\u4F1A\u628A\u672A\u77E5\u8BF7\u6C42\u7B97\u4F5C\u6210\u529F\uFF1B\u5176\u6750\u6599\u7EE7\u7EED\u9694\u79BB\u3002\u6B64\u64CD\u4F5C\u4E0D\u4E70\u5361\u3001\u4E0D\u79FB\u52A8\u3001\u4E0D\u8D21\u732E\u3002`;
+      }
+      const confirmed = streamlinedConfirmedContribution(result);
+      const previousCycle = result.reason === "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED";
+      if (executionProgress) {
+        executionProgress.active = false;
+        executionProgress.endedAt = now();
+        refreshClock();
+        const record = result.record;
+        if (record) {
+          const spent = Number.isSafeInteger(record.spent) ? ` \xB7 \u5DF2\u82B1\u8D39 ${number3(record.spent)} / ${number3(record.budget)} \u91D1\u5E01` : "";
+          node("final-progress").textContent = `${previousCycle ? "\u4E0A\u4E00\u8F6E\u5DF2\u786E\u8BA4" : "\u5DF2\u786E\u8BA4"} ${number3(confirmed?.submittedScore ?? record.submittedScore)} / ${number3(confirmed?.targetScore ?? record.plan?.challenge.targetScore)} \u5206${spent}`;
+          node("final-progress").hidden = false;
+          const bar = shadow.querySelector("progress");
+          bar.max = record.plan?.challenge.targetScore || 1;
+          if (confirmed || Number.isSafeInteger(record.submittedScore)) bar.value = confirmed?.submittedScore ?? record.submittedScore;
+          else bar.removeAttribute("value");
+        }
+      }
+      const labels2 = {
+        completed: "\u76EE\u6807\u5DF2\u8FBE\u6210\uFF0C\u5956\u52B1\u72B6\u6001\u9700\u53E6\u884C\u6838\u5BF9\u3002",
+        partial: "\u672C\u6B21\u8D21\u732E\u5DF2\u786E\u8BA4\uFF0C\u53EF\u7EE7\u7EED\u5269\u4F59\u6279\u6B21\u3002",
+        stopped: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u7684\u6210\u4EA4\u548C\u8D21\u732E\u4FDD\u7559\uFF0C\u53EF\u6838\u5BF9\u5E76\u6062\u590D\u3002",
+        recovered: "\u5DF2\u6062\u590D\u8BB0\u5F55\uFF0C\u672A\u91CD\u590D\u8D21\u732E\u3002",
+        observed: "\u5DF2\u8BFB\u53D6\u4E0A\u6B21\u8BB0\u5F55\u3002",
+        absent: "\u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\u3002",
+        "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
+        rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
+      };
+      node("status").textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status);
+      if (archiveBlocked && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
+        const old = result.recovery;
+        node("status").textContent = `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5C1A\u672A\u7ED3\u675F\uFF1A\u5DF2\u786E\u8BA4 ${number3(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number3(old?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number3(old?.pendingWriteCount)} \u6279\u3002\u963B\u65AD\u539F\u56E0\u89C1\u4E0B\u65B9\u3002`;
+      }
+      if (canArchive && result.historyAction.kind === "contribution" && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
+        node("status").textContent = "\u65E7\u8D21\u732E\u4EFB\u52A1\u5C1A\u6709\u672A\u53D1\u9001\u4F59\u6279\u3002\u8BF7\u5148\u70B9\u51FB\u201C\u7ED3\u675F\u65E7\u8D21\u732E\u4F59\u6279\u5E76\u5F52\u6863\u201D\uFF0C\u518D\u5237\u65B0\u5217\u8868\u91CD\u65B0\u9009\u62E9\uFF1B\u672C\u6B21\u5C1A\u672A\u79FB\u52A8\u6216\u6D88\u8017\u5361\u7247\u3002";
+      }
+      if (result.warning?.reason === "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED") {
+        node("status").textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
+      }
+      if (result.reason === "FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED") {
+        const detail = [];
+        if (["transfer", "unassigned"].includes(result.source)) detail.push(result.source === "transfer" ? "Transfer" : "Unassigned");
+        if (Number.isSafeInteger(result.offset)) detail.push(`\u672C\u6279\u7B2C ${result.offset + 1} \u5F20\u5916\u90E8\u5361`);
+        if (Number.isSafeInteger(result.definitionId)) detail.push(`\u7248\u672C ${result.definitionId}`);
+        if (Number.isSafeInteger(result.httpStatus)) detail.push(result.httpStatus === 0 ? "\u539F\u751F\u72B6\u6001 0\uFF08\u672A\u63D0\u4F9B HTTP \u72B6\u6001\uFF09" : `HTTP ${result.httpStatus}`);
+        if (/^FC27_NATIVE_ERROR_\d{1,10}$/.test(result.localReason)) detail.push(`EA ${result.localReason.slice("FC27_NATIVE_ERROR_".length)}`);
+        if (detail.length) node("status").textContent += `
+${detail.join(" \xB7 ")}`;
+      }
+      if (result.record) {
+        const score2 = confirmed?.submittedScore ?? result.record.submittedScore;
+        const target2 = confirmed?.targetScore ?? result.record.plan.challenge.targetScore;
+        node("target").textContent = `${result.record.plan.challenge.name} \xB7 ${previousCycle ? "\u4E0A\u4E00\u8F6E " : ""}${number3(score2)} / ${number3(target2)} \xB7 \u5269\u4F59 ${number3(Math.max(0, target2 - score2))}`;
+      }
+    };
+    on("contribute", async () => {
+      if (busy || !contributionReady()) return;
+      const serial = opened, result = shown, indices = result.externalSelection ? result.batches.map((_, index) => index) : [...selected].sort((a, b) => a - b);
+      const marketRun = result.plan.route?.groups?.some((group) => group.source === "market") === true;
+      setBusy(true);
+      beginProgress(result);
+      try {
+        const outcome = await session2.contribute({
+          fingerprint: result.plan.fingerprint,
+          batchIndices: indices,
+          allowPartial: result.plan.status === "partial",
+          ...marketRun ? { budget: Number(shadow.querySelector("[data-purchase-budget]").value) } : {},
+          acknowledgeQuoteCoverage: true
+        }, {
+          onProgress: (p) => {
+            if (serial !== opened) return;
+            executionStep(p);
+            if (Number.isSafeInteger(p.submittedScore)) {
+              const target2 = result.plan.challenge.targetScore;
+              node("target").textContent = `${result.plan.challenge.name} \xB7 ${number3(p.submittedScore)} / ${number3(target2)} \xB7 \u5269\u4F59 ${number3(Math.max(0, target2 - p.submittedScore))}`;
+            }
+            const materializeLabel = {
+              "checking-source": "\u68C0\u67E5\u5916\u90E8\u5361",
+              "checking-club": "\u6838\u5BF9 Club",
+              "journal-pending": "\u5199\u5165\u6062\u590D\u8BB0\u5F55",
+              "move-request": "\u8BF7\u6C42\u79FB\u5165 Club",
+              "move-acknowledged": "\u79FB\u52A8\u56DE\u6267\u5DF2\u786E\u8BA4",
+              "club-readback": "\u6838\u5BF9 Club \u56DE\u8BFB",
+              confirmed: "\u79FB\u5165 Club \u5DF2\u786E\u8BA4"
+            }[p.stage];
+            if (marketRun || ["batch-cooldown", "progress-backoff"].includes(p.phase)) {
+              node("status").textContent = streamlinedExecutionProgress(p);
+              const bar2 = shadow.querySelector("progress");
+              bar2.max = p.targetScore || 1;
+              bar2.value = p.submittedScore;
+              return;
+            }
+            const label = p.phase === "materialize" && materializeLabel ? materializeLabel : { validation: "\u590D\u6838\u6750\u6599", materialize: "\u79FB\u5165 Club", contribution: "\u8D21\u732E\u4E2D", reconciliation: "\u6838\u5BF9\u56DE\u6267", confirmed: "\u5DF2\u786E\u8BA4" }[p.phase];
+            node("status").textContent = `\u7B2C ${p.index + 1} \u6279 \xB7 ${label} \xB7 \u5DF2\u786E\u8BA4 ${number3(p.submittedScore)} \u5206`;
+            const bar = shadow.querySelector("progress");
+            bar.max = indices.length;
+            bar.value = indices.indexOf(p.index) + (p.phase === "confirmed" ? 1 : 0);
+          }
+        });
+        if (serial !== opened) return;
+        renderResult({
+          ...result,
+          record: outcome.record,
+          confirmation: outcome.confirmation,
+          executionReason: outcome.reason ?? (outcome.status === "completed" ? "FC27_STREAMLINED_COMPLETED" : result.executionReason),
+          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status)
+        });
+        showOutcome(outcome);
+      } catch (error2) {
+        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
+      } finally {
+        setBusy(false);
+      }
+    });
+    on("recover", async () => {
+      if (busy) return;
+      const serial = opened;
+      shown = null;
+      selected.clear();
+      session2.clearPreview?.();
+      clearRendered();
+      if (externalMode) node("external-prepare").hidden = true;
+      node("review-stock").hidden = true;
+      node("result").replaceChildren();
+      node("contribute").hidden = true;
+      setBusy(true);
+      beginProgress(null, "recovery");
+      try {
+        const outcome = await session2.recover();
+        if (serial !== opened) return;
+        if (outcome.preview) renderResult(outcome.preview);
+        showOutcome(outcome);
+      } catch (error2) {
+        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
+      } finally {
+        setBusy(false);
+      }
+    });
+    on("archive-history", async () => {
+      if (busy || node("archive-history").hidden) return;
+      const serial = opened;
+      setBusy(true);
+      try {
+        const outcome = await session2.archiveHistory();
+        if (serial !== opened) return;
+        if (outcome.status === "archived") {
+          shown = null;
+          selected.clear();
+          clearRendered();
+          node("result").replaceChildren();
+          node("contribute").hidden = true;
+          node("review-stock").hidden = true;
+          resetProgress();
+          shadow.querySelector("progress").hidden = true;
+        }
+        showOutcome(outcome);
+      } catch (error2) {
+        if (serial === opened) showOutcome({ reason: safeReason9(error2) });
+      } finally {
+        setBusy(false);
+      }
+    });
+    update();
+    const timer = schedule(update, 900);
+    return Object.freeze({ dispose: () => {
+      disposed = true;
+      close();
+      unschedule(timer);
+      entry.remove();
+      externalEntry.remove();
+      host.remove();
+    } });
+  }
+
+  // src/streamlined/settings.js
+  function normalizeStreamlinedSettings(value = {}) {
+    const result = {
+      maxRating: value.maxRating ?? 99,
+      marketMaxRating: value.marketMaxRating ?? 99,
+      objective: value.objective ?? "inventory-first",
+      mode: value.mode ?? "inventory-market",
+      sources: value.sources ?? ["club", "storage"],
+      partialWaitMs: value.partialWaitMs ?? 6e4
+    };
+    if (!integer5(result.maxRating, 1, 99) || !integer5(result.marketMaxRating, 1, 99) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(result.objective) || !["inventory", "inventory-market", "market"].includes(result.mode) || !integer5(result.partialWaitMs, 0, 36e5) || !Array.isArray(result.sources) || !result.sources.length || result.sources.length > 4 || result.sources.some((s) => !["club", "storage", "unassigned", "transfer"].includes(s)) || new Set(result.sources).size !== result.sources.length) fail4("SETTINGS_INVALID");
+    return deepFreeze(structuredClone(result));
+  }
+  function createStreamlinedSettings({ get, set }) {
+    const key2 = (context, challengeId) => contextKey(context, `streamlined-settings:${challengeId ?? "global"}`);
+    const read = async (context, challengeId = null) => {
+      if (challengeId !== null && !integer5(challengeId, 1)) fail4("SETTINGS_INVALID");
+      let value;
+      try {
+        value = await get(key2(context, challengeId), null);
+      } catch {
+        fail4("SETTINGS_READ_FAILED");
+      }
+      if (value === null) return challengeId === null ? normalizeStreamlinedSettings() : read(context);
+      if (![1, 2, 3].includes(value?.schema) || !value.settings) fail4("SETTINGS_INVALID");
+      return normalizeStreamlinedSettings({
+        ...value.settings,
+        ...value.schema < 3 && (value.settings.objective === "lowest-value" || value.schema === 1 && value.settings.objective === "lowest-coins") ? { objective: "inventory-first" } : {}
+      });
+    };
+    return Object.freeze({ read, async save(context, challengeId, value) {
+      if (challengeId !== null && !integer5(challengeId, 1)) fail4("SETTINGS_INVALID");
+      const settings = normalizeStreamlinedSettings(value);
+      try {
+        await set(key2(context, challengeId), { schema: 3, settings });
+        if (!same2(await read(context, challengeId), settings)) fail4("SETTINGS_SAVE_FAILED");
+      } catch {
+        fail4("SETTINGS_SAVE_FAILED");
+      }
+      return settings;
+    } });
+  }
+
+  // src/streamlined/planner.js
+  function splitStreamlinedBatches(items, limit) {
+    if (!integer5(limit, 1, 1e3)) throw Error("FC27_STREAMLINED_BATCH_LIMIT_UNKNOWN");
+    const ordered = items.slice().sort((a, b) => Number(["unassigned", "transfer"].includes(a.pile)) - Number(["unassigned", "transfer"].includes(b.pile)));
+    const batches = [], nextVersion = /* @__PURE__ */ new Map();
+    let open = 0;
+    for (const item2 of ordered) {
+      let index = ["unassigned", "transfer"].includes(item2.pile) ? Math.max(open, nextVersion.get(item2.definitionId) ?? 0) : open;
+      while (batches[index]?.length >= limit) index++;
+      (batches[index] ??= []).push(item2);
+      nextVersion.set(item2.definitionId, index + 1);
+      while (batches[open]?.length >= limit) open++;
+    }
+    return batches.filter(Boolean);
+  }
+  function* planStreamlinedSteps({
+    challenge,
+    inventory = [],
+    market = [],
+    eligibility,
+    policy,
+    objective = "lowest-value",
+    mode = "inventory-market",
+    maxNodes = 25e4,
+    maxStates = 5e4,
+    allowPartial = true,
+    now = () => Date.now(),
+    maxMs = 4e3,
+    quoteSource = "futgg",
+    quoteAt = now(),
+    inventoryComplete = false,
+    marketComplete = false
+  } = {}) {
+    const blocked12 = (reason) => ({ status: "blocked", reason: `FC27_STREAMLINED_${reason}`, liveExecutionEnabled: false });
+    if (challenge?.mechanism !== "streamlined" || !integer5(challenge.remainingScore) || !["inventory-first", "lowest-value", "lowest-coins", "fewest-cards"].includes(objective) || !["inventory", "inventory-market", "market"].includes(mode) || !integer5(maxNodes, 1, 5e6) || !integer5(maxStates, 1, 1e5) || !integer5(maxMs, 1, 6e4) || !integer5(quoteAt) || !["futgg", "futbin"].includes(quoteSource)) return blocked12("PLAN_INPUT_INVALID");
+    if (!challenge.remainingScore || challenge.status === "COMPLETED") return { status: "completed", items: [], batches: [], liveExecutionEnabled: false };
+    if (!integer5(challenge.selectionLimit, 1, 1e3)) return blocked12("BATCH_LIMIT_UNKNOWN");
+    if (objective === "inventory-first") {
+      const result = yield* planStreamlinedRoutesSteps(
+        { challenge, inventory, market, eligibility, policy, objective, mode, quoteSource, quoteAt },
+        { maxNodes, maxStates, maxMs, now }
+      );
+      const route = result.routes?.[0];
+      if (!route || result.status === "cancelled" || result.status === "partial" && !allowPartial) return { ...result, items: [], batches: [] };
+      return { ...result, ...expandStreamlinedRoute(route, challenge), route };
+    }
+    const filtered = filterStreamlinedItems([...mode === "market" ? [] : inventory, ...mode === "inventory" ? [] : market], { eligibility, policy });
+    if (filtered.status !== "observed") return filtered;
+    const excluded = { ...filtered.excluded };
+    const candidates = filtered.items.filter((item2) => {
+      if (item2.source !== "market") return true;
+      const q = item2.quote;
+      const valid3 = integer5(item2.price, 1, 15e6) && q?.source === quoteSource && q?.definitionId === item2.definitionId && q.price === item2.price && integer5(q.fetchedAt) && q.fetchedAt <= quoteAt && integer5(q.expiresAt) && q.expiresAt > quoteAt;
+      if (!valid3) excluded["market-quote"] = (excluded["market-quote"] ?? 0) + 1;
+      return valid3;
+    }).sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || Number(a.price == null) - Number(b.price == null) || (a.price ?? 0) / a.points - (b.price ?? 0) / b.points || b.points - a.points || a.key.localeCompare(b.key));
+    const target = challenge.remainingScore, started = now();
+    let nodes = 0, processed = 0, budget = null, best = null;
+    const empty2 = { score: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, count: 0, storagePenalty: 0, prev: null, item: null };
+    let partial = empty2;
+    const rank3 = (a, b) => compareStreamlinedPlans(a, b, objective);
+    const append = (prev, item2) => ({
+      score: prev.score + item2.points,
+      purchaseCost: prev.purchaseCost + (item2.source === "market" ? item2.price : 0),
+      materialValue: prev.materialValue + (item2.source === "inventory" ? item2.price ?? 0 : 0),
+      unknownValue: prev.unknownValue + Number(item2.source === "inventory" && item2.price == null),
+      storagePenalty: prev.storagePenalty + Number(policy.storageFirst && item2.pile !== "storage"),
+      count: prev.count + 1,
+      prev,
+      item: item2
+    });
+    const remember = (state) => {
+      if (state.score >= target) {
+        if (!best || rank3(state, best) < 0) best = state;
+      } else if (state.score > partial.score || state.score === partial.score && rank3(state, partial) < 0) partial = state;
+    };
+    for (const order2 of [candidates, candidates.slice().sort((a, b) => Number(a.source === "market") - Number(b.source === "market") || (a.price ?? Infinity) - (b.price ?? Infinity) || b.points - a.points)]) {
+      let seed = empty2;
+      for (const item2 of order2) {
+        seed = append(seed, item2);
+        remember(seed);
+        if (seed.score >= target) break;
+      }
+    }
+    const states4 = /* @__PURE__ */ new Map([[0, empty2]]);
+    outer: for (const item2 of candidates) {
+      const before = [...states4.values()];
+      for (const state of before) {
+        if (nodes >= maxNodes) {
+          budget = "nodes";
+          break outer;
+        }
+        const candidate = append(state, item2);
+        nodes++;
+        remember(candidate);
+        if (candidate.score < target) {
+          const previous = states4.get(candidate.score);
+          if (!previous || rank3(candidate, previous) < 0) states4.set(candidate.score, candidate);
+        }
+        if (nodes % 256 === 0) {
+          const cancelled = yield {
+            phase: "search",
+            nodes,
+            maxNodes,
+            processed,
+            candidates: candidates.length,
+            elapsedMs: now() - started,
+            bestScore: best?.score ?? partial.score,
+            bestPurchaseCost: best?.purchaseCost ?? null
+          };
+          if (cancelled) {
+            budget = "cancelled";
+            break outer;
+          }
+          if (now() - started >= maxMs) {
+            budget = "time";
+            break outer;
+          }
+        }
+        if (states4.size > maxStates) {
+          budget = "states";
+          break outer;
+        }
+      }
+      processed++;
+    }
+    const chosen = best ?? partial, items = [];
+    for (let state = chosen; state.item; state = state.prev) items.push(state.item);
+    items.reverse();
+    const batches = splitStreamlinedBatches(items, challenge.selectionLimit);
+    const reached = !!best, searchComplete = budget === null;
+    return {
+      status: budget === "cancelled" ? "cancelled" : reached ? "ready" : allowPartial && items.length ? "partial" : "unavailable",
+      reason: budget ? `FC27_STREAMLINED_SEARCH_${budget.toUpperCase()}` : reached ? "FC27_STREAMLINED_LOCAL_PLAN" : "FC27_STREAMLINED_POOL_SHORTAGE",
+      items: batches.flat(),
+      batches,
+      score: chosen.score,
+      purchaseCost: chosen.purchaseCost,
+      materialValue: chosen.unknownValue ? null : chosen.materialValue,
+      unknownValueCount: chosen.unknownValue,
+      progress: streamlinedProgress(challenge, chosen.score),
+      nodes,
+      maxNodes,
+      elapsedMs: now() - started,
+      searchComplete,
+      optimalWithinPricedPool: searchComplete && !chosen.unknownValue,
+      poolComplete: inventoryComplete && (mode === "inventory" || marketComplete),
+      candidateCount: candidates.length,
+      excluded,
+      liveExecutionEnabled: false
+    };
+  }
+  async function runStreamlinedPlan(input, {
+    onProgress = () => {
+    },
+    stopped = () => false,
+    schedule,
+    metricsNow
+  } = {}) {
+    return runStreamlinedSteps(planStreamlinedSteps(input), { onProgress, stopped, schedule, metricsNow });
+  }
+
+  // src/streamlined/quotes.js
+  var STREAMLINED_QUOTE_BUDGET_MS = 9e4;
+  var fatalStreamlinedQuoteFailure = (reason) => /(?:CONTEXT_CHANGED|CANCELLED|PRICE_POLICY_CHANGED|_DISABLED|INPUT_INVALID)$/.test(reason ?? "");
+  function streamlinedQuoteCoverage(references, source, ids2, at11) {
+    const result = { requested: new Set(ids2).size, valid: 0, failed: 0, missing: 0 };
+    for (const id14 of new Set(ids2)) {
+      if (validStreamlinedQuote(references[id14]?.quotes?.[source], source, id14, at11)) result.valid++;
+      else if (references[id14]?.quotes?.[source]?.error) result.failed++;
+      else result.missing++;
+    }
+    return result;
+  }
+  function validStreamlinedQuote(q, source, id14, at11) {
+    return q?.definitionId === id14 && q.source === source && !q.error && Number.isSafeInteger(q.price) && q.price > 0 && q.price <= 15e6 && Number.isSafeInteger(q.fetchedAt) && q.fetchedAt <= at11 && Number.isSafeInteger(q.expiresAt) && q.expiresAt > at11;
+  }
+  function streamlinedQuoteFailure(references, source, ids2, at11, { requireFresh = true } = {}) {
+    let failure = null;
+    for (const id14 of ids2) {
+      const quote2 = references[id14]?.quotes?.[source];
+      if (quote2?.error && quote2.error !== "FC27_PUBLIC_PRICE_PLAYER_INVALID") {
+        if (fatalStreamlinedQuoteFailure(quote2.error)) return quote2.error;
+        failure ??= quote2.error;
+      }
+      if (requireFresh && quote2?.price != null && (quote2.fetchedAt > at11 || quote2.expiresAt <= at11)) failure ??= "FC27_STREAMLINED_QUOTES_EXPIRED";
+    }
+    return failure;
+  }
+
   // src/streamlined/external-selection.js
   var external = (item2) => ["transfer", "unassigned"].includes(item2.pile);
   var blocked11 = (code2) => ({ status: "blocked", reason: `FC27_STREAMLINED_${code2}`, liveExecutionEnabled: false });
@@ -41193,6 +41341,162 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       return { ...candidate, status: "blocked", reason: "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" };
     };
     const confirmedCompletion = (record) => record?.submittedScore >= record?.plan?.challenge.targetScore && Array.isArray(record.batches) && record.batches.length > 0 && record.batches.every((batch) => batch.state === "confirmed" && batch.receipt?.status === "accepted") && record.batches.some((batch) => batch.receipt.challengeCompleted === true && batch.receipt.submittedScore >= record.plan.challenge.targetScore);
+    const recoverCurrent = async () => {
+      preview = null;
+      routePreview = null;
+      history = null;
+      externalView = null;
+      if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
+      try {
+        const origin = capture();
+        activeExecution = await createExecution(origin.context);
+        unchanged(origin);
+        const materialization = typeof activeExecution.recoverMaterialization === "function" ? await activeExecution.recoverMaterialization(origin.context) : { status: "absent" };
+        if (["recovery-required", "blocked", "replan-required"].includes(materialization.status)) {
+          log({ event: "recovery", status: materialization.status, reason: materialization.reason });
+          return materialization;
+        }
+        let contribution, warning, purchaseRecovery;
+        let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
+        if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === "function") {
+          history = { origin, execution: activeExecution };
+        }
+        if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
+          if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
+            contribution = await activeExecution.transaction.recover(
+              origin.context,
+              { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
+            );
+            const current3 = capture(), record2 = contribution.record;
+            if (!same2(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
+            const ownRecord = record2 && same2(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
+            const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
+            let isolationReason;
+            if (!completedHistory && ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
+              try {
+                if (await activeExecution.inspectInventoryRecovery(record2) === true) {
+                  warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
+                }
+              } catch (error2) {
+                isolationReason = safeReason10(error2);
+              }
+            }
+            const result2 = {
+              ...purchase,
+              ...isolationReason ? { reason: isolationReason } : {},
+              contributionRecovery: contribution,
+              ...ownRecord ? { record: record2 } : {}
+            };
+            log({
+              event: "recovery",
+              status: completedHistory || warning ? "observed" : result2.status,
+              reason: completedHistory ? current3.challenge.submittedScore < record2.submittedScore ? "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" : "FC27_STREAMLINED_COMPLETED" : warning?.reason ?? result2.reason,
+              setId: purchase.recovery?.setId,
+              challengeId: purchase.recovery?.challengeId,
+              pendingWriteCount: purchase.recovery?.pendingWriteCount,
+              unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
+              contributedCount: purchase.recovery?.contributedCount,
+              purchasesSettled: purchase.recovery?.purchasesSettled,
+              currentScore: ownRecord ? record2.submittedScore : void 0,
+              targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
+            });
+            if (!warning && !completedHistory) return result2;
+            purchaseRecovery = purchase;
+            purchase = { status: "absent" };
+            if (warning) log({
+              event: "recovery-isolation",
+              status: "verified",
+              reason: warning.reason,
+              setId: origin.challenge.setId,
+              challengeId: origin.challenge.id,
+              currentScore: record2.submittedScore
+            });
+          } else {
+            log({ event: "recovery", status: purchase.status, reason: purchase.reason });
+            return purchase;
+          }
+        }
+        contribution ??= await activeExecution.transaction.recover(
+          origin.context,
+          { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
+        );
+        if (!history && (contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" || ["observed", "recovered"].includes(contribution.status)) && typeof activeExecution.inspectContributionHistory === "function") {
+          const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
+          unchanged(origin);
+          if (candidate) {
+            contribution = { ...contribution, ...candidate };
+            if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: "contribution" };
+          }
+        }
+        let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
+        if (purchaseRecovery) result = {
+          ...result,
+          ...warning ? { warning } : {},
+          purchaseRecovery,
+          ...history ? { historyAction: { canArchive: true } } : {}
+        };
+        if (materialization.status !== "absent") {
+          result = { ...result, materializationRecovery: materialization };
+          if (result.status === "absent" && materialization.status === "recovered") {
+            result = { ...materialization, ...result, status: "recovered", materializationRecovery: materialization };
+          }
+        }
+        const current2 = capture();
+        if (!same2(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
+        if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
+          result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
+        }
+        log({
+          event: "recovery",
+          status: result.status,
+          reason: result.reason,
+          localReason: result.historyAction?.reason,
+          currentScore: result.record?.submittedScore,
+          targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
+          ...streamlinedPurchaseAudit(result.record),
+          setId: origin.challenge.setId,
+          challengeId: origin.challenge.id,
+          ...result.recovery ? {
+            setId: result.recovery.setId,
+            challengeId: result.recovery.challengeId,
+            currentScore: result.recovery.currentScore,
+            targetScore: result.recovery.targetScore,
+            confirmedBatches: result.recovery.confirmedBatches,
+            waitingBatches: result.recovery.waitingBatches,
+            pendingWriteCount: result.recovery.pendingWriteCount
+          } : {}
+        });
+        const record = result.record;
+        if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
+          if (!same2(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail4("CONTEXT_CHANGED");
+          const completed = record.submittedScore >= record.plan.challenge.targetScore;
+          if (!completed) activeExecution.prepare(record.plan);
+          const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
+          const input = readInputs({
+            maxRating: record.plan.policy.maxRating,
+            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+            ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
+          });
+          preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
+          return { ...result, preview: {
+            ...record.plan,
+            plan: record.plan,
+            liveExecutionEnabled: !completed,
+            quoteSource: record.plan.items.find((item2) => item2.quote)?.quote?.source ?? "unknown",
+            externalSelection,
+            record
+          } };
+        }
+        return result;
+      } catch (error2) {
+        preview = null;
+        const result = { status: "recovery-required", reason: safeReason10(error2) };
+        log({ event: "recovery", ...result });
+        return result;
+      } finally {
+        activeExecution = null;
+      }
+    };
     return Object.freeze({
       async readSettings(global = false) {
         const origin = capture();
@@ -41350,6 +41654,20 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         };
         try {
           const config = normalizeStreamlinedSettings(value), origin = capture();
+          const saved = await purchaseJournal.read(origin.context);
+          unchanged(origin);
+          const activePurchase = saved && saved.challenge.setId === origin.challenge.setId && saved.challenge.id === origin.challenge.id && saved.challenge.targetScore === origin.challenge.targetScore && streamlinedPurchaseNeedsRecovery(saved);
+          const retired = activePurchase ? await purchaseJournal.isRetired(saved) : false;
+          unchanged(origin);
+          if (stopRequested || run !== planningRun) fail4("CANCELLED");
+          if (activePurchase && !retired) {
+            const recovered2 = await recoverCurrent();
+            if (stopRequested || run !== planningRun) {
+              preview = null;
+              fail4("CANCELLED");
+            }
+            return { ...recovered2.preview, ...recovered2, recoveryAttempted: true, resumedPurchase: !!recovered2.preview };
+          }
           const rawInput = readInputs(config);
           rawInput.assertCurrent();
           await purchaseJournal.assertAvailable(origin.context, origin.challenge);
@@ -41933,160 +42251,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       },
       async recover() {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
-        preview = null;
-        routePreview = null;
-        history = null;
-        externalView = null;
-        if (typeof createExecution !== "function") return { status: "blocked", reason: "FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED" };
         busy = true;
         try {
-          const origin = capture();
-          activeExecution = await createExecution(origin.context);
-          unchanged(origin);
-          const materialization = typeof activeExecution.recoverMaterialization === "function" ? await activeExecution.recoverMaterialization(origin.context) : { status: "absent" };
-          if (["recovery-required", "blocked", "replan-required"].includes(materialization.status)) {
-            log({ event: "recovery", status: materialization.status, reason: materialization.reason });
-            return materialization;
-          }
-          let contribution, warning, purchaseRecovery;
-          let purchase = typeof activeExecution.recoverPurchase === "function" ? await activeExecution.recoverPurchase(origin.challenge) : { status: "absent" };
-          if (purchase.historyAction?.canArchive === true && typeof activeExecution.archivePurchaseHistory === "function") {
-            history = { origin, execution: activeExecution };
-          }
-          if (["recovery-required", "blocked", "replan-required"].includes(purchase.status)) {
-            if (purchase.reason === "FC27_STREAMLINED_OTHER_TARGET_PURCHASE_RECOVERY_REQUIRED") {
-              contribution = await activeExecution.transaction.recover(
-                origin.context,
-                { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
-              );
-              const current3 = capture(), record2 = contribution.record;
-              if (!same2(current3.context, origin.context) || current3.challenge.id !== origin.challenge.id || current3.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
-              const ownRecord = record2 && same2(record2.context, origin.context) && record2.plan?.challenge.id === origin.challenge.id && record2.plan.challenge.setId === origin.challenge.setId && record2.plan.challenge.targetScore === origin.challenge.targetScore;
-              const completedHistory = ownRecord && ["observed", "recovered"].includes(contribution.status) && confirmedCompletion(record2);
-              let isolationReason;
-              if (!completedHistory && ownRecord && ["observed", "recovered"].includes(contribution.status) && typeof activeExecution.inspectInventoryRecovery === "function") {
-                try {
-                  if (await activeExecution.inspectInventoryRecovery(record2) === true) {
-                    warning = { reason: "FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED", recovery: purchase.recovery };
-                  }
-                } catch (error2) {
-                  isolationReason = safeReason10(error2);
-                }
-              }
-              const result2 = {
-                ...purchase,
-                ...isolationReason ? { reason: isolationReason } : {},
-                contributionRecovery: contribution,
-                ...ownRecord ? { record: record2 } : {}
-              };
-              log({
-                event: "recovery",
-                status: completedHistory || warning ? "observed" : result2.status,
-                reason: completedHistory ? current3.challenge.submittedScore < record2.submittedScore ? "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" : "FC27_STREAMLINED_COMPLETED" : warning?.reason ?? result2.reason,
-                setId: purchase.recovery?.setId,
-                challengeId: purchase.recovery?.challengeId,
-                pendingWriteCount: purchase.recovery?.pendingWriteCount,
-                unconsumedPurchaseCount: purchase.recovery?.unconsumedPurchaseCount,
-                contributedCount: purchase.recovery?.contributedCount,
-                purchasesSettled: purchase.recovery?.purchasesSettled,
-                currentScore: ownRecord ? record2.submittedScore : void 0,
-                targetScore: ownRecord ? record2.plan.challenge.targetScore : void 0
-              });
-              if (!warning && !completedHistory) return result2;
-              purchaseRecovery = purchase;
-              purchase = { status: "absent" };
-              if (warning) log({
-                event: "recovery-isolation",
-                status: "verified",
-                reason: warning.reason,
-                setId: origin.challenge.setId,
-                challengeId: origin.challenge.id,
-                currentScore: record2.submittedScore
-              });
-            } else {
-              log({ event: "recovery", status: purchase.status, reason: purchase.reason });
-              return purchase;
-            }
-          }
-          contribution ??= await activeExecution.transaction.recover(
-            origin.context,
-            { setId: origin.challenge.setId, challengeId: origin.challenge.id, targetScore: origin.challenge.targetScore }
-          );
-          if (!history && (contribution.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED" || ["observed", "recovered"].includes(contribution.status)) && typeof activeExecution.inspectContributionHistory === "function") {
-            const candidate = await activeExecution.inspectContributionHistory(origin.challenge);
-            unchanged(origin);
-            if (candidate) {
-              contribution = { ...contribution, ...candidate };
-              if (candidate.historyAction?.canArchive) history = { origin, execution: activeExecution, kind: "contribution" };
-            }
-          }
-          let result = ["recovery-required", "blocked", "replan-required"].includes(contribution.status) || purchase.status === "absent" ? contribution : { ...purchase, contributionRecovery: contribution };
-          if (purchaseRecovery) result = {
-            ...result,
-            ...warning ? { warning } : {},
-            purchaseRecovery,
-            ...history ? { historyAction: { canArchive: true } } : {}
-          };
-          if (materialization.status !== "absent") {
-            result = { ...result, materializationRecovery: materialization };
-            if (result.status === "absent" && materialization.status === "recovered") {
-              result = { ...materialization, ...result, status: "recovered", materializationRecovery: materialization };
-            }
-          }
-          const current2 = capture();
-          if (!same2(current2.context, origin.context) || current2.challenge.id !== origin.challenge.id || current2.challenge.setId !== origin.challenge.setId) fail4("CONTEXT_CHANGED");
-          if (!["recovery-required", "replan-required", "blocked"].includes(result.status) && confirmedCompletion(result.record) && result.record.plan.challenge.targetScore === current2.challenge.targetScore && current2.challenge.submittedScore < result.record.submittedScore) {
-            result = { ...result, status: "completed", reason: "FC27_STREAMLINED_PREVIOUS_CYCLE_COMPLETED" };
-          }
-          log({
-            event: "recovery",
-            status: result.status,
-            reason: result.reason,
-            localReason: result.historyAction?.reason,
-            currentScore: result.record?.submittedScore,
-            targetScore: result.record?.challenge?.targetScore ?? result.record?.plan?.challenge.targetScore,
-            ...streamlinedPurchaseAudit(result.record),
-            setId: origin.challenge.setId,
-            challengeId: origin.challenge.id,
-            ...result.recovery ? {
-              setId: result.recovery.setId,
-              challengeId: result.recovery.challengeId,
-              currentScore: result.recovery.currentScore,
-              targetScore: result.recovery.targetScore,
-              confirmedBatches: result.recovery.confirmedBatches,
-              waitingBatches: result.recovery.waitingBatches,
-              pendingWriteCount: result.recovery.pendingWriteCount
-            } : {}
-          });
-          const record = result.record;
-          if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
-            if (!same2(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail4("CONTEXT_CHANGED");
-            const completed = record.submittedScore >= record.plan.challenge.targetScore;
-            if (!completed) activeExecution.prepare(record.plan);
-            const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
-            const input = readInputs({
-              maxRating: record.plan.policy.maxRating,
-              marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
-              ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
-            });
-            preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
-            return { ...result, preview: {
-              ...record.plan,
-              plan: record.plan,
-              liveExecutionEnabled: !completed,
-              quoteSource: record.plan.items.find((item2) => item2.quote)?.quote?.source ?? "unknown",
-              externalSelection,
-              record
-            } };
-          }
-          return result;
-        } catch (error2) {
-          preview = null;
-          const result = { status: "recovery-required", reason: safeReason10(error2) };
-          log({ event: "recovery", ...result });
-          return result;
+          return await recoverCurrent();
         } finally {
-          activeExecution = null;
           busy = false;
         }
       },
@@ -43173,7 +43341,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   async function createFc27StreamlinedContributionTransport(root, {
     canWrite = () => false,
     assertCurrent = () => {
-    }
+    },
+    shouldStop = () => false
   } = {}) {
     const context = readFc27Context(root), dao = at10(root, "services.SBC.sbcDAO");
     const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
@@ -43216,11 +43385,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) fail4("ENDPOINT_UNVERIFIED");
           if (ids2) req.setRequestBody({ playerItemIds: ids2, skipUserSquadValidation: true });
           await beforeDispatch();
+          if (shouldStop()) fail4("CANCELLED");
           assert();
           if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
           last = Date.now();
           return await new Promise((resolve, reject) => {
-            let done = false;
+            let done = false, dispatched = false;
             const owner = {};
             const finish = (error2, value) => {
               if (done) return;
@@ -43257,10 +43427,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               });
               assert();
               if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
+              if (shouldStop()) fail4("CANCELLED");
+              dispatched = true;
               req.send();
-            } catch {
+            } catch (error2) {
               stopped = true;
-              finish(Error("FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED"));
+              finish(!dispatched && error2?.message === "FC27_STREAMLINED_CANCELLED" ? error2 : Error("FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED"));
             }
           });
         } finally {
@@ -43437,6 +43609,33 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   }
 
   // src/adapters/ea/fc27-streamlined-materialize.js
+  function clearStaleDuplicate(source) {
+    if (source.duplicateId == null || source.duplicateId === 0) return false;
+    const field = Object.getOwnPropertyDescriptor(source, "duplicateId");
+    if (!field?.writable || !integer5(field.value, 1) || typeof source.isDuplicate !== "function") {
+      fail4("MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED");
+    }
+    source.duplicateId = 0;
+    try {
+      if (source.isDuplicate() !== false) fail4("MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED");
+    } catch (error2) {
+      source.duplicateId = field.value;
+      throw error2;
+    }
+    return true;
+  }
+  function moveResponseDetail(reply) {
+    const detail = {};
+    try {
+      if (integer5(reply?.status, 0, 599)) detail.httpStatus = reply.status;
+    } catch {
+    }
+    try {
+      if (integer5(reply?.error?.code, 0, 9999999999)) detail.localReason = `FC27_NATIVE_ERROR_${reply.error.code}`;
+    } catch {
+    }
+    return detail;
+  }
   async function readMaterializationClub(root, ref, createTransport, assert) {
     assert();
     const transport = await createTransport(root, { nativeReauth: true });
@@ -43520,6 +43719,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     assertCurrent = () => {
     },
     onProgress = () => {
+    },
+    onDiagnostic = () => {
     }
   } = {}) {
     const service = root.services?.Item, proto = service && Object.getPrototypeOf(service);
@@ -43544,6 +43745,21 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           total,
           materialTotal: total,
           id: id14
+        });
+      } catch {
+      }
+    };
+    const diagnose = (phase, status, ref, index, detail = {}) => {
+      try {
+        Promise.resolve(onDiagnostic({
+          phase: `materialize-${phase}`,
+          status,
+          source: ref.pile,
+          definitionId: ref.definitionId,
+          offset: index,
+          count: 1,
+          ...detail
+        })).catch(() => {
         });
       } catch {
       }
@@ -43643,6 +43859,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             if (snapshot.activeTrade === true) fail4("MATERIALIZE_ACTIVE_TRADE");
             if (before.length) fail4("MATERIALIZE_DUPLICATE_BLOCKED");
             checkSource(ref, source);
+            assert();
+            if (clearStaleDuplicate(source)) diagnose("duplicate-refresh", "verified", ref, index);
             entry ??= {
               id: ref.id,
               definitionId: ref.definitionId,
@@ -43661,10 +43879,16 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             report("move-request", index, external2.length, ref.id);
             const reply = await observe(() => service.move(source, root.ItemPile.CLUB));
             assert();
+            const detail = moveResponseDetail(reply);
+            diagnose("response", reply?.success === true ? "accepted" : reply?.success === false ? "rejected" : "unknown", ref, index, detail);
             if (reply?.success === false) {
               entry.state = "rejected";
               await save(record);
-              fail4("MATERIALIZE_MOVE_REJECTED");
+              throw Object.assign(
+                Error("FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED"),
+                detail,
+                { definitionId: ref.definitionId, source: ref.pile, offset: index }
+              );
             }
             if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.map(Number).includes(ref.id)) fail4("MATERIALIZE_UNCONFIRMED");
             report("move-acknowledged", index, external2.length, ref.id);
@@ -43786,6 +44010,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
               canWrite,
               plan,
               ...materializationStorage,
+              onDiagnostic,
               assertCurrent: () => {
                 unchanged(origin, plan);
                 if (stopped()) fail4("CANCELLED");
@@ -43820,7 +44045,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           busy = false;
         }
       },
-      async contribute(plan, batch) {
+      async contribute(plan, batch, { stopped = () => false } = {}) {
         if (busy) fail4("BUSY");
         const approved = lease;
         lease = null;
@@ -43829,12 +44054,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         let sent = false;
         const assert = () => {
           unchanged(approved.origin, plan);
+          if (!sent && stopped()) fail4("CANCELLED");
           if (!sent && (now() < approved.at || now() - approved.at > 15e3)) fail4("VALIDATION_EXPIRED");
         };
         try {
           assert();
           if (canWrite() !== true) fail4("WRITE_CONTRACT_UNVERIFIED");
-          const transport = await createTransport(root, { canWrite, assertCurrent: assert });
+          const transport = await createTransport(root, { canWrite, assertCurrent: assert, shouldStop: stopped });
+          assert();
           const reply = await transport.request("contribute", {
             challengeId: plan.challenge.id,
             itemIds: batch.refs.map((ref) => ref.id)
@@ -43857,7 +44084,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             previousTimesCompleted: approved.timesCompleted
           });
         } catch (error2) {
-          if (!sent) return { status: "rejected", reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_DISPATCH_BLOCKED" };
+          if (!sent || error2?.message === "FC27_STREAMLINED_CANCELLED") return { status: "rejected", reason: /^FC27_[A-Z0-9_]+$/.test(error2?.message) ? error2.message : "FC27_STREAMLINED_DISPATCH_BLOCKED" };
           throw error2;
         } finally {
           busy = false;
@@ -44083,6 +44310,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       const detail = { reason: safeReason10(error2) };
       if (integer5(error2?.httpStatus, 0, 599)) detail.httpStatus = error2.httpStatus;
       if (typeof error2?.localReason === "string" && /^FC27_NATIVE_ERROR_\d{1,10}$/.test(error2.localReason)) detail.localReason = error2.localReason;
+      if (detail.reason.startsWith("FC27_STREAMLINED_MATERIALIZE_")) {
+        if (integer5(error2?.definitionId, 1)) detail.definitionId = error2.definitionId;
+        if (integer5(error2?.offset, 0, 29)) detail.offset = error2.offset;
+        if (["transfer", "unassigned"].includes(error2?.source)) detail.source = error2.source;
+      }
       for (const key2 of ["attempt", "attemptLimit"]) if (integer5(error2?.[key2], 1, 3)) detail[key2] = error2[key2];
       if (typeof error2?.methodPath === "string" && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error2.methodPath)) detail.methodPath = error2.methodPath;
       if (typeof error2?.observedHash === "string" && (/^[a-f0-9]{64}$/.test(error2.observedHash) || error2.observedHash === "oversized")) detail.observedHash = error2.observedHash;
@@ -44156,7 +44388,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }
     });
     const execute = async (plan, approval, { onProgress = () => {
-    }, stopped = () => false } = {}) => {
+    }, stopped = () => false, restartRejected = false } = {}) => {
       if (running) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
       running = true;
       stopping = false;
@@ -44168,7 +44400,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             phase: phase2,
             index,
             total: approval.batchIndices.length,
-            submittedScore: record?.submittedScore ?? plan.challenge.submittedScore
+            submittedScore: record?.submittedScore ?? plan.challenge.submittedScore,
+            targetScore: plan.challenge.targetScore
           });
         } catch {
         }
@@ -44180,6 +44413,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         release = await lock.acquire(plan.context);
         if (typeof release !== "function") fail4("BUSY");
         record = await journal.read(plan.context);
+        if (restartRejected === true && canRestartStreamlinedRejectedWave(record, plan)) {
+          record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+        } else if (restartRejected === true && canReplaceStreamlinedRejectedWave(record, plan)) {
+          record = await journal.begin(plan, { replaceRejected: true, expectedRevision: record.revision });
+        }
         const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
         if (!record || record.plan.fingerprint !== plan.fingerprint && (isUnsentStreamlinedJournal(record) || record.batches.every((b) => ["confirmed", "rejected"].includes(b.state)) || replaceRemainder)) {
           record = await journal.begin(plan, { replaceRemainder });
@@ -44219,8 +44457,14 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           let reply;
           report("contribution", index);
           phase = "dispatch";
+          if (shouldStop()) {
+            record.batches[index].state = "waiting";
+            delete record.batches[index].startingScore;
+            record = await journal.write(plan.context, record, record.revision);
+            return { status: "stopped", record };
+          }
           try {
-            reply = await adapter.contribute(plan, batch);
+            reply = await adapter.contribute(plan, batch, { stopped: shouldStop });
           } catch (error2) {
             diagnose("dispatch", "unknown", record, batch, () => failureDetail(error2));
             reply = { status: "unknown" };
@@ -44231,8 +44475,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             ...reply?.reason ? { reason: responseReason(reply.reason) } : {}
           }));
           if (reply?.status === "rejected") {
-            record.batches[index].state = "rejected";
+            const cancelled = shouldStop() && reply.reason === "FC27_STREAMLINED_CANCELLED";
+            record.batches[index].state = cancelled ? "waiting" : "rejected";
+            if (cancelled) delete record.batches[index].startingScore;
             record = await journal.write(plan.context, record, record.revision);
+            if (cancelled) return { status: "stopped", record };
             return { status: "rejected", reason: reply.reason, record };
           }
           phase = "receipt";
@@ -44253,7 +44500,12 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
             }
             diagnose("receipt", "verified", record, batch, { httpStatus: record.batches[index].receipt.code });
             phase = "checkpoint";
-            record = await journal.write(plan.context, record, record.revision);
+            try {
+              record = await journal.write(plan.context, record, record.revision);
+            } catch (error2) {
+              if (error2?.message !== "FC27_STREAMLINED_JOURNAL_WRITE_FAILED") throw error2;
+              record = await journal.write(plan.context, record, record.revision);
+            }
             batch = record.batches[index];
           }
           phase = "readback";
@@ -44293,7 +44545,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           status: "blocked",
           ...failureDetail(error2),
           ...error2.recovery ? { recovery: error2.recovery } : {},
-          ...phase === "validation" && ["FC27_STREAMLINED_PROGRESS_READ_FAILED", "FC27_STREAMLINED_PROGRESS_READ_TIMEOUT"].includes(error2?.message) ? { record } : {}
+          ...phase === "validation" && record?.plan?.fingerprint === plan.fingerprint ? { record } : {}
         };
       } finally {
         try {
@@ -44492,7 +44744,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       }).execute(
         batchPlan,
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
-        callbacks
+        { ...callbacks, restartRejected: true }
       );
       if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
         if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
@@ -45287,9 +45539,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
       now,
       isArchivedContribution: (record) => marketJournal.isRetiredContribution(record),
       beforeBegin: (plan2) => marketJournal.assertPlanAvailable(plan2),
-      beforeReplace: async (previous) => {
+      beforeReplace: async (previous, next) => {
         const saved = await marketJournal.read(context);
         if (saved && await marketJournal.isRetired(saved)) return;
+        if (activeProcurement && streamlinedPurchaseContributionPlan(saved)?.fingerprint === next.fingerprint && canReplaceStreamlinedRejectedWave(previous, next)) return;
         const settled2 = projectStreamlinedPurchaseHandoff(saved, previous);
         if (settled2) await marketJournal.write(settled2, saved.revision);
       }
@@ -45325,6 +45578,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     );
     let marketPurchase = null;
     let activeProcurement = null;
+    let stopEpoch = 0;
     let historyToArchive = null;
     let contributionToArchive = null;
     const adapter = createProvider(root, {
@@ -45345,6 +45599,9 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
           phase: `contribution-${row.phase}`,
           status: row.status,
           reason: row.reason,
+          definitionId: row.definitionId,
+          source: row.source,
+          offset: row.offset,
           localReason: row.localReason,
           attempt: row.attempt,
           attemptLimit: row.attemptLimit,
@@ -45572,8 +45829,13 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         }
       },
       async purchase(plan2, approval = {}, callbacks = {}) {
+        const epoch2 = stopEpoch;
         marketPurchase = await createMarket(plan2);
         if (!marketPurchase) fail4("PURCHASE_ROUTE_UNVERIFIED");
+        if (epoch2 !== stopEpoch) {
+          marketPurchase.cancel?.();
+          return { status: "stopped", reason: "FC27_STREAMLINED_STOPPED", record: await marketJournal.read(context) };
+        }
         const runPlan = { ...plan2, route: plan2.route ?? { groups: [] } };
         const driver = createStreamlinedProcurement({
           journal: marketJournal,
@@ -45605,6 +45867,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
         return true;
       },
       stop() {
+        stopEpoch++;
         activeProcurement?.stop();
         transaction.stop();
       }
@@ -45656,7 +45919,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.102" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.108" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -46008,8 +46271,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number3(p.contribu
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.102"}`,
-    version: "27.0.102",
+    title: `FC Automation Tool ${"27.0.108"}`,
+    version: "27.0.108",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

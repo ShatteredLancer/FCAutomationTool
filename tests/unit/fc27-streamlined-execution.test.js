@@ -17,6 +17,23 @@ import { decodeStoredValue } from '../../src/runtime/compact-storage.js';
 
 afterEach(() => vi.useRealTimers());
 
+it('exports materialization response diagnostics through the production sink without private fields', async () => {
+  const f = streamlinedRuntime(), memory = new Map();
+  const diagnosticLog = createFcatDiagnosticLog({ gmGetValue: async key => memory.get(key),
+    gmSetValue: async (key, value) => memory.set(key, value) });
+  let diagnostic;
+  await createFc27StreamlinedExecution(f.root, { context: f.plan.context,
+    get: async (_key, fallback) => fallback, set: async () => {}, diagnosticLog,
+    createProvider: (_root, options) => { diagnostic = options.onDiagnostic; return {}; } });
+  diagnostic({ phase: 'materialize-response', status: 'rejected', source: 'transfer', definitionId: 1901,
+    offset: 1, count: 1, httpStatus: 409, localReason: 'FC27_NATIVE_ERROR_461',
+    id: 999999, raw: { token: 'secret' }, itemIds: [999999] });
+  const payload = await diagnosticLog.exportPayload();
+  expect(payload.entries).toContainEqual(expect.objectContaining({ phase: 'contribution-materialize-response',
+    source: 'transfer', definitionId: 1901, offset: 1, httpStatus: 409, localReason: 'FC27_NATIVE_ERROR_461' }));
+  expect(JSON.stringify(payload)).not.toMatch(/secret|999999|itemIds|"raw"/);
+});
+
 it.each(['unrelated', 'selected'])('checks only selected piles across five stock batches and never repeats confirmed writes: %s', async conflict => {
   vi.useFakeTimers();
   const f = streamlinedRuntime({ targetScore: 2820 }), memory = new Map(), diagnosticMemory = new Map();

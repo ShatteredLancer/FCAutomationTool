@@ -122,11 +122,17 @@ export function formatFc27PuzzleNativeResult(result) {
   const summary = result?.procurementSummary;
   const costReason = summary?.diagnostics?.localReason ?? summary?.reason ?? result?.valueReason;
   const saved = ['filled', 'concept-filled'].includes(result?.status);
+  const effectiveObjective = summary?.diagnostics?.objective ?? result?.objective;
+  const objectiveNotice = !saved ? '' : effectiveObjective === 'additional-coins'
+    ? summary?.diagnostics?.requestedObjective === 'material-value'
+      ? '\n本轮未完成材料总值比较，当前只列购卡支出；不是最低材料成本结论。'
+      : '\n当前按最低购卡支出计算，库存卡不计新增支出，可能使用高价值库存。请到 FCAT 设置 → 解题优化目标，选择「最低材料总价值」并保存，再重新解题；更新不会自动改变以前保存的选项。'
+    : '';
   const costNotice = saved && costReason === 'FC27_PUZZLE_OPTIMIZATION_TIME_LIMIT'
     ? '\n进一步降价搜索已达到30秒，本次采用已验证方案，尚未确认最低材料成本。'
     : saved && (summary?.status === 'blocked' || result?.valueReason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED')
       ? `\n降价优化未完成：${purchaseReasons[costReason] ?? '无法完成成本比较'}。本次保留原合规阵容，不代表最低成本。` : '';
-  const message = resultText(result) + costNotice + (exhaustedCostSearch
+  const message = resultText(result) + objectiveNotice + costNotice + (exhaustedCostSearch
     ? '\n搜索预算已用尽，当前仅为已找到的可行方案，未确认最低材料成本。' : '');
   const purchase = result?.purchaseSuggestion;
   if (purchase?.status !== 'blocked') return message;

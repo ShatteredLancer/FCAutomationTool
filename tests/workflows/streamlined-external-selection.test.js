@@ -12,17 +12,20 @@ import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-
 import { safeItem } from '../helpers/streamlined.js';
 import { streamlinedProgress } from '../../src/streamlined/contract.js';
 import { normalizeStreamlinedContributionReply } from '../../src/streamlined/contribution.js';
+import { nativeMoveHarness } from '../helpers/fc27-native-move.js';
 
 // Real selection -> splitter -> transaction -> provider -> materializer -> fresh
 // validator/reconciler. Only native network responses and the shared lock are synthetic.
-function fixture({ expired = false } = {}) {
+function fixture({ expired = false, reviewedNative = false } = {}) {
   const f = streamlinedRuntime({ targetScore: 100 }), memory = new Map(), events = [];
   Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
   let clock = 1000;
   const club = f.root.repositories.Item.club.items._collection;
   const transfer = [{ ...club[1], id: 901, pile: 5, utasPile: 5, duplicateId: 1,
+    isDuplicate() { return this.duplicateId > 0; },
     ...(expired ? structuredClone(expiredTransfer.item) : {}) }];
-  const unassigned = [{ ...club[1], id: 902, pile: 1, utasPile: 1, duplicateId: 1 }];
+  const unassigned = [{ ...club[1], id: 902, pile: 1, utasPile: 1, duplicateId: 1,
+    isDuplicate() { return this.duplicateId > 0; } }];
   f.root.repositories.Item.getTransferItems = () => transfer;
   f.root.repositories.Item.getUnassignedItems = () => unassigned;
   const storage = { get: (key, fallback) => structuredClone(memory.get(key) ?? fallback),
@@ -38,6 +41,22 @@ function fixture({ expired = false } = {}) {
     f.state.players.push({ id: source.id, resourceId: source.definitionId });
     callback(this, { success: true, data: { itemIds: [source.id] } });
   }, unobserve() {} }));
+  let native;
+  if (reviewedNative) {
+    native = nativeMoveHarness({ onMove: (items, pile) => {
+      expect(pile).toBe(7);
+      for (const source of items) {
+        expect(f.state.players.some(item => item.resourceId === source.definitionId)).toBe(false);
+        events.push(`move:${source.id}`);
+      }
+    }, onAdd: source => {
+      const list = source.id === 901 ? transfer : unassigned;
+      list.splice(list.indexOf(source), 1); club[source.id] = source;
+      f.state.players.push({ id: source.id, resourceId: source.definitionId });
+    } });
+    [...transfer, ...unassigned].forEach(native.decorate);
+    move.mockImplementation((...args) => native.service.move(...args));
+  }
   class Service { move(...args) { return move(...args); } }
   f.root.services.Item = new Service();
   const digest = f.root.crypto.subtle.digest;
@@ -73,8 +92,20 @@ function fixture({ expired = false } = {}) {
     lock: { acquire: async () => () => {} }, now: () => clock });
   const approval = { approved: true, fingerprint: plan.fingerprint, batchIndices: [0, 1, 2], allowPartial: true };
   const onProgress = event => { if (event.phase === 'confirmed') { events.push(`confirmed:${event.index}`); clock += 4000; } };
-  return { ...f, state, events, move, request, plan, journal, createTransaction, approval, consume, onProgress };
+  return { ...f, state, events, move, request, plan, journal, createTransaction, approval, consume, onProgress, native };
 }
+
+it('runs Club prerequisite then both external copies through the captured EA move body', async () => {
+  const f = fixture({ expired: true, reviewedNative: true });
+  const tx = f.createTransaction();
+  expect(await tx.execute(f.plan, f.approval, { onProgress: f.onProgress })).toMatchObject({ status: 'partial', record: { submittedScore: 60 } });
+  expect(f.events).toEqual(['contribute:1', 'confirmed:0', 'move:901', 'contribute:901', 'confirmed:1',
+    'move:902', 'contribute:902', 'confirmed:2']);
+  expect(f.native.service.requestItemsById).not.toHaveBeenCalled();
+  await tx.execute(f.plan, f.approval);
+  expect(f.native.service.itemDao.move).toHaveBeenCalledTimes(2);
+  expect(f.request).toHaveBeenCalledTimes(3);
+});
 
 it.each([false, true])('independently confirms Club before each external duplicate (expired Transfer: %s)', async expired => {
   const f = fixture({ expired });
@@ -140,4 +171,21 @@ it('retains an unverified prerequisite receipt and never moves its duplicate unt
   expect(f.move).not.toHaveBeenCalled(); expect(f.request).toHaveBeenCalledTimes(1);
   expect(await tx.execute(f.plan, f.approval, { onProgress: f.onProgress })).toMatchObject({ status: 'partial', record: { submittedScore: 60 } });
   expect(f.request).toHaveBeenCalledTimes(3);
+});
+
+it('returns confirmed progress after a later move rejection and resumes without replaying the prerequisite', async () => {
+  const f = fixture();
+  f.move.mockImplementationOnce(() => ({ observe(_owner, callback) {
+    callback(this, { success: false, status: 409, error: { code: 461 } });
+  }, unobserve() {} }));
+  const tx = f.createTransaction();
+  const result = await tx.execute(f.plan, f.approval, { onProgress: f.onProgress });
+  expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED',
+    httpStatus: 409, localReason: 'FC27_NATIVE_ERROR_461', record: { submittedScore: 20 } });
+  expect(result.record.batches.map(row => row.state)).toEqual(['confirmed', 'waiting', 'waiting']);
+  expect(f.request).toHaveBeenCalledTimes(1);
+  expect(await tx.recover(f.plan.context)).toMatchObject({ status: 'observed', record: { submittedScore: 20 } });
+  expect(f.move).toHaveBeenCalledTimes(1);
+  expect(await tx.execute(f.plan, f.approval, { onProgress: f.onProgress })).toMatchObject({ status: 'partial', record: { submittedScore: 60 } });
+  expect(f.events.filter(row => row === 'contribute:1')).toHaveLength(1);
 });

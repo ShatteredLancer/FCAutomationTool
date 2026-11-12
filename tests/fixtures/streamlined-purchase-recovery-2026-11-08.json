@@ -1,0 +1,7 @@
+{
+  "source": "Bounded aggregate diagnostics; no account or item identities",
+  "version": "27.0.101",
+  "before": { "status": "recovery-required", "httpStatus": 401, "contributedCount": 6, "unconsumedPurchaseCount": 2 },
+  "recovered": { "status": "recovered", "pendingWriteCount": 0, "unconsumedPurchaseCount": 2, "contributedCount": 6, "confirmedBatches": 2, "spent": 3500, "approvedBudget": 8568, "currentScore": 10550, "targetScore": 16000 },
+  "next": { "status": "recovery-required", "reason": "FC27_STREAMLINED_PURCHASE_RECOVERY_REQUIRED" }
+}

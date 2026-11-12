@@ -26,7 +26,7 @@ const method = (dao, key) => {
 // endpoint/body, but use our own request to prevent queued mutation retries,
 // as required by the Streamlined transaction plan. No token/cookie access.
 export async function createFc27StreamlinedContributionTransport(root, { canWrite = () => false,
-  assertCurrent = () => {} } = {}) {
+  assertCurrent = () => {}, shouldStop = () => false } = {}) {
   const context = readFc27Context(root), dao = at(root, 'services.SBC.sbcDAO');
   const runtime = await verifyFc27Methods(root, FC27_CLUB_READ_METHODS);
   const methods = Object.fromEntries(FC27_STREAMLINED_CONTRIBUTION_METHODS.map(([path]) => {
@@ -73,10 +73,11 @@ export async function createFc27StreamlinedContributionTransport(root, { canWrit
         // FSU/Active Squad protection is enforced by the caller before this.
         if (ids) req.setRequestBody({ playerItemIds: ids, skipUserSquadValidation: true });
         await beforeDispatch();
+        if (shouldStop()) fail('CANCELLED');
         assert(); if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
         last = Date.now();
         return await new Promise((resolve, reject) => {
-          let done = false; const owner = {};
+          let done = false, dispatched = false; const owner = {};
           const finish = (error, value) => {
             if (done) return; done = true; clearTimeout(timer); cancelActive = null;
             try { req.unobserve(owner); } catch { /* Only our observer. */ }
@@ -94,8 +95,14 @@ export async function createFc27StreamlinedContributionTransport(root, { canWrit
               catch { stopped = true; finish(Error('FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED')); }
             });
             assert(); if (canWrite() !== true) fail('WRITE_CONTRACT_UNVERIFIED');
+            if (shouldStop()) fail('CANCELLED');
+            dispatched = true;
             req.send();
-          } catch { stopped = true; finish(Error('FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED')); }
+          } catch (error) {
+            stopped = true;
+            finish(!dispatched && error?.message === 'FC27_STREAMLINED_CANCELLED'
+              ? error : Error('FC27_STREAMLINED_CONTRIBUTION_UNCONFIRMED'));
+          }
         });
       } finally { busy = false; }
     },

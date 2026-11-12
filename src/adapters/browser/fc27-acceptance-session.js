@@ -411,8 +411,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         let preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
           onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
         privateData = { inputs, preview };
+        // Without a valuation source, an already legal owned lineup cannot
+        // be cost-compared. Do not add catalogue reads just for that attempt.
+        // The result keeps its explicit incomplete-value notice.
         const compareOwnedCost = purchaseSettings.objective === 'material-value'
-          && preview.status === 'preview';
+          && preview.status === 'preview' && typeof publicPrices?.load === 'function';
         if (inputs.squadEmpty === true && (compareOwnedCost || ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(preview.reason))) {
           progress('procurement');
@@ -1016,7 +1019,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           count: d?.catalogCandidates, evaluations: d?.nodes, localReason: d?.localReason,
           budgetNodes: d?.budgetNodes, maxNodes: d?.maxNodes, budgetStage: d?.budgetStage,
           budgetStages: d?.budgetStages, nodeCap: d?.nodeCap,
-          objective: d?.objective, materialValue: d?.materialValue,
+          objective: d?.objective, requestedObjective: d?.requestedObjective, materialValue: d?.materialValue,
           unknownCount: d?.unknownCount, scopeTruncated: d?.scopeTruncated,
           combinationNodes: d?.search?.combinationNodes, placementNodes: d?.search?.placementNodes,
           evaluationNodes: d?.search?.evaluations, boundNodes: d?.search?.bounds,

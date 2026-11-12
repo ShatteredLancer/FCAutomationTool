@@ -38,11 +38,19 @@ export async function exerciseStreamlinedExternal(page) {
         return { status: 'archived', reason: 'FC27_STREAMLINED_CONTRIBUTION_HISTORY_ARCHIVED' }; }, transaction: {
       recover: async () => evidence.offerHistory
         ? { status: 'recovery-required', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED' } : { status: 'absent' },
-      execute: async (plan, approval) => {
+      execute: async (plan, approval, callbacks) => {
         if (evidence.lateHistory) return { status: 'blocked', reason: 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED',
           recovery: { setId: 32, challengeId: 62, currentScore: 3860, targetScore: 5500,
             confirmedBatches: 1, waitingBatches: 1, pendingWriteCount: 0 } };
         evidence.executed++; evidence.approval = approval;
+        if (evidence.rejectExternal) {
+          const submittedScore = plan.challenge.submittedScore + plan.batches[0].reduce((sum, item) => sum + item.points, 0);
+          callbacks.onProgress({ phase: 'confirmed', index: 0, submittedScore, targetScore: plan.challenge.targetScore });
+          return { status: 'blocked', reason: 'FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED',
+            source: 'transfer', definitionId: 100, offset: 0, httpStatus: 409, localReason: 'FC27_NATIVE_ERROR_461',
+            record: { context: plan.context, plan, submittedScore,
+              batches: plan.batches.map((refs, index) => ({ index, refs, state: index === 0 ? 'confirmed' : 'waiting' })) } };
+        }
         return { status: 'partial', record: { context: plan.context, plan, submittedScore: plan.score,
           batches: plan.batches.map((refs, index) => ({ index, refs, state: 'confirmed' })) } };
       } } }) });
@@ -165,6 +173,27 @@ export async function exerciseStreamlinedExternal(page) {
   await page.evaluate(() => { globalThis.externalSmoke.protectionFailure = false; });
   await page.getByRole('button', { name: '刷新列表', exact: true }).click();
   await page.locator('[data-external-list] .external-row').first().waitFor();
+  await page.evaluate(() => {
+    globalThis.externalSmoke.offerHistory = false; globalThis.externalSmoke.blockHistory = false;
+    globalThis.externalSmoke.rejectExternal = true;
+  });
+  await page.locator('[data-external-list] input[type=checkbox]').first().check();
+  await page.getByRole('button', { name: '准备贡献预览', exact: true }).click();
+  await page.getByRole('button', { name: '按顺序贡献', exact: true }).click();
+  await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel')?.shadowRoot?.querySelector('[data-status]')?.textContent.includes('HTTP 409'));
+  const expected = await page.evaluate(() => {
+    const plan = globalThis.externalSmoke.plan;
+    const score = plan.challenge.submittedScore + plan.batches[0].reduce((sum, item) => sum + item.points, 0);
+    return { score: score.toLocaleString('en-US'), target: plan.challenge.targetScore.toLocaleString('en-US'),
+      remaining: (plan.challenge.targetScore - score).toLocaleString('en-US') };
+  });
+  assert.ok((await page.locator('[data-target]').innerText()).includes(`${expected.score} / ${expected.target} · 剩余 ${expected.remaining}`));
+  assert.ok((await page.locator('[data-result]').innerText()).includes(`已确认 ${expected.score} 分 · 待贡献 1 张`));
+  assert.match(await page.locator('[data-status]').innerText(), /本批尚未贡献.*此前已确认的贡献保留/s);
+  assert.match(await page.locator('[data-status]').innerText(), /Transfer.*第 1 张.*版本 100.*HTTP 409.*EA 461/s);
+  assert.equal(await page.getByRole('button', { name: '按顺序贡献', exact: true }).isDisabled(), true);
+  assert.ok((await page.locator('[data-final-progress]').innerText()).includes(`已确认 ${expected.score} / ${expected.target}`));
+  await page.screenshot({ path: 'artifacts/fc27-browser/streamlined-materialize-partial-failure.png' });
   await page.evaluate(() => { globalThis.externalSmoke.current = false; });
   await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-external-entry')?.isConnected);
   await page.waitForFunction(() => globalThis.externalSmoke.rendered === globalThis.externalSmoke.disposed);

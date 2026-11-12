@@ -1,6 +1,50 @@
 const quality = rating => rating < 65 ? 1 : rating < 75 ? 2 : 3;
 const level = tier => ({ 1: 'bronze', 2: 'silver', 3: 'gold' })[tier];
 
+// A large national cluster from one league is a poor discovery anchor when
+// the same-league cap is below the national minimum. After the native-required
+// quality's broad page, seek that quality in a nation already spanning enough
+// leagues, not another page of the larger preferred filler tier. This ranks
+// bounded queries only; it never forces a nation or proves market absence.
+export function planPuzzleNationalMinimumAffinity({ candidates = [], rules = [], required,
+  usedQueries = [], allowedLevels = [], excludedLeagueIds = [] } = {}) {
+  if (!Number.isSafeInteger(required) || required < 1) return null;
+  const minimum = Math.max(0, ...rules.filter(rule => rule.kind === 'same-nation' && rule.mode !== 'max').map(rule => rule.value));
+  const cap = Math.min(required, ...rules.filter(rule => rule.kind === 'same-league' && rule.mode !== 'min').map(rule => rule.value));
+  if (!(cap > 0 && cap < minimum)) return null;
+  const groups = new Map();
+  for (const item of candidates) {
+    if (!Number.isSafeInteger(item.nationId) || item.nationId <= 0
+        || !Number.isSafeInteger(item.leagueId) || item.leagueId <= 0
+        || excludedLeagueIds.includes(item.leagueId)) continue;
+    if (!groups.has(item.nationId)) groups.set(item.nationId, new Map());
+    groups.get(item.nationId).set(item.definitionId, item);
+  }
+  const nations = [...groups].map(([nation, byId]) => {
+    const items = [...byId.values()], leagues = new Map();
+    for (const item of items) leagues.set(item.leagueId, (leagues.get(item.leagueId) ?? 0) + 1);
+    return { nation, items, capacity: [...leagues.values()].reduce((n, count) => n + Math.min(cap, count), 0),
+      leagueCapacity: leagues.size * cap };
+  });
+  // No national-count gap in this sampled pool: keep the established routes.
+  if (nations.some(nation => nation.capacity >= minimum)) return null;
+  const qualityRules = rules.filter(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
+    && rule.count > 0 && rule.qualities.length === 1).sort((a, b) => b.count - a.count);
+  for (const rule of qualityRules) {
+    const laneLevel = level(rule.qualities[0]);
+    if (!allowedLevels.includes(laneLevel) || !usedQueries.some(query => query.level === laneLevel
+        && !query.team && !query.nation && !query.league)) continue;
+    const ranked = nations.map(nation => ({ ...nation,
+      tierCount: nation.items.filter(item => quality(item.rating) === rule.qualities[0]).length }))
+      .filter(nation => nation.tierCount > 0 && nation.leagueCapacity >= minimum)
+      .sort((a, b) => b.capacity - a.capacity || b.tierCount - a.tierCount || a.nation - b.nation);
+    const query = ranked.map(({ nation }) => ({ start: 0, count: 20, level: laneLevel, nation }))
+      .find(next => !usedQueries.some(old => JSON.stringify(old) === JSON.stringify(next)));
+    if (query) return query;
+  }
+  return null;
+}
+
 // A positive same-league minimum needs coherent supply, not just one broad
 // page of each tier. After the dominant tier's broad read, grow a league with
 // in-position support before unrelated filler pages exhaust the read budget.

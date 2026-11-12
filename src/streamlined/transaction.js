@@ -1,7 +1,8 @@
 import { assertStreamlinedPlan } from './plan.js';
 import { same, integer, fail } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
-import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery } from './journal.js';
+import { isUnsentStreamlinedJournal, canReplaceStreamlinedRemainder, streamlinedContributionRecovery, canRestartStreamlinedRejectedWave,
+  canReplaceStreamlinedRejectedWave } from './journal.js';
 
 // Adapter-neutral transaction driver. The production composition supplies a
 // separately guarded writer; a read-only preview never grants approval.
@@ -14,6 +15,11 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     const detail = { reason: safeReason(error) };
     if (integer(error?.httpStatus, 0, 599)) detail.httpStatus = error.httpStatus;
     if (typeof error?.localReason === 'string' && /^FC27_NATIVE_ERROR_\d{1,10}$/.test(error.localReason)) detail.localReason = error.localReason;
+    if (detail.reason.startsWith('FC27_STREAMLINED_MATERIALIZE_')) {
+      if (integer(error?.definitionId, 1)) detail.definitionId = error.definitionId;
+      if (integer(error?.offset, 0, 29)) detail.offset = error.offset;
+      if (['transfer', 'unassigned'].includes(error?.source)) detail.source = error.source;
+    }
     for (const key of ['attempt', 'attemptLimit']) if (integer(error?.[key], 1, 3)) detail[key] = error[key];
     if (typeof error?.methodPath === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,159}$/.test(error.methodPath)) detail.methodPath = error.methodPath;
     if (typeof error?.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(error.observedHash) || error.observedHash === 'oversized')) detail.observedHash = error.observedHash;
@@ -80,13 +86,14 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
     confirmation: { submittedScore: evidence.submittedScore, targetScore: record.plan.challenge.targetScore,
       completed: evidence.submittedScore >= record.plan.challenge.targetScore, finalizationPending: true },
   });
-  const execute = async (plan, approval, { onProgress = () => {}, stopped = () => false } = {}) => {
+  const execute = async (plan, approval, { onProgress = () => {}, stopped = () => false, restartRejected = false } = {}) => {
     if (running) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
     running = true; stopping = false;
     const shouldStop = () => stopping || stopped();
     let release, record, activeBatch, phase = 'preflight';
     const report = (phase, index) => { try { onProgress({ phase, index, total: approval.batchIndices.length,
-      submittedScore: record?.submittedScore ?? plan.challenge.submittedScore }); } catch { /* display only */ } };
+      submittedScore: record?.submittedScore ?? plan.challenge.submittedScore,
+      targetScore: plan.challenge.targetScore }); } catch { /* display only */ } };
     try {
       assertStreamlinedPlan(plan);
       if (adapter?.capabilities?.contributionVerified !== true) fail('WRITE_CONTRACT_UNVERIFIED');
@@ -98,6 +105,16 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       release = await lock.acquire(plan.context);
       if (typeof release !== 'function') fail('BUSY');
       record = await journal.read(plan.context);
+      if (restartRejected === true && canRestartStreamlinedRejectedWave(record, plan)) {
+        // This execute call already owns the mutation lock and a fresh explicit
+        // approval. Archive the rejection before resetting this exact wave;
+        // normal fresh entity/policy/progress validation still precedes send.
+        record = await journal.begin(plan, { restartRejected: true, expectedRevision: record.revision });
+      } else if (restartRejected === true && canReplaceStreamlinedRejectedWave(record, plan)) {
+        // The approved outer run may add newly bought cards to its rejected
+        // wave. Preserve its failed attempt before revalidating the new batch.
+        record = await journal.begin(plan, { replaceRejected: true, expectedRevision: record.revision });
+      }
       const replaceRemainder = record?.plan.fingerprint !== plan.fingerprint && canReplaceStreamlinedRemainder(record, plan);
       if (!record || record.plan.fingerprint !== plan.fingerprint
           && (isUnsentStreamlinedJournal(record) || record.batches.every(b => ['confirmed', 'rejected'].includes(b.state)) || replaceRemainder)) {
@@ -133,7 +150,15 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
         let reply;
         report('contribution', index);
         phase = 'dispatch';
-        try { reply = await adapter.contribute(plan, batch); }
+        if (shouldStop()) {
+          // The intent is durable, but the transport has not been invoked.
+          // Restore the exact unsent state before releasing the mutation lock.
+          record.batches[index].state = 'waiting';
+          delete record.batches[index].startingScore;
+          record = await journal.write(plan.context, record, record.revision);
+          return { status: 'stopped', record };
+        }
+        try { reply = await adapter.contribute(plan, batch, { stopped: shouldStop }); }
         catch (error) {
           diagnose('dispatch', 'unknown', record, batch, () => failureDetail(error));
           reply = { status: 'unknown' };
@@ -144,13 +169,17 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           ...(reply?.reason ? { reason: responseReason(reply.reason) } : {}),
         }));
         if (reply?.status === 'rejected') {
-          record.batches[index].state = 'rejected';
+          const cancelled = shouldStop() && reply.reason === 'FC27_STREAMLINED_CANCELLED';
+          record.batches[index].state = cancelled ? 'waiting' : 'rejected';
+          if (cancelled) delete record.batches[index].startingScore;
           record = await journal.write(plan.context, record, record.revision);
+          if (cancelled) return { status: 'stopped', record };
           return { status: 'rejected', reason: reply.reason, record };
         }
         // Save the accepted receipt before any readback which can time out.
         // Restart recovery can then distinguish a completed/reset cycle from
-        // an uncommitted request. Persistence failure leaves pending, never retries.
+        // an uncommitted request. Persistent failure leaves pending; any retry
+        // below is local storage only, never another contribution request.
         phase = 'receipt';
         if (reply?.status === 'accepted' && reply.schema !== undefined) {
           try {
@@ -166,7 +195,14 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
           }
           diagnose('receipt', 'verified', record, batch, { httpStatus: record.batches[index].receipt.code });
           phase = 'checkpoint';
-          record = await journal.write(plan.context, record, record.revision);
+          try { record = await journal.write(plan.context, record, record.revision); }
+          catch (error) {
+            if (error?.message !== 'FC27_STREAMLINED_JOURNAL_WRITE_FAILED') throw error;
+            // Retry only this validated local receipt checkpoint, once. The
+            // contribution request is never replayed. Revision guards still
+            // prevent overwriting a checkpoint that actually succeeded.
+            record = await journal.write(plan.context, record, record.revision);
+          }
           batch = record.batches[index];
         }
         // Stop is deferred until this contribution's reconcile/writeback ends.
@@ -202,7 +238,7 @@ export function createStreamlinedTransaction({ adapter, journal, lock, now = () 
       diagnose(phase, 'blocked', record, activeBatch, () => ({ ...failureDetail(error),
         ...(error.recovery ? error.recovery : {}) }));
       return { status: 'blocked', ...failureDetail(error), ...(error.recovery ? { recovery: error.recovery } : {}),
-        ...(phase === 'validation' && ['FC27_STREAMLINED_PROGRESS_READ_FAILED', 'FC27_STREAMLINED_PROGRESS_READ_TIMEOUT'].includes(error?.message)
+        ...(phase === 'validation' && record?.plan?.fingerprint === plan.fingerprint
           ? { record } : {}) };
     }
     finally { try { await release?.(); } finally { running = false; } }

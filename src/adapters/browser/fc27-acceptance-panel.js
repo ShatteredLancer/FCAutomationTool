@@ -1,3 +1,4 @@
+import { DEFAULT_PUZZLE_OBJECTIVE } from '../../fc27/puzzle-procurement-policy.js';
 import { describeCatalogRule, describeCatalogRewards, describePreparedRequirement } from '../../fc27/sbc-presentation.js';
 import { fc27WorkbenchMarkup, bindFc27WorkbenchTabs } from './fc27-workbench-view.js';
 import { mountFc27GalleryView } from './fc27-gallery-view.js';
@@ -24,6 +25,13 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const trading=mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery');trading.setActive(id==='trading'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
   const node = id => shadow.getElementById(id);
+  const renderPuzzleObjective = () => {
+    node('puzzle-objective-note').textContent = node('puzzle-objective').value === 'additional-coins'
+      ? '当前选择最低购卡支出：库存卡不计新增支出，可能使用高价值库存。要保留贵库存，请改选「最低材料总价值」并保存；更新不会自动改变以前保存的选项。'
+      : '当前选择最低材料总价值：同时比较库存估值与待购卡价格，可能多买便宜卡以保留贵库存；仍遵守原采购限价和保护，不保证全市场最低。';
+  };
+  node('puzzle-objective').addEventListener('change', renderPuzzleObjective);
+  renderPuzzleObjective();
   node('workbench-version').textContent = version ?? title;
   node('workbench-mode').textContent = liveEnabled === true ? '已开放现有单次操作；提交需单独确认。' : '当前为只读模式。';
   node('diagnostic-export-card').hidden = typeof exportDiagnostics !== 'function';
@@ -174,7 +182,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
           queriesNumber: Number(node('puzzle-queries').value), objective: node('puzzle-objective').value })
         : await setPuzzleMaxRating(value);
       return { ...result, reason: result.status === 'observed'
-        ? `解题设置已保存：最高评分 ${result.maxRating}；补卡单卡报价${result.quoteCeiling == null ? '不限' : `上限 ${result.quoteCeiling} 金币`}` : result.reason };
+        ? `解题设置已保存：${result.objective ? `目标 ${result.objective === 'material-value' ? '最低材料总价值' : '最低购卡支出'}；` : ''}最高评分 ${result.maxRating}；补卡单卡报价${result.quoteCeiling == null ? '不限' : `上限 ${result.quoteCeiling} 金币`}` : result.reason };
     });
   });
   shadow.querySelector('details').addEventListener('toggle', () => {
@@ -185,7 +193,8 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
         node('puzzle-rating').value = String(result.maxRating);
         node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
         node('puzzle-queries').value = String(result.queriesNumber ?? 5);
-        node('puzzle-objective').value = result.objective ?? 'additional-coins';
+        node('puzzle-objective').value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+        renderPuzzleObjective();
       }
       return result;
     });
@@ -246,7 +255,8 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
           node('puzzle-rating').value = String(result.maxRating);
           node('puzzle-quote-ceiling').value = result.quoteCeiling == null ? '' : String(result.quoteCeiling);
           node('puzzle-queries').value = String(result.queriesNumber ?? 5);
-        node('puzzle-objective').value = result.objective ?? 'additional-coins';
+          node('puzzle-objective').value = result.objective ?? DEFAULT_PUZZLE_OBJECTIVE;
+          renderPuzzleObjective();
         }
         return result;
       });

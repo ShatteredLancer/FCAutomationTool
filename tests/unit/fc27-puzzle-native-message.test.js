@@ -204,3 +204,15 @@ it.each(['cache', 'request'])('explains a %s 401 and the user-triggered recovery
   expect(text).toContain('30 秒'); expect(text).toContain('再次点击'); expect(text).toContain('1234');
   expect(text).not.toContain('登录已过期');
 });
+
+it('warns cash-first legacy users about owned material value and gives the exact switch location', () => {
+  const text = formatFc27PuzzleNativeResult({ status: 'concept-filled', purchaseCount: 5, estimatedCost: 2800,
+    procurementSummary: { diagnostics: { objective: 'additional-coins', requestedObjective: 'additional-coins' } } });
+  expect(text).toContain('当前按最低购卡支出'); expect(text).toContain('库存卡不计新增支出');
+  expect(text).toContain('设置 → 解题优化目标'); expect(text).toContain('最低材料总价值');
+});
+it('does not describe a valuation fallback as a deliberate cash-first preference', () => {
+  const text = formatFc27PuzzleNativeResult({ status: 'concept-filled', purchaseCount: 5, estimatedCost: 2800,
+    valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE', procurementSummary: { diagnostics: { objective: 'additional-coins', requestedObjective: 'material-value' } } });
+  expect(text).toContain('本轮未完成材料总值比较'); expect(text).not.toContain('当前按最低购卡支出');
+});

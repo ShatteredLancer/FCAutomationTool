@@ -7,11 +7,13 @@ import { readFc27StreamlinedInputs } from '../../src/adapters/ea/fc27-streamline
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 import { splitStreamlinedBatches } from '../../src/streamlined/planner.js';
 import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
+import { nativeMoveHarness } from '../helpers/fc27-native-move.js';
 
 async function setup(pile = 'unassigned', sourceChanges = {}) {
   const f = streamlinedRuntime({ targetScore: 20 }), memory = new Map(), club = [];
   Object.assign(f.root.AuctionTradeStateEnum, expiredTransfer.enums);
   const source = { ...f.root.repositories.Item.club.items._collection[1], id: 901, definitionId: 1901,
+    isDuplicate() { return this.duplicateId > 0; },
     pile: pile === 'transfer' ? 5 : 1, utasPile: pile === 'transfer' ? 5 : 1, ...sourceChanges };
   f.root.repositories.Item.getUnassignedItems = () => pile === 'unassigned' ? [source] : [];
   f.root.repositories.Item.getTransferItems = () => pile === 'transfer' ? [source] : [];
@@ -142,6 +144,86 @@ it('records explicit rejection and permits a fresh approved attempt', async () =
   f.state.reply = { success: true, data: { itemIds: [901] } }; f.state.moved = true;
   await (await f.create()).prepare(f.refs);
   expect(f.move).toHaveBeenCalledTimes(2);
+});
+
+it('replays native stale-duplicate rejection before any DAO movement', async () => {
+  const native = nativeMoveHarness(), item = native.decorate({ id: 901, definitionId: 1901, duplicateId: 999, pile: 5 });
+  const response = await new Promise(resolve => native.service.move(item, 7).observe({}, (_sender, value) => resolve(value)));
+  expect(response).toMatchObject({ success: false, status: 0, data: { itemIds: [] } });
+  expect(native.service.requestItemsById).toHaveBeenCalledWith([999]);
+  expect(native.service.itemDao.move).not.toHaveBeenCalled();
+});
+
+it.each(['transfer', 'unassigned'])('corrects stale %s duplicate metadata only after fresh Club absence, then runs native move', async pile => {
+  const f = await setup(pile), native = nativeMoveHarness({ onAdd: item => f.club.push(item) });
+  native.decorate(f.source); f.source.duplicateId = 999;
+  f.move.mockImplementation((...args) => native.service.move(...args));
+  expect(await (await f.create()).prepare(f.refs)).toMatchObject({ status: 'materialized' });
+  expect(f.source.duplicateId).toBe(0);
+  expect(native.service.requestItemsById).not.toHaveBeenCalled();
+  expect(native.service.itemDao.move).toHaveBeenCalledTimes(1);
+  await (await f.create()).prepare(f.refs);
+  expect(native.service.itemDao.move).toHaveBeenCalledTimes(1);
+});
+
+it.each([401, 403, 429, 500])('preserves native move rejection %s details without exposing the raw response', async status => {
+  const f = await setup('transfer'), onDiagnostic = vi.fn();
+  f.state.moved = false; f.state.reply = { success: false, status, error: { code: 461, secret: 'private' } };
+  await expect((await f.create({ onDiagnostic })).prepare(f.refs)).rejects.toMatchObject({
+    message: 'FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED', httpStatus: status, localReason: 'FC27_NATIVE_ERROR_461',
+    definitionId: 1901, source: 'transfer', offset: 0 });
+  expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({ phase: 'materialize-response', status: 'rejected',
+    httpStatus: status, localReason: 'FC27_NATIVE_ERROR_461', count: 1, definitionId: 1901, source: 'transfer', offset: 0 }));
+  expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/private|"id"|\b901\b/);
+  expect(f.move).toHaveBeenCalledTimes(1);
+});
+
+it.each(['club-present', 'read-failed', 'read-only-field', 'unknown-predicate', 'account-changed'])('does not clear unsafe duplicate metadata: %s', async kind => {
+  const f = await setup('transfer'); f.source.duplicateId = 999;
+  let overrides = {};
+  if (kind === 'club-present') f.club.push({ ...f.source, id: 999 });
+  if (kind === 'read-failed') overrides = { createTransport: async () => { throw Error('FC27_CLUB_HTTP_401'); } };
+  if (kind === 'read-only-field') Object.defineProperty(f.source, 'duplicateId', { value: 999, writable: false });
+  if (kind === 'unknown-predicate') f.source.isDuplicate = () => true;
+  const materializer = await f.create(overrides);
+  if (kind === 'account-changed') f.user.selectedPersona = 444;
+  await expect(materializer.prepare(f.refs)).rejects.toThrow('FC27_');
+  expect(f.source.duplicateId).toBe(999);
+  expect(f.move).not.toHaveBeenCalled();
+  expect(f.state.writes).toBe(0);
+});
+
+it.each(['throw', 'reject', 'getters'])('isolates diagnostic %s failures from successful movement', async kind => {
+  const f = await setup();
+  const onDiagnostic = () => { if (kind === 'throw') throw Error('diagnostic'); return Promise.reject(Error('diagnostic')); };
+  if (kind === 'getters') {
+    Object.defineProperty(f.state.reply, 'status', { get() { throw Error('status'); } });
+    Object.defineProperty(f.state.reply, 'error', { get() { throw Error('error'); } });
+  }
+  expect(await (await f.create({ onDiagnostic })).prepare(f.refs)).toMatchObject({ status: 'materialized' });
+  expect([...f.memory.values()][0].entries[0].state).toBe('confirmed');
+  expect(f.move).toHaveBeenCalledTimes(1);
+});
+
+it('reconciles a partially moved two-card batch without moving the first card again', async () => {
+  const f = await setup('transfer'), second = { ...f.source, id: 902, definitionId: 1902 };
+  const items = [f.plan.items[0], { ...f.plan.items[0], id: 902, key: 'item:902', definitionId: 1902 }];
+  const plan = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge, policy: f.plan.policy,
+    result: { status: 'ready', items, batches: [items], score: 40, purchaseCost: 0, materialValue: null,
+      progress: { target: 20, submitted: 0, added: 40, total: 40, remaining: 0, excess: 20, reached: true }, searchComplete: true } });
+  const refs = [f.refs[0], { ...f.refs[0], id: 902, definitionId: 1902 }];
+  f.root.repositories.Item.getTransferItems = () => [f.source, second];
+  let rejectSecond = true;
+  f.move.mockImplementation(source => ({ observe(_owner, callback) {
+    if (source.id === 902 && rejectSecond) return callback(this, { success: false, status: 409 });
+    f.club.push({ ...source, pile: 7, utasPile: 7 });
+    callback(this, { success: true, data: { itemIds: [source.id] } });
+  }, unobserve() {} }));
+  await expect((await f.create({ plan })).prepare(refs)).rejects.toMatchObject({ offset: 1, definitionId: 1902 });
+  expect([...f.memory.values()][0].entries.map(row => row.state)).toEqual(['confirmed', 'rejected']);
+  rejectSecond = false;
+  expect(await (await f.create({ plan })).prepare(refs)).toMatchObject({ status: 'materialized' });
+  expect(f.move.mock.calls.map(([source]) => source.id)).toEqual([901, 902, 902]);
 });
 
 it.each(['write', 'permission', 'account', 'policy'])('blocks %s changes before any move', async kind => {

@@ -1,8 +1,18 @@
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
 import { renderStreamlinedExternalSelection } from './fc27-streamlined-external-view.js';
+import { streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
 
 const number = value => Number.isSafeInteger(value) ? value.toLocaleString('en-US') : '未知';
 const safeReason = error => /^FC27_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'FC27_STREAMLINED_UNAVAILABLE';
+
+export function streamlinedPurchaseResumeMessage(result) {
+  const record = result?.record, audit = streamlinedPurchaseAudit(record);
+  if (result?.status !== 'recovered' || record?.completed === true || audit.pendingWriteCount !== 0
+      || ![record?.budget, record?.spent, record?.submittedScore, record?.challenge?.targetScore,
+        audit.contributedCount, audit.unconsumedPurchaseCount].every(Number.isSafeInteger)
+      || record.submittedScore >= record.challenge.targetScore) return null;
+  return `已恢复原购卡任务：已确认 ${number(audit.contributedCount)} 张、${number(record.submittedScore)} / ${number(record.challenge.targetScore)} 分；已购待处理 ${number(audit.unconsumedPurchaseCount)} 张。已花 ${number(record.spent)} 金币，原预算剩余 ${number(record.budget - record.spent)}。请点击“继续原方案购买并贡献”；原预算和单卡上限不变，已确认材料不会重复投入。`;
+}
 
 export function streamlinedConfirmedContribution(result) {
   const value = result?.confirmation;
@@ -156,6 +166,8 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_PROTECTION_UNVERIFIED: '锁卡或当前主阵容信息尚未核验，请先打开 EA 主阵容，再返回生成方案；未投入新材料。',
     FC27_STREAMLINED_POLICY_CHANGED: '选材设置已变化，旧方案未继续投入。请生成新方案并确认执行；已确认积分保留，旧记录会先归档，未完成的纯库存批次可重新规划。',
     FC27_STREAMLINED_MATERIAL_CHANGED: '选中材料已变化或受到锁卡/主阵容保护，已停止；请核对记录后重新生成方案。',
+    FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED: '外部卡移入 Club 被原生接口拒绝，本批尚未贡献。此前已确认的贡献保留；请点击“核对并恢复”检查剩余批次。',
+    FC27_STREAMLINED_MATERIALIZE_DUPLICATE_METADATA_UNVERIFIED: '外部卡的重复标记无法安全更新，本次未移动该卡。此前已确认的贡献保留；请刷新原生 Transfer / Unassigned 列表后核对并恢复。',
     FC27_BUY_JOURNAL_READ_FAILED: 'Puzzle 购买记录读取失败，请重新读取或导出诊断；未清除记录、未投入材料。',
     FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: '当前账号有待核对的 Gallery 购卡记录，请先到 Gallery 购买窗口核对并继续购买。',
     FC27_RECOVERY_REQUIRED: '当前账号有待核对的传统 SBC 提交记录，请先恢复该次提交。',
@@ -404,7 +416,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       shown = result;
       const marketRun = result.plan.route?.groups?.some(group => group.source === 'market') === true;
       const orderedExternal = result.externalSelection === true;
-      node('contribute').textContent = marketRun ? '按方案购买并贡献' : orderedExternal ? '按顺序贡献' : '贡献所选批次';
+      node('contribute').textContent = marketRun ? result.record ? '继续原方案购买并贡献' : '按方案购买并贡献' : orderedExternal ? '按顺序贡献' : '贡献所选批次';
       const output = node('result'), p = result.progress;
       if (result.plan.execution?.quoteLimited === true) {
         const warning = add(output, 'section'); warning.className = 'inventory-warning';
@@ -452,9 +464,9 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         budget.value = String(result.record?.budget ?? proposal.budget);
         if (result.record) { budget.dataset.settled = 'true'; budget.disabled = true; }
         add(output, 'small', result.record
-          ? `执行预算已冻结：${number(result.record.budget)} 金币。更改额度需重新生成方案并确认；不会自动改写旧预算。`
+          ? `执行预算已冻结：${number(result.record.budget)} 金币；已花 ${number(result.record.spent)}，剩余 ${number(result.record.budget - result.record.spent)}。继续使用原任务和原单卡上限，不因重新生成而增加预算。`
           : `预算明细：单卡上限合计 ${number(proposal.base)} + 15% 替代预留 ${number(proposal.reserve)} = 建议总预算 ${number(proposal.budget)} 金币。预留仅用于授权市场池内换卡，不提高单卡限价，也不要求花完。`);
-        add(output, 'small', `每卡最多尝试 ${number(result.plan.execution?.purchaseAttempts ?? 3)} 次 · 部分批次等待上限 ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} 秒（本批无更多候选时跳过）· 每次点击授权最长 10 分钟；到期保留进度。`);
+        add(output, 'small', `每卡最多尝试 ${number(result.plan.execution?.purchaseAttempts ?? 3)} 次 · 部分批次等待上限 ${number((result.plan.execution?.partialWaitMs ?? 60000) / 1000)} 秒（本批无更多候选时跳过）· 每次点击授权最长 30 分钟；到期保留进度。`);
         const scope = result.plan.execution?.purchaseScope;
         if (scope) {
           const pool = add(output, 'details'), rows = scope.groups.flatMap(group => group.items);
@@ -478,7 +490,14 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           });
         }
       }
-      add(output, 'div', `${result.status === 'ready' ? '预计达标' : '部分方案'} · ${number(p.submitted)} 已提交 + ${number(p.added)} 本次 · 还差 ${number(p.remaining)} / 超额 ${number(p.excess)}`).className = 'result-summary';
+      if (result.record && !marketRun) {
+        const waiting = result.record.submittedScore >= p.target ? []
+          : result.record.batches.flatMap((batch, index) => batch.state === 'waiting' ? result.plan.batches[index] : []);
+        const uncertain = result.record.batches.filter(batch => ['pending', 'unknown'].includes(batch.state)).length;
+        add(output, 'div', `已确认 ${number(result.record.submittedScore)} 分 · 待贡献 ${number(waiting.length)} 张 / ${number(waiting.reduce((sum, ref) => sum + ref.points, 0))} 分 · 当前还差 ${number(Math.max(0, p.target - result.record.submittedScore))} 分${uncertain ? ` · ${number(uncertain)} 批待核对` : ''}`).className = 'result-summary';
+      } else add(output, 'div', marketRun && result.record
+        ? `原方案续做 · 已确认 ${number(result.record.submittedScore)} / ${number(result.plan.challenge.targetScore)} 分 · 还差 ${number(Math.max(0, result.plan.challenge.targetScore - result.record.submittedScore))} 分`
+        : `${result.status === 'ready' ? '预计达标' : '部分方案'} · ${number(p.submitted)} 已提交 + ${number(p.added)} 本次 · 还差 ${number(p.remaining)} / 超额 ${number(p.excess)}`).className = 'result-summary';
       const total = result.materialValue == null ? null : result.purchaseCost + result.materialValue;
       const inventoryFirst = result.plan.objective === 'inventory-first';
       const quoteLabel = inventoryFirst && !marketRun ? '库存优先 · 未查询市场报价' : String(result.quoteSource).toUpperCase();
@@ -615,14 +634,15 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           : `搜索节点 ${number(p.nodes)} / ${number(p.maxNodes)} · 候选 ${number(p.candidates)} · ${number(p.elapsedMs)} ms`;
       } });
       if (serial !== opened) return;
-      node('status').textContent = result.status === 'cancelled' ? '已停止。'
+      node('status').textContent = streamlinedPurchaseResumeMessage(result) ?? (result.status === 'cancelled' ? '已停止。'
         : result.plan?.execution?.quoteLimited === true ? '部分报价可用：请核对库存消耗和价格，再确认是否执行。'
         : result.reason === 'FC27_STREAMLINED_FSU_NOT_READY'
           ? 'FSU 尚未就绪，请按上方提示检查后重试。'
           : result.reason === 'FC27_STREAMLINED_PROTECTION_UNVERIFIED'
             ? streamlinedExecutionMessage(result.reason, null, result.protectionFailure) : result.reason
-            ?? { ready: '方案已生成，尚未购买或贡献。', partial: '部分方案已生成，请核对材料与剩余需求。', blocked: '未生成可执行方案。' }[result.status] ?? result.status;
+            ?? { ready: '方案已生成，尚未购买或贡献。', partial: '部分方案已生成，请核对材料与剩余需求。', blocked: '未生成可执行方案。' }[result.status] ?? result.status);
       renderResult(result);
+      if (result.recoveryAttempted) showOutcome(result);
     } catch (error) { if (serial === opened) node('status').textContent = safeReason(error); }
     finally { setBusy(false); }
   });
@@ -668,8 +688,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     const labels = { completed: '目标已达成，奖励状态需另行核对。', partial: '本次贡献已确认，可继续剩余批次。',
       stopped: '已停止；已确认的成交和贡献保留，可核对并恢复。', recovered: '已恢复记录，未重复贡献。', observed: '已读取上次记录。', absent: '没有待恢复的贡献记录。',
       'recovery-required': '结果尚未确认，请核对并恢复；不会重复贡献。', rejected: 'EA 拒绝了本次贡献，请重新规划。' };
-    node('status').textContent = confirmed ? confirmed.message : result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
-      : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status;
+    node('status').textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
+      : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status);
     if (archiveBlocked && result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED') {
       const old = result.recovery;
       node('status').textContent = `旧 SBC（Set ${old?.setId ?? '?'} / Challenge ${old?.challengeId ?? '?'}）尚未结束：已确认 ${number(old?.confirmedBatches)} 批、未发送 ${number(old?.waitingBatches)} 批、结果未知 ${number(old?.pendingWriteCount)} 批。阻断原因见下方。`;
@@ -681,7 +701,20 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     if (result.warning?.reason === 'FC27_STREAMLINED_FOREIGN_PURCHASE_ISOLATED') {
       node('status').textContent = streamlinedExecutionMessage(result.warning.reason, result.warning.recovery);
     }
-    if (result.record) node('target').textContent = `${result.record.plan.challenge.name} · ${previousCycle ? '上一轮 ' : ''}${number(confirmed?.submittedScore ?? result.record.submittedScore)} / ${number(confirmed?.targetScore ?? result.record.plan.challenge.targetScore)}`;
+    if (result.reason === 'FC27_STREAMLINED_MATERIALIZE_MOVE_REJECTED') {
+      const detail = [];
+      if (['transfer', 'unassigned'].includes(result.source)) detail.push(result.source === 'transfer' ? 'Transfer' : 'Unassigned');
+      if (Number.isSafeInteger(result.offset)) detail.push(`本批第 ${result.offset + 1} 张外部卡`);
+      if (Number.isSafeInteger(result.definitionId)) detail.push(`版本 ${result.definitionId}`);
+      if (Number.isSafeInteger(result.httpStatus)) detail.push(result.httpStatus === 0 ? '原生状态 0（未提供 HTTP 状态）' : `HTTP ${result.httpStatus}`);
+      if (/^FC27_NATIVE_ERROR_\d{1,10}$/.test(result.localReason)) detail.push(`EA ${result.localReason.slice('FC27_NATIVE_ERROR_'.length)}`);
+      if (detail.length) node('status').textContent += `\n${detail.join(' · ')}`;
+    }
+    if (result.record) {
+      const score = confirmed?.submittedScore ?? result.record.submittedScore;
+      const target = confirmed?.targetScore ?? result.record.plan.challenge.targetScore;
+      node('target').textContent = `${result.record.plan.challenge.name} · ${previousCycle ? '上一轮 ' : ''}${number(score)} / ${number(target)} · 剩余 ${number(Math.max(0, target - score))}`;
+    }
   };
   on('contribute', async () => {
     if (busy || !contributionReady()) return;
@@ -697,6 +730,10 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         onProgress: p => {
           if (serial !== opened) return;
           executionStep(p);
+          if (Number.isSafeInteger(p.submittedScore)) {
+            const target = result.plan.challenge.targetScore;
+            node('target').textContent = `${result.plan.challenge.name} · ${number(p.submittedScore)} / ${number(target)} · 剩余 ${number(Math.max(0, target - p.submittedScore))}`;
+          }
           const materializeLabel = { 'checking-source': '检查外部卡', 'checking-club': '核对 Club',
             'journal-pending': '写入恢复记录', 'move-request': '请求移入 Club',
             'move-acknowledged': '移动回执已确认', 'club-readback': '核对 Club 回读', confirmed: '移入 Club 已确认' }[p.stage];

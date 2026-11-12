@@ -193,7 +193,7 @@ it('recovers an empty-server mixed-pile save only after fresh Storage identity c
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
 });
 
-it('keeps the native owned save contract and reports total material value after public-price refinement', async () => {
+it('uses the material-value default through the native owned save and public-price refinement', async () => {
   const store=new Map();
   const diagnosticLog=createFcatDiagnosticLog({gmGetValue:(key,fallback)=>store.get(key)??fallback,
     gmSetValue:(key,value)=>store.set(key,value),version:'27.0.84'});
@@ -203,14 +203,14 @@ it('keeps the native owned save contract and reports total material value after 
         definitionId, season: '27', platform: 'pc', price: 200, fetchedAt: Date.now(),
         sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) }])) })) };
   const x = fixture({ publicPrices,diagnosticLog });
-  await x.session.setPuzzlePolicy({ objective: 'material-value' });
+  expect(await x.session.inspectPuzzlePolicy()).toMatchObject({ objective: 'material-value' });
   const result=await x.fill();
   expect(result).toMatchObject({ status: 'filled', saved: true, submitted: false,
     materialValue: 2200, inventoryValue: 2200 });
   expect(result.procurementSummary).toBeDefined();
   const payload=await diagnosticLog.exportPayload();
   expect(payload.entries).toEqual(expect.arrayContaining([expect.objectContaining({area:'puzzle',event:'procurement-result',
-    status:result.procurementSummary.status,reason:result.procurementSummary.reason})]));
+    status:result.procurementSummary.status,reason:result.procurementSummary.reason,requestedObjective:'material-value'})]));
   expect(publicPrices.load.mock.calls.length).toBeGreaterThanOrEqual(1);
   expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
   expect(x.calls.some(call => call.kind === 'bid')).toBe(false);
@@ -1177,7 +1177,7 @@ it('does not request Club data or overwrite the occupied native squad on another
 
 it('persists both Puzzle optimization targets and rejects unknown targets', async () => {
   const x = fixture();
-  expect(await x.session.inspectPuzzlePolicy()).toMatchObject({ objective: 'additional-coins' });
+  expect(await x.session.inspectPuzzlePolicy()).toMatchObject({ objective: 'material-value' });
   expect(await x.session.setPuzzlePolicy({ objective: 'material-value' })).toMatchObject({ status: 'observed', objective: 'material-value' });
   expect(await x.restart().inspectPuzzlePolicy()).toMatchObject({ objective: 'material-value', maxRating: 82 });
   expect(await x.session.setPuzzlePolicy({ objective: 'unknown' })).toMatchObject({ status: 'blocked' });
@@ -1188,8 +1188,23 @@ it('persists both Puzzle optimization targets and rejects unknown targets', asyn
 it('fills a feasible zero-cash squad without market or valuation reads in minimum-purchase mode', async () => {
   const publicPrices = { load: vi.fn(async () => { throw Error('must not query'); }) };
   const x = fixture({ publicPrices });
+  await x.session.setPuzzlePolicy({ objective: 'additional-coins' });
   const result = await x.fill();
   expect(result).toMatchObject({ status: 'filled', saved: true, objective: 'additional-coins' });
   expect(publicPrices.load).not.toHaveBeenCalled();
   expect(x.calls.some(call => ['buy', 'bid'].includes(call.kind))).toBe(false);
+});
+
+it('preserves explicitly saved cash-first settings and all limits on upgrade/restart', async () => {
+  const x = fixture(), key = 'fcat-fc27-puzzle-policy:' + traditionalJournalScope(readFc27Context(x.root));
+  const saved = { schema: 1, maxRating: 85, quoteCeiling: 750, queriesNumber: 3, objective: 'additional-coins' };
+  x.data.set(key, structuredClone(saved));
+  expect(await x.restart().inspectPuzzlePolicy()).toMatchObject({ maxRating: 85, quoteCeiling: 750, queriesNumber: 3, objective: 'additional-coins' });
+  expect(x.data.get(key)).toEqual(saved); expect(x.calls).toHaveLength(0);
+});
+it('uses the new objective for legacy settings without an objective and preserves their limits', async () => {
+  const x = fixture(), key = 'fcat-fc27-puzzle-policy:' + traditionalJournalScope(readFc27Context(x.root));
+  const saved = { schema: 1, maxRating: 80, quoteCeiling: 500, queriesNumber: 4 }; x.data.set(key, structuredClone(saved));
+  expect(await x.restart().inspectPuzzlePolicy()).toMatchObject({ maxRating: 80, quoteCeiling: 500, queriesNumber: 4, objective: 'material-value' });
+  expect(x.data.get(key)).toEqual(saved); expect(x.calls).toHaveLength(0);
 });
