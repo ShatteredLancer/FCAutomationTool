@@ -1,3 +1,4 @@
+import { puzzleReservationKey, readPuzzleReservations } from '../../fc27/puzzle-reservations.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { inspectFc27ChallengeCatalog } from '../ea/fc27-challenge-catalog.js';
@@ -42,26 +43,7 @@ const puzzleInput = input => ({ context: input.context, challenge: input.challen
 // contains only the reviewed, serializable challenge projection; it never
 // contains EA entities, Club items, or request/response objects.
 const puzzleCatalogCacheKey = (scope, setId, challengeId = 'all') => `fcat-fc27-puzzle-catalog:${scope}:${setId}:${challengeId}`;
-const puzzleReservationKey = scope => `fcat-fc27-puzzle-reservations:${scope}`;
 const validReservationId = value => Number.isSafeInteger(value) && value > 0;
-const reservationTarget = value => Number.isSafeInteger(value) && value > 0;
-const readPuzzleReservations = async (get, scope) => {
-  const value = await get(puzzleReservationKey(scope), null);
-  if (value === null) return { schema: 1, targets: [] };
-  if (!value || value.schema !== 1 || !Array.isArray(value.targets) || value.targets.length > 100) {
-    throw new Error('FC27_PUZZLE_RESERVATION_UNVERIFIED');
-  }
-  const targets = value.targets.map(entry => {
-    if (!reservationTarget(entry?.setId) || !reservationTarget(entry?.challengeId)
-        || !Array.isArray(entry.itemRefs) || entry.itemRefs.length > 11
-        || entry.itemRefs.some(ref => !validReservationId(ref?.id) || !validReservationId(ref?.definitionId))) {
-      throw new Error('FC27_PUZZLE_RESERVATION_UNVERIFIED');
-    }
-    return { setId: entry.setId, challengeId: entry.challengeId,
-      itemRefs: entry.itemRefs.map(ref => ({ id: ref.id, definitionId: ref.definitionId })) };
-  });
-  return { schema: 1, targets };
-};
 const writePuzzleReservations = async (get, set, scope, value) => {
   await set(puzzleReservationKey(scope), structuredClone(value));
   if (JSON.stringify(await get(puzzleReservationKey(scope), null)) !== JSON.stringify(value)) {

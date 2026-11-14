@@ -48,6 +48,7 @@ import { startGalleryTradingPoll } from '../adapters/browser/fc27-gallery-tradin
 import { createFc27TradingDesk } from '../adapters/browser/fc27-trading-desk.js';
 import { createTradingTaskStore } from '../adapters/browser/fc27-trading-task-store.js';
 import { createMarketCoordinator } from '../adapters/browser/fc27-market-coordinator.js';
+import { createFc27MarketTaskExecution } from '../adapters/browser/fc27-market-task-execution.js';
 import { marketTaskEvidence } from '../trading/market-coordination.js';
 import { readTradingTaskInventory } from '../adapters/ea/fc27-trading-task-catalog.js';
 import { createFc27TradingExecution } from '../adapters/browser/fc27-trading-execution.js';
@@ -213,6 +214,10 @@ const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.con
   readCoordination:()=>marketCoordinator.inspect(),
   readCatalog:()=>[...new Map([...readFc27TradingCandidates(unsafeWindow),...publicPrices.knownPlayers()].map(row=>[row.definitionId,row])).values()],
   readInventory:()=>readTradingTaskInventory(unsafeWindow)};
+tradingTasks.runtime=createFc27MarketTaskExecution({root:unsafeWindow,get:GM_getValue,set:GM_setValue,gmRequest:GM_xmlhttpRequest,
+  transport:galleryTransport,taskStore:tradingTasks.service,coordinator:marketCoordinator,readCatalog:tradingTasks.readCatalog,
+  liveEnabled:dependencies.liveEnabled,diagnosticLog});
+unsafeWindow.addEventListener?.('beforeunload',()=>tradingTasks.runtime.dispose(),{once:true});
 let storageMaintenancePending = true;
 void compactFc27Storage({ list: typeof GM_listValues === 'function' ? GM_listValues : null,
   get: GM_getValue, set: GM_setValue, locks: unsafeWindow.navigator.locks,

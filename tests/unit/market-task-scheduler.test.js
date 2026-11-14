@@ -53,6 +53,14 @@ const search = { kind: 'search' };
 const buy = (itemId = '100') => ({ kind: 'buy', definitionId: 1001, itemId, tradeId: 'offer-' + itemId, coins: 800 });
 
 describe('approved task scheduler with simulated providers', () => {
+  it('does not restart a stopped task; a copied configuration has a fresh task identity', async () => {
+    const f = await fixture();
+    let snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });
+    await expect(f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] })).rejects.toThrow('TASK_SELECTION_INVALID');
+    snapshot = await f.taskStore.action({ ...snapshot, id: f.ids[0], action: 'copy' });
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [snapshot.store.tasks.at(-1).id] });
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
   it('imports only the explicitly selected exact holding and never sends a fake buy or move for Transfer', async () => {
     const f = await fixture(), input = f.input('Sell'); input.mode = 'sell';
     input.owned = [{ itemId: '201', definitionId: 1001, name: 'Owned', pile: 'transfer' }];

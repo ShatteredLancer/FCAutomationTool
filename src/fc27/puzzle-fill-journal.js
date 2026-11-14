@@ -36,6 +36,24 @@ function normalize(scope, input) {
   return structuredClone(input);
 }
 
+// Read-only ownership projection for another FC27 transaction under the shared
+// native lock. Inspect every indexed target, never only the latest saved squad.
+export async function readFc27PuzzleFillRecords(get, input) {
+  const context = createSeasonContext(input), base = keyOf(context);
+  const scope = traditionalJournalScope(context);
+  const targets = await get(indexKeyOf(base), []);
+  if (!Array.isArray(targets) || targets.length > 100 || targets.some(t => !positive(t?.setId) || !positive(t?.challengeId))) fail('FC27_PUZZLE_FILL_JOURNAL_UNVERIFIED');
+  const keys = [base, ...targets.map(t => targetKeyOf(base, t.setId, t.challengeId))];
+  const records = [];
+  for (const key of new Set(keys)) {
+    const raw = await get(key, null); if (raw === null) continue;
+    const row = normalize(scope, raw);
+    if (row.account && (row.account.accountScope !== context.accountScope || row.account.platform !== context.platform)) fail('FC27_PUZZLE_FILL_JOURNAL_ACCOUNT_CONFLICT');
+    records.push(row);
+  }
+  return records;
+}
+
 export function createFc27PuzzleFillPersistence({ context, gmGetValue, gmSetValue, lock, lockScope = null } = {}) {
   if (typeof gmGetValue !== 'function' || typeof gmSetValue !== 'function' || typeof lock?.run !== 'function'
       || typeof lock?.hasExclusiveAccess !== 'function' || lockScope !== traditionalJournalScope(context)) {

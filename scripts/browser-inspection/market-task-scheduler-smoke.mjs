@@ -9,6 +9,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     export { createTradingTaskStore } from './src/adapters/browser/fc27-trading-task-store.js';
     export { createMarketCoordinator } from './src/adapters/browser/fc27-market-coordinator.js';
     export { createMarketTaskScheduler } from './src/trading/market-task-scheduler.js';
+    export { createMarketTaskRuntime } from './src/trading/market-task-runtime.js';
     export { defaultTradingTaskSettings } from './src/trading/task-model.js';
     export { marketTaskEvidence } from './src/trading/market-coordination.js';
   ` }, bundle: true, write: false, format: 'iife', globalName: 'MarketSchedulerFixture', target: 'chrome120' });
@@ -53,7 +54,10 @@ export async function exerciseMarketTaskScheduler(context, directory) {
         accept: async ({ action }) => { queues.get(action.taskId).shift(); },
         reconcile: async () => ({ status: 'unknown', receipt: null }), verifySession: async () => ({ ready: true }),
       };
-      const runtime = api.createMarketTaskScheduler({ taskStore: service, coordinator, provider, enabled: true, id: () => `request-${++requestSerial}`, random: () => 0 });
+      const runtime = api.createMarketTaskRuntime({ context: service.context, enabled: true, createScheduler: async () => {
+        state.factoryCalls = (state.factoryCalls ?? 0) + 1;
+        return api.createMarketTaskScheduler({ taskStore: service, coordinator, provider, enabled: true, id: () => `request-${++requestSerial}`, random: () => 0 });
+      } });
       state.runtime = runtime;
       state.panel = api.mountFc27AcceptancePanel({ document: globalThis.document, hostId: 'scheduler-test', targets: () => [],
         tradingTasks: { service, runtime, readCoordination: () => coordinator.inspect() } });
@@ -63,6 +67,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await host.locator('#tab-trading').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
     assert.match(await view.locator('#market-coordination-status').innerText(), /搜索 1h 0/);
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), 0);
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.factoryCalls ?? 0), 0);
     const start = async taskId => {
       await view.locator(`[data-action=start][data-id="${taskId}"]`).click();
       assert.match(await view.locator('#confirmBody').innerText(), /按已保存/); await view.locator('#confirmYes').click();
@@ -98,6 +103,16 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await page.waitForFunction(async () => (await globalThis.marketSchedulerUI.service.read()).store.tasks[0].state === 'archived');
     await view.locator('#taskFilter').selectOption('archived');
     assert.equal(await view.locator('[data-action=start][data-id="task-1"]').isDisabled(), true);
+    const writesBefore = await page.evaluate(() => globalThis.marketSchedulerUI.calls.length);
+    await page.evaluate(async () => {
+      await globalThis.marketSchedulerUI.coordinator.withOwner(s => s.control(t => t.checkpoint(state => { state.stopped = 'authentication'; })));
+    });
+    await view.locator('#reloadTasks').click(); await view.locator('#market-release').waitFor({ state: 'visible' });
+    await view.locator('#market-recover').click(); await view.locator('#toast').getByText('核对完成；任务不会自动继续。', { exact: true }).waitFor();
+    await view.locator('#market-release').click(); assert.match(await view.locator('#confirmBody').innerText(), /不会启动任务/);
+    await view.locator('#confirmYes').click(); await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.stopped), null);
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), false);
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);

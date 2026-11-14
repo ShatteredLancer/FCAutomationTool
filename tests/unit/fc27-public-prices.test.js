@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { createFc27PublicPrices } from '../../src/adapters/browser/fc27-public-prices.js';
+import { createFc27MarketTaskQuotes } from '../../src/adapters/browser/fc27-market-task-quotes.js';
 import { validatePurchasePriceApproval, purchaseApprovedPrice } from '../../src/fc27/purchase-price-approval.js';
 import { futbinFiltered, futbinMinimalPC, futbinMinimalPS, futggPC } from '../fixtures/fc27-public-prices.js';
 function fixture({ legacy = true } = {}) {
@@ -17,6 +18,55 @@ function fixture({ legacy = true } = {}) {
   const player = { definitionId: 71494, rating: 80, nationId: 95, leagueId: 2221, teamId: 116308, preferredPosition: 12 };
   return { root, data, gm, transport, service, player, advance: () => { time += 300001; } };
 }
+
+it('isolates market-task sources and actual PC prices from Gallery source and PS preferences', async () => {
+  const f = fixture();
+  await f.service.saveSettings({ readSources: 'futgg', futbinPlatform: 'ps' });
+  let source = 'futbin';
+  const taskStore = { context: f.service.context, read: async () => ({ context: f.service.context(), store: { settings: { source } } }) };
+  const quotes = createFc27MarketTaskQuotes({ root: f.root, taskStore, readCatalog: () => [f.player],
+    gmRequest: f.gm, transport: f.transport, now: () => Date.parse('2026-10-04T03:42:02Z'),
+    get: async (key, fallback) => f.data.get(key) ?? fallback, set: async (key, value) => f.data.set(key, structuredClone(value)) });
+  expect(f.gm).not.toHaveBeenCalled();
+  const result = await quotes.load([71494], { source, context: f.service.context() });
+  expect(result[71494].futbin).toMatchObject({ price: 700, platform: 'pc', futbinPlatform: 'pc' });
+  expect(f.transport.getPrices).not.toHaveBeenCalled();
+  expect(await f.service.readSettings()).toMatchObject({ readSources: 'futgg', futbinPlatform: 'ps' });
+  await expect(f.service.load([71494], { policy: { source: 'futbin' }, rows: [f.player] })).rejects.toThrow('DISABLED');
+  source = 'futgg';
+  await expect(quotes.load([71494], { source: 'futbin', context: f.service.context() })).rejects.toThrow('AUTHORIZATION_CHANGED');
+  await quotes.load([71494], { source, context: f.service.context() });
+  expect(f.transport.getPrices).toHaveBeenCalledTimes(1);
+});
+
+it('does not accept late task quotes after a source change or cancellation', async () => {
+  const f = fixture(); let source = 'both', current = true;
+  const quotes = createFc27MarketTaskQuotes({ root: f.root,
+    taskStore: { context: f.service.context, read: async () => ({ context: f.service.context(), store: { settings: { source } } }) },
+    readCatalog: () => [f.player], gmRequest: f.gm, transport: f.transport,
+    now: () => Date.parse('2026-10-04T03:42:02Z'),
+    get: async (key, fallback) => f.data.get(key) ?? fallback, set: async (key, value) => f.data.set(key, structuredClone(value)) });
+  const original = f.gm.getMockImplementation();
+  f.gm.mockImplementation(options => { source = 'futgg'; original(options); });
+  await expect(quotes.load([71494], { source: 'both', context: f.service.context() })).rejects.toThrow('AUTHORIZATION_CHANGED');
+  const calls = f.gm.mock.calls.length; current = false;
+  await expect(quotes.load([71494], { source, context: f.service.context(), isCurrent: () => current })).rejects.toThrow('CONTEXT_CHANGED');
+  expect(f.gm).toHaveBeenCalledTimes(calls);
+});
+
+it('merges mapping deltas from independent policy instances sharing the same browser storage', async () => {
+  const f = fixture();
+  const get = async (key, fallback) => structuredClone(f.data.get(key) ?? fallback);
+  const set = async (key, value) => { await Promise.resolve(); f.data.set(key, structuredClone(value)); };
+  const gmRequest = options => { const id = Number(new URL(options.url).searchParams.get('ID'));
+    options.onload({ status: 200, responseText: JSON.stringify({ data: [{ ID: id, Player_Resource: 70000 + id, LCPrice: 700 }] }) }); };
+  const one = createFc27PublicPrices({ root: f.root, get, set, gmRequest, transport: f.transport });
+  const two = createFc27PublicPrices({ root: f.root, get, set, gmRequest, transport: f.transport,
+    policyReader: async () => ({ readSources: 'futbin' }) });
+  await Promise.all([one.resolveTradingPlayer('https://www.futbin.com/27/player/1/a'), two.resolveTradingPlayer('https://www.futbin.com/27/player/2/b')]);
+  expect(f.data.get('fcat-futbin-ids:27')).toEqual({ 70001: 1, 70002: 2 });
+  await expect(two.saveSettings({ readSources: 'futgg' })).rejects.toThrow('READ_ONLY');
+});
 
 it('discovers a bounded public pool with one shared in-memory read, preserves mapping deltas and does not request EA',async()=>{
   const f=fixture();f.data.set('fcat-futbin-ids:27',{999:888});

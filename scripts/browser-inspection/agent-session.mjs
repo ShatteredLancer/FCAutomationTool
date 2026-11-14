@@ -248,7 +248,7 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
     while (true) {
       const command = (await terminal.question('agent > ')).trim();
       if (command === 'q') break;
-    if (!/^(inspect|install-current|tabs|home|ensure-web|price-check(?: [^\s]{1,80})?|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|panel-open|panel-state|panel-set-objective (?:additional-coins|material-value)|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
+    if (!/^(inspect|market-tasks-check|install-current|tabs|home|ensure-web|price-check(?: [^\s]{1,80})?|navigation-probe|provider|club|market-probe|streamlined-open(?: [^\r\n]{1,160})?|streamlined-(?:read|recover)|gallery-reward-probe|diagnostics-export|sbc|ai-test|gallery-sync|set [1-9]\d{0,8}|squad [1-9]\d{0,8} [1-9]\d{0,8}|panel-catalog(?: [1-9]\d{0,8})?|panel-open|panel-state|panel-set-objective (?:additional-coins|material-value)|gallery-(?:read|verify|list-preview)(?: [^\s]{1,80})?|puzzle(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market(?:-ai)? [1-9]\d{0,8} [1-9]\d{0,8}|puzzle-market-live [1-9]\d{0,8} [1-9]\d{0,8})$/.test(command)) { console.log('Unsupported inspection command.'); continue; }
       if (command === 'ensure-web') {
         let page = context.pages()[0];
         if (!page) page = await context.newPage();
@@ -293,6 +293,12 @@ export async function runAgentSession({ context, terminal, root, withExtensions,
       }
       if (!target) { console.log('Exactly one readable Web App tab required.'); continue; }
       try {
+        if (command === 'market-tasks-check') {
+          const { verifyMarketTaskPage } = await import(`./market-task-verification.mjs?revision=${Date.now()}`);
+          const result = await verifyMarketTaskPage(context, target, directory);
+          console.log(JSON.stringify(result));
+          await writeFile(path.join(directory, 'market-task-readonly.json'), `${JSON.stringify(result, null, 2)}\n`); continue;
+        }
         // Reload diagnostic helpers between inspections, without restarting the login session.
         const revision = Date.now();
         const { observeRuntime, observePageUi, enterNativeSbc, enterNativeSbcReadOnly, enterNativeSet, inspectInProgressSquad, inspectNativeProvider, inspectPuzzlePlan, inspectPuzzleWithAi, inspectPuzzleMarket, inspectPuzzleMarketWithAi, inspectPuzzleMarketLive, inspectFc27MarketRuntime, inspectFc27Navigation } = await loadHelpers(revision);

@@ -18,7 +18,7 @@ const codeOf = result => {
 const errorResult = result => ({ code: codeOf(result), category: result?.error?.kind === 'captcha' ? 'captcha'
   : codeOf(result) === 427 ? 'market-unavailable' : null });
 
-// Not constructed by production yet. The composition must provide the current
+// Lazily constructed by the approved task runtime. The composition provides
 // account lock/protection/other-journal checks; no permissive defaults exist.
 export async function createFc27MarketTaskNative({ root, assertCurrent, assertProtected, checkOtherTransactions,
   now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)),

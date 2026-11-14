@@ -1,10 +1,11 @@
 import { readTradingTasks } from './task-model.js';
+import { marketTaskFailureReason } from './market-task-messages.js';
 import { marketSearchGate, marketOccupancy, nextMarketTask, reserveMarketSearch, settleMarketSearch,
   reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale } from './market-coordination.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const actionable = row => ['queued', 'waiting', 'running'].includes(row.state);
-const safeReason = error => /^(MARKET|TASKS)_[A-Z_]+$/.test(error?.message ?? '') ? error.message : 'MARKET_PROVIDER_FAILED';
+const safeReason = marketTaskFailureReason;
 const defaultWait = (ms, signal) => new Promise(resolve => {
   if (signal.aborted) { resolve(); return; }
   let timer;
@@ -61,7 +62,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   };
   const revoke = (taskId, state) => {
     for (const row of tasks.values()) if (taskId === null || row.id === taskId) {
-      if (actionable(row)) Object.assign(row, { state, reason: 'MARKET_USER_STOP', nextAt: 0 });
+      if (actionable(row) || state === 'paused' && row.state === 'review') Object.assign(row, { state, reason: 'MARKET_USER_STOP', nextAt: 0 });
     }
     wake?.abort(); publish();
   };
@@ -102,7 +103,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       || !taskIds.length || new Set(taskIds).size !== taskIds.length) throw Error('TASKS_AUTHORIZATION_CHANGED');
     for (const taskId of taskIds) {
       const task = next.tasks.find(t => t.id === taskId);
-      if (!task || !supportedModes.includes(task.mode) || !['ready', 'paused', 'stopped'].includes(task.state) || task.activity.unresolved
+      if (!task || !supportedModes.includes(task.mode) || !['ready', 'paused'].includes(task.state) || task.activity.unresolved
         || currentTask === taskId || actionable(tasks.get(taskId) ?? {})) throw Error('MARKET_TASK_SELECTION_INVALID');
       await taskStore.withTask(requested, taskId, () => {}); current();
     }
@@ -122,7 +123,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     if (busy) throw Error('MARKET_BUSY');
     const store = readTradingTasks(requested?.store, requested?.context);
     if (!taskIds.length || taskIds.length > 100 || new Set(taskIds).size !== taskIds.length
-      || taskIds.some(taskId => !store.tasks.some(t => t.id === taskId && supportedModes.includes(t.mode) && ['ready', 'paused', 'stopped'].includes(t.state) && !t.activity.unresolved))) throw Error('MARKET_TASK_SELECTION_INVALID');
+      || taskIds.some(taskId => !store.tasks.some(t => t.id === taskId && supportedModes.includes(t.mode) && ['ready', 'paused'].includes(t.state) && !t.activity.unresolved))) throw Error('MARKET_TASK_SELECTION_INVALID');
     snapshot = { context: structuredClone(requested.context), store }; runContext = snapshot.context; current();
     busy = true; executing = true; lastReason = null; errorCounts = new Map(); evidence = []; policyRead = null;
     const startedAt = now();
@@ -303,6 +304,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             { status: response.status, receipt: response.receipt ?? null }));
           await applyError(turn, response);
         }
+        lastReason = turn.inspect().intents.some(i => i.phase === 'pending') ? 'MARKET_RECOVERY_REQUIRED' : null;
         diagnostic(turn.inspect()); return turn.inspect();
       }));
     } finally { busy = false; phase = 'idle'; publish(); }

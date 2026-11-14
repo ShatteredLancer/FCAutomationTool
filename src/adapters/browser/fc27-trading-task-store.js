@@ -101,7 +101,7 @@ export function createTradingTaskStore({ context, get, set, locks, now = () => D
       if (options.action === 'stop') {
         if (task.state !== 'archived') task.state = facts.unresolved || task.state === 'review' ? 'review' : 'stopped'; touch(task); return;
       }
-      if (options.action === 'acknowledge' && !facts.unresolved && task.state === 'review') {
+      if (options.action === 'acknowledge' && !facts.unresolved && ['ready', 'paused', 'review'].includes(task.state)) {
         task.state = 'paused'; touch(task); return; // Still requires a fresh explicit run approval.
       }
       if (facts.unresolved || task.state === 'review') throw Error('TASKS_UNRESOLVED');

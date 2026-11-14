@@ -1,5 +1,5 @@
 import { createGalleryReferencePrices } from '../../gallery/reference-prices.js';
-import { createPublicPricePolicyStore, publicPriceSourceEnabled } from '../../gallery/public-price-policy.js';
+import { createPublicPricePolicyStore, publicPriceSourceEnabled, normalizeGalleryPricePolicy } from '../../gallery/public-price-policy.js';
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { parsePublicFutbinPrice, parsePublicFutggPrices } from '../../fc27/public-price-responses.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
@@ -10,28 +10,39 @@ import { createPurchasePriceApproval } from '../../fc27/purchase-price-approval.
 import {readTradingCandidatePool,tradingMentionNames} from '../../trading/shortlist.js';
 
 const positions = ['GK','SW','RWB','RB','RCB','CB','LCB','LB','LWB','RDM','CDM','LDM','RM','RCM','CM','LCM','LM','RAM','CAM','LAM','RF','CF','LF','RW','RS','ST','LS','LW'];
-export function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog = null, now = () => Date.now() }) {
+const mappingWriters = new WeakMap();
+export function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog = null, now = () => Date.now(), policyReader = null }) {
   const rows = new Map();
   const futbinPages = new Map();
   const record = fields => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', ...fields })).catch(() => {}); }
     catch { /* Optional diagnostics must not occupy quote workers. */ }
   };
-  let mappingQueue = Promise.resolve();
+  // Independent source-policy instances still learn into the same mapping
+  // keys. Serialize their read/merge/write deltas within this page too.
+  if (!mappingWriters.has(root)) mappingWriters.set(root, { tail: Promise.resolve() });
+  const mappingQueue = mappingWriters.get(root);
   const tradingPools=new Map(),tradingReads=new Map(),tradingCooldowns=new Map();
   const updateIds = (key, learned, removed = {}) => {
     // Fresh per-version readers can finish together. Merge only their delta,
     // and remove a stale ID only if it has not already been replaced.
-    const task = mappingQueue.catch(() => {}).then(async () => {
+    const task = mappingQueue.tail.catch(() => {}).then(async () => {
       const ids = { ...await get(key, {}) };
       for (const [id, previous] of Object.entries(removed)) if (ids[id] === previous) delete ids[id];
       Object.assign(ids, learned);
       await set(key, ids);
     });
-    mappingQueue = task.catch(() => {});
+    mappingQueue.tail = task.catch(() => {});
     return task;
   };
-  const policyStore = createPublicPricePolicyStore({ get, set });
+  const storedPolicy = createPublicPricePolicyStore({ get, set });
+  // A separate market-task instance can read its own account settings. The
+  // original Gallery/SBC instance retains its live source-disable checks.
+  // Never persist an injected task policy into the original settings key.
+  const policyStore = policyReader === null ? storedPolicy : {
+    read: async scope => normalizeGalleryPricePolicy(await policyReader(scope)),
+    save: async () => { throw Error('FC27_PUBLIC_PRICE_POLICY_READ_ONLY'); },
+  };
   const capture = () => {
     const context = readFc27Context(root), scope = traditionalJournalScope(context);
     const platform = /^pc:/i.test(context.platform) ? 'pc' : /^(psn|xbox):/i.test(context.platform) ? 'console' : null;
