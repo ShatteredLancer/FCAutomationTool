@@ -111,7 +111,7 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.equal(await button('puzzle-rating').inputValue(), '82');
     assert.equal(await button('puzzle-quote-ceiling').inputValue(), '');
     assert.equal(await host.getAttribute('data-active-tab'), 'sbc');
-    assert.equal(await host.getByRole('tab').count(), 9);
+    assert.equal(await host.locator('.module-tabs [role=tab]').count(), 8);
     const beforeTabs = await page.evaluate(() => ({ ...globalThis.livePanelSmoke, mount: null, panel: null }));
     // Puzzle procurement controls live under Settings so the SBC workspace
     // stays compact. Activate that tab before exercising the visible input.
@@ -130,13 +130,13 @@ export async function exerciseProductionLivePanel(context, directory) {
     assert.equal(await page.evaluate(() => globalThis.livePanelSmoke.policySaves), 0);
 
     await button('puzzle-rating').fill('81');
-    for (const id of ['gallery', 'market', 'trading', 'inventory', 'routine', 'rolling', 'activity', 'settings', 'sbc']) {
+    for (const id of ['gallery', 'trading', 'inventory', 'routine', 'rolling', 'activity', 'settings', 'sbc']) {
       await button(`tab-${id}`).click();
       assert.equal(await host.getAttribute('data-active-tab'), id);
       assert.equal(await host.locator('[id^=page-][role=tabpanel]:visible').count(), 1,'one top-level workspace remains visible');
       if(id==='trading')assert.equal(await button('page-trading').locator('[role=tabpanel]:visible').count(),1,'one nested trading workspace remains visible');
       assert.equal(await button(`page-${id}`).isVisible(), true);
-      if (['market', 'inventory', 'routine', 'rolling'].includes(id)) {
+      if (['inventory', 'routine', 'rolling'].includes(id)) {
         assert.equal(await button(`page-${id}`).locator('button,input,select').count(), 0);
       }
       if(id==='trading'){

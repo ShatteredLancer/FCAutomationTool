@@ -7,12 +7,13 @@ import { mountGalleryTradeSettings } from './fc27-gallery-trade-settings.js';
 import { mountGalleryPlanningSettings } from './fc27-gallery-planning-settings.js';
 import { bindCurrencyArrows } from './fc27-listing-currency.js';
 import { mountFc27TradingView } from './fc27-trading-view.js';
+import { mountFc27MarketTasks } from './fc27-market-task-view.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
   galleryAssets = null, galleryPrices = null, galleryMarketCompare = null, galleryDiagnosticLog = null, galleryNativeRenderer = null, galleryTargetStore = null, galleryPlanStore = null, gallerySync = null, purchaseGallery = null, galleryListing = null, galleryRelist = null, galleryFirstOwnerHistory = null,
   galleryScoreCache = null, galleryLevel = null, galleryReference = null, galleryAccounting = null, galleryTradePreferences = null, galleryPlanningSettings = null,
-  publicPrices = null, tradingDesk = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
+  publicPrices = null, tradingDesk = null, tradingTasks = null, galleryPlanningPrices = null, exportDiagnostics = null, hostId = 'fcat-fc27-acceptance', title = 'FC Automation Tool - FC27 Acceptance', version = null, liveEnabled = false }) {
   if (!document?.body || document.getElementById(hostId)) return;
   const host = document.createElement('aside'); host.id = hostId;
   if (version) host.dataset.version = version;
@@ -22,7 +23,8 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#settings-bottom'), service: publicPrices });
   const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryTradePreferences });
   const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryPlanningSettings });
-  const trading=mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
+  const trading=tradingTasks?mountFc27MarketTasks({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),...tradingTasks,legacyService:tradingDesk})
+    :mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery');trading.setActive(id==='trading'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
   const node = id => shadow.getElementById(id);
   const renderPuzzleObjective = () => {

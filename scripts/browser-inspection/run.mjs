@@ -159,6 +159,8 @@ if (help) {
       await exerciseGalleryPlanningSettings(context);
       const {exerciseTradingDesk}=await import('./trading-desk-smoke.mjs');
       await exerciseTradingDesk(context,out);
+      const {exerciseTradingTasks}=await import('./trading-tasks-smoke.mjs');
+      await exerciseTradingTasks(context,out);
     } else if (agent) {
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       await runAgentSession({ context, terminal, root, withExtensions });

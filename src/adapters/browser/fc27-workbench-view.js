@@ -3,8 +3,8 @@ import { currencyInputStyles } from './fc27-listing-currency.js';
 import { purchaseDialogMarkup, purchaseDialogStyles } from './fc27-purchase-dialog.js';
 // FCAT module layout. Gallery loads its public catalogue lazily when selected.
 export const FC27_WORKBENCH_TABS = Object.freeze([
-  ['sbc', 'SBC 解题'], ['gallery', 'Gallery'], ['market', '市场'],
-  ['trading', '交易观察'], ['inventory', '库存'], ['routine', 'Routine'],
+  ['sbc', 'SBC 解题'], ['gallery', 'Gallery'],
+  ['trading', '市场交易'], ['inventory', '库存'], ['routine', 'Routine'],
   ['rolling', '滚卡'], ['activity', '活动记录'], ['settings', '设置'],
 ]);
 
@@ -102,7 +102,6 @@ export function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
         <div id="gallery-selection-footer" class="row gallery-purchase-selection" hidden></div>
         <section id="gallery-joint" hidden><h3>联合目标</h3><div id="gallery-joint-targets"></div><div class="gallery-joint-controls"><select id="gallery-joint-objective" aria-label="规划目标"><option value="grade">固定等级</option><option value="catalog">目录预估</option></select><select id="gallery-joint-reward" aria-label="目录奖励类型" hidden></select><label>总预算（金币）<input id="gallery-joint-budget" type="number" min="0" step="1" placeholder="不限"></label><button id="gallery-joint-plan" class="primary" disabled>生成联合方案</button></div><div id="gallery-joint-output" class="gallery-joint-output" aria-live="polite"></div></section>
       </section>
-      ${planned('market', 'MARKET', '价格比较与订单执行', [['搜索与比价', '筛选精确球员版本，对比参考价格与实时挂牌。'], ['买入与挂牌', '管理手动订单、批量买入与挂牌结果。SBC 概念球员购买目前已在原生 SBC 侧栏提供。']])}
       ${planned('trading', 'TRADING', '定时买入与售出', [['定时任务', '按指定时间或周期执行购买、挂牌和重新挂牌。'], ['执行条件', '为任务设置价格范围、预算、有效期及停止条件。']])}
       ${planned('inventory', 'INVENTORY', '库存与材料管理', [['库存视图', '统一查看 Club、Storage、重复卡与可用材料。'], ['整理与保护', '规划库存整理，查看选材限制、锁卡及保护冲突。']])}
       ${planned('routine', 'ROUTINE', '日常任务编排', [['任务组合', '将每日操作组织为可复用的有限步骤。'], ['进度与续跑', '查看完成情况，从已确认的中断位置继续。']])}
@@ -132,6 +131,7 @@ export function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
 export function bindFc27WorkbenchTabs(shadow, host, onSelect = () => {}) {
   const tabs = FC27_WORKBENCH_TABS.map(([id]) => shadow.getElementById(`tab-${id}`));
   const select = id => {
+    if (id === 'market') id = 'trading'; // Preserve old navigation destinations.
     if (!FC27_WORKBENCH_TABS.some(([key]) => key === id)) return;
     for (const [key] of FC27_WORKBENCH_TABS) {
       const active = key === id;

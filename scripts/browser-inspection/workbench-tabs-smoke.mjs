@@ -27,8 +27,8 @@ export async function inspectInstalledWorkbenchTabs(context, page, directory) {
       if (result.exceptionDetails) throw Error('WORKBENCH_INSPECTION_FAILED');
       return result.result.value;
     };
-    const tabs = await call(function () { return [...this.querySelectorAll('[role=tab]')].map(node => ({ id: node.id, text: node.textContent })); });
-    assert.equal(tabs.length, 9);
+    const tabs = await call(function () { return [...this.querySelectorAll('.module-tabs [role=tab]')].map(node => ({ id: node.id, text: node.textContent })); });
+    assert.equal(tabs.length, 8);
     const duplicateTitleHidden = await call(function () {
       return this.querySelector('.workbench > details > summary').getBoundingClientRect().height === 0;
     });
@@ -42,8 +42,8 @@ export async function inspectInstalledWorkbenchTabs(context, page, directory) {
       }, [id]);
       await page.mouse.click(point.x, point.y);
       const state = await call(function () {
-        const panels = [...this.querySelectorAll('[role=tabpanel]')].filter(node => !node.hidden);
-        return { selected: this.querySelector('[role=tab][aria-selected=true]')?.id,
+        const panels = [...this.querySelectorAll('[id^=page-][role=tabpanel]')].filter(node => !node.hidden);
+        return { selected: this.querySelector('.module-tabs [role=tab][aria-selected=true]')?.id,
           visible: panels.map(node => node.id), heading: panels[0]?.querySelector('h2')?.textContent,
           maxRating: this.getElementById('puzzle-rating').value };
       });
@@ -59,12 +59,12 @@ export async function inspectInstalledWorkbenchTabs(context, page, directory) {
     page.on('request', record);
     const states = [];
     for (const tab of tabs) states.push(await clickTab(tab.id));
-    await clickTab('tab-market');
+    await clickTab('tab-trading');
     await page.locator('.ut-tab-bar .icon-home').click();
     await entry.click();
     await page.locator('#fcat-fc27-production').waitFor({ state: 'visible' });
     await page.waitForTimeout(350);
-    assert.equal(await call(function () { return this.host.dataset.activeTab; }), 'market');
+    assert.equal(await call(function () { return this.host.dataset.activeTab; }), 'trading');
     await clickTab('tab-sbc');
     await page.waitForTimeout(350);
     const desktop = await call(function () {
