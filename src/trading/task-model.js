@@ -33,9 +33,9 @@ export function readTradingTasks(input,context){if(input===null||input===undefin
  if(JSON.stringify(input).length>TASK_STORE_LIMIT)throw Error('TASKS_STORAGE_LIMIT');own(input,['schema','context','revision','settings','tasks']);
  if(input.schema!==1||JSON.stringify(tradingTaskContext(input.context))!==JSON.stringify(tradingTaskContext(context)))throw Error('TASKS_CONTEXT_INVALID');
  const store={schema:1,context:tradingTaskContext(context),revision:integer(input.revision),settings:tradingPublicSettings(input.settings),tasks:list(input.tasks,100).map(t=>{
-  own(t,['id','name','mode','settings','players','owned','excluded','state','createdAt','updatedAt','activity']);const {name,mode,settings,players,owned,excluded}=t;
+  own(t,['id','revision','name','mode','settings','players','owned','excluded','state','createdAt','updatedAt','activity']);const {name,mode,settings,players,owned,excluded}=t;
   own(t.activity,['receipts','unresolved']);if(typeof t.activity.unresolved!=='boolean')throw Error('TASKS_INVALID');
   const receipts=list(t.activity.receipts,1000).map(r=>{own(r,['kind','itemId','definitionId','coins','at']);return {kind:one(r.kind,['bought','moved','listed','sold']),itemId:text(r.itemId,30),definitionId:integer(r.definitionId,1),coins:optional(r.coins),at:integer(r.at)};});
-  return {id:text(t.id,100),...normalizeTradingTaskInput({name,mode,settings,players,owned,excluded}),state:one(t.state,['ready','queued','running','paused','stopped','archived','review']),createdAt:integer(t.createdAt),updatedAt:integer(t.updatedAt),activity:{receipts,unresolved:t.activity.unresolved}};
+  return {id:text(t.id,100),revision:integer(t.revision??0),...normalizeTradingTaskInput({name,mode,settings,players,owned,excluded}),state:one(t.state,['ready','queued','running','paused','stopped','archived','review']),createdAt:integer(t.createdAt),updatedAt:integer(t.updatedAt),activity:{receipts,unresolved:t.activity.unresolved}};
  })};if(new Set(store.tasks.map(t=>t.id)).size!==store.tasks.length)throw Error('TASKS_INVALID');return store;
 }

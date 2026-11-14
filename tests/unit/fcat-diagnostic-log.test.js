@@ -22,6 +22,19 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains only known scheduler reasons and numeric occupancy, never its private task or receipt objects', async () => {
+  const t = harness();
+  await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'buy', status: 'blocked',
+    reason: 'MARKET_RESPONSE_UNCONFIRMED', reservedCoins: 800, pendingWriteCount: 1, taskId: 'private-task',
+    itemId: 100, tradeId: 'private-trade', ledger: { private: true } });
+  await t.log.record({ area: 'trading', event: 'task-scheduler', reason: 'MARKET_PRIVATE_TOKEN' });
+  await t.log.record({ area: 'gallery', event: 'task-scheduler', reason: 'MARKET_RESPONSE_UNCONFIRMED' });
+  const result = await t.log.exportPayload();
+  expect(result.entries[0]).toMatchObject({ reason: 'MARKET_RESPONSE_UNCONFIRMED', reservedCoins: 800, pendingWriteCount: 1 });
+  expect(result.entries[1]).not.toHaveProperty('reason'); expect(result.entries[2]).not.toHaveProperty('reason');
+  expect(JSON.stringify(result)).not.toMatch(/private|PRIVATE|taskId|tradeId|ledger/);
+});
+
 it('bounds and restores public pending task timings without identities or nested aliasing',async()=>{
   const t=harness();
   await t.log.record({area:'gallery',event:'roadmap-checkpoint',referenceVerifiedCount:183,optimizationPendingCount:13,

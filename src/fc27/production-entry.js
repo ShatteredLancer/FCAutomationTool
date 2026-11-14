@@ -47,6 +47,8 @@ import { createFc27GalleryRelist } from '../adapters/browser/fc27-gallery-relist
 import { startGalleryTradingPoll } from '../adapters/browser/fc27-gallery-trading-poll.js';
 import { createFc27TradingDesk } from '../adapters/browser/fc27-trading-desk.js';
 import { createTradingTaskStore } from '../adapters/browser/fc27-trading-task-store.js';
+import { createMarketCoordinator } from '../adapters/browser/fc27-market-coordinator.js';
+import { marketTaskEvidence } from '../trading/market-coordination.js';
 import { readTradingTaskInventory } from '../adapters/ea/fc27-trading-task-catalog.js';
 import { createFc27TradingExecution } from '../adapters/browser/fc27-trading-execution.js';
 import { createFc27TradingIntel } from '../adapters/browser/fc27-trading-intel.js';
@@ -205,7 +207,10 @@ const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set
   execution:createFc27TradingExecution({root:unsafeWindow,prices:publicPrices,get:GM_getValue,set:GM_setValue,liveEnabled:dependencies.liveEnabled,diagnosticLog}),
   intel:createFc27TradingIntel({gmRequest:GM_xmlhttpRequest,get:GM_getValue,set:GM_setValue}),
   readCandidates:()=>readFc27TradingCandidates(unsafeWindow)});
-const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks}),
+const marketCoordinator=createMarketCoordinator({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks});
+const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
+    readEvidence:async taskId=>marketTaskEvidence((await marketCoordinator.inspect()).ledger,taskId)}),
+  readCoordination:()=>marketCoordinator.inspect(),
   readCatalog:()=>[...new Map([...readFc27TradingCandidates(unsafeWindow),...publicPrices.knownPlayers()].map(row=>[row.definitionId,row])).values()],
   readInventory:()=>readTradingTaskInventory(unsafeWindow)};
 let storageMaintenancePending = true;

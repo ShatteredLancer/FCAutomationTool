@@ -224,3 +224,9 @@ export function nextMarketTask(state, readyIds) {
   state.lastTask = next;
   return next;
 }
+
+export function marketTaskEvidence(state, taskId) {
+  const entries = state.intents.filter(entry => entry.taskId === taskId);
+  return { unresolved: entries.some(entry => entry.phase === 'pending'),
+    hasEvidence: entries.length > 0 || state.holdings.some(holding => holding.taskId === taskId) };
+}

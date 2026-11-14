@@ -43,7 +43,7 @@ export function createMarketCoordinator({ context, get, set, locks }) {
       let alive = true, busy = false, turnError = null;
       const pendingTurns = new Set();
       const check = () => { current(captured); if (!alive) throw Error('MARKET_OWNER_CLOSED'); if (turnError) throw turnError; };
-      const runTurn = async (readyIds, run) => {
+      const runTurn = async (readyIds, run, control = false) => {
         check(); if (busy) return { status: 'busy' }; busy = true;
         try {
           // Reuse the current native transaction lock as well. Full cross-module
@@ -80,13 +80,13 @@ export function createMarketCoordinator({ context, get, set, locks }) {
             try {
               const pending = ledger.intents.find(i => i.phase === 'pending');
               let taskId = pending?.taskId ?? null;
-              if (!pending) {
+              if (!pending && !control) {
                 const next = structuredClone(ledger);
                 taskId = nextMarketTask(next, readyIds);
                 if (taskId !== null) await checkpoint(state => { state.lastTask = taskId; });
               }
-              if (taskId === null) return { status: 'idle', ledger: structuredClone(ledger) };
-              return await run({ taskId, recoveryOnly: Boolean(pending),
+              if (taskId === null && !control) return { status: 'idle', ledger: structuredClone(ledger) };
+              return await run({ taskId, recoveryOnly: control || Boolean(pending),
                 inspect: () => { check(); if (!turnAlive) throw Error('MARKET_TURN_CLOSED'); return structuredClone(ledger); }, checkpoint });
             } finally {
               turnAlive = false;
@@ -97,7 +97,8 @@ export function createMarketCoordinator({ context, get, set, locks }) {
         } finally { busy = false; }
       };
       const turn = (readyIds, run) => track(pendingTurns, runTurn(readyIds, run), error => { turnError ??= error; });
-      try { return await callback({ turn, inspect: async () => { check(); return read(captured); } }); }
+      const control = run => track(pendingTurns, runTurn([], run, true), error => { turnError ??= error; });
+      try { return await callback({ turn, control, inspect: async () => { check(); return read(captured); } }); }
       finally { alive = false; await drain(pendingTurns); if (turnError) throw turnError; }
     });
   }

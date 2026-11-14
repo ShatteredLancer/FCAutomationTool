@@ -10,9 +10,15 @@ const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', '
   || roadmapEntry(entry)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
+const marketTaskReasons = new Set(['MARKET_PROVIDER_FAILED','MARKET_AUTHENTICATION','MARKET_CAPTCHA','MARKET_THROTTLED',
+  'MARKET_ERROR_LIMIT','MARKET_RECOVERY_REQUIRED','MARKET_STOPPED','MARKET_PREFLIGHT_BLOCKED','MARKET_ACTION_EXPIRED_OR_INVALID',
+  'MARKET_BUY_RULE_CHANGED','MARKET_SELL_RULE_CHANGED','MARKET_RESPONSE_UNCONFIRMED','MARKET_NATIVE_BUSY','MARKET_SEARCH_WAIT','MARKET_TASK_WAIT',
+  'MARKET_TIME_LIMIT','MARKET_USER_STOP','MARKET_BUSY','MARKET_SAVE_UNVERIFIED','MARKET_STALE','MARKET_RECEIPT_CONFLICT',
+  'MARKET_FUNDS_OR_CAPACITY','MARKET_HOLDING_CAP','MARKET_SPEND_CAP','MARKET_VERSION_CAP','MARKET_ITEM_OCCUPIED',
+  'TASKS_AUTHORIZATION_CHANGED','TASKS_CONTEXT_CHANGED','TASKS_NOT_FOUND']);
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'requestedObjective', 'endpoint', 'incumbentRejectReason']);
-const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
+const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'reservedCoins', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
   'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
   'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
@@ -68,7 +74,8 @@ function sanitizeEntry(input, now) {
   for (const key of STRING_FIELDS) {
     const value = key === 'reason' || key === 'localReason'
       ? typeof input[key] === 'string' && (/^(?:HTTP [1-5]\d{2}|FC(?:AT|27)_[A-Z0-9_]{1,140}|SAFE_MATERIAL_SHORTAGE|request-failed)$/.test(input[key])
-        ||input.area==='trading'&&/^DESK_[A-Z0-9_]{1,140}$/.test(input[key])) ? input[key] : null
+        ||input.area==='trading'&&(/^DESK_[A-Z0-9_]{1,140}$/.test(input[key])
+          ||input.event==='task-scheduler'&&marketTaskReasons.has(input[key]))) ? input[key] : null
       : boundedString(input[key]);
     if (value !== null) entry[key] = value;
   }
