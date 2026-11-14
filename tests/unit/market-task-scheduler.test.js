@@ -103,6 +103,14 @@ describe('approved task scheduler with simulated providers', () => {
     expect(f.provider.send).not.toHaveBeenCalled(); expect(f.provider.prepare).not.toHaveBeenCalled();
     await expect(f.scheduler.handoff(f.options)).rejects.toThrow('HANDOFF_INVALID');
   });
+  it('applies the recipient scheduled sale time during explicit holding handoff',async()=>{
+    const f=await handoffFixture(),t=f.options.snapshot.store.tasks[1];
+    const snapshot=await f.taskStore.saveTask({...f.options.snapshot,id:t.id,input:{name:t.name,mode:t.mode,settings:t.settings,players:t.players,owned:t.owned,excluded:t.excluded,
+      schedule:{repeat:'once',zone:'UTC',start:'2026-11-16T14:00',end:null,sell:null}}});
+    await f.scheduler.handoff({...f.options,snapshot});
+    expect((await f.coordinator.inspect()).ledger.holdings[0]).toMatchObject({sellAt:Date.parse('2026-11-16T14:00Z'),cost:650});
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
   it.each(['unapproved', 'active', 'missing', 'cancelled', 'stale'])('does not hand off when %s', async reason => {
     const f = await handoffFixture();
     if (reason === 'unapproved') f.options.approved = false;

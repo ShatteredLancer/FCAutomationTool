@@ -1,3 +1,4 @@
+import { normalizeMarketSchedule } from './market-task-schedule.js';
 // Account-scoped task configuration. This schema is not an execution permit.
 const own=(value,keys)=>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!keys.includes(k)))throw Error('TASKS_INVALID');};
 const integer=(v,min=0,max=Number.MAX_SAFE_INTEGER)=>{if(!Number.isSafeInteger(v)||v<min||v>max)throw Error('TASKS_INVALID');return v;};
@@ -14,7 +15,7 @@ export function tradingTaskContext(value){own(value,['scope','season','platform'
 export function tradingPublicSettings(input){own(input,Object.keys(defaultTradingPublicSettings()));const s={...defaultTradingPublicSettings(),...input};one(s.source,['futbin','futgg','both']);s.reserve=optional(s.reserve);s.totalCap=optional(s.totalCap,150);
  for(const key of ['gapMin','gapMax','cycleMin','cycleMax','perSearch','hourLimit','dayLimit'])integer(s[key],1);for(const key of ['restMin','restMax'])integer(s[key]);
  for(const [a,b]of [['gapMin','gapMax'],['cycleMin','cycleMax'],['restMin','restMax']])if(s[a]>s[b])throw Error('TASKS_INVALID');return s;}
-export function normalizeTradingTaskInput(value){own(value,['name','mode','settings','players','owned','excluded']);const name=text(value.name,60),mode=one(value.mode,['fixed','filter','sell']);
+export function normalizeTradingTaskInput(value){own(value,['name','mode','settings','players','owned','excluded','schedule']);const name=text(value.name,60),mode=one(value.mode,['fixed','filter','sell']);
  own(value.settings,Object.keys(defaultTradingTaskSettings()));const s={...defaultTradingTaskSettings(),...value.settings};one(s.buyRule,['percent','fixed']);one(s.sellRule,['reference','fixed']);
  integer(s.buyValue,s.buyRule==='fixed'?150:1,s.buyRule==='fixed'?15000000:10000);integer(s.sellValue,s.sellRule==='fixed'?150:1,s.sellRule==='fixed'?15000000:10000);
  one(s.duration,[3600,10800,21600,43200,86400,259200]);one(s.relist,['original','reference','pause']);
@@ -25,7 +26,7 @@ export function normalizeTradingTaskInput(value){own(value,['name','mode','setti
  const excluded=list(value.excluded,500).map(e=>{own(e,['type','id','label']);return {type:one(e.type,['version','player']),id:integer(e.id,1),label:text(e.label,160)};});
  for(const [rows,key]of [[players,p=>p.definitionId],[owned,p=>p.itemId],[excluded,p=>`${p.type}:${p.id}`]])if(new Set(rows.map(key)).size!==rows.length)throw Error('TASKS_INVALID');
  if(mode==='fixed'&&!players.length||mode==='sell'&&!owned.length)throw Error('TASKS_SELECTION_EMPTY');
- return {name,mode,settings:s,players,owned,excluded};
+ const schedule=normalizeMarketSchedule(value.schedule,mode);return {name,mode,settings:s,players,owned,excluded,...(schedule?{schedule}:{})};
 }
 export const emptyTaskActivity=()=>({receipts:[],unresolved:false});
 export const emptyTradingTasks=context=>({schema:1,context:tradingTaskContext(context),revision:0,settings:defaultTradingPublicSettings(),tasks:[]});
@@ -33,10 +34,10 @@ export function readTradingTasks(input,context){if(input===null||input===undefin
  if(JSON.stringify(input).length>TASK_STORE_LIMIT)throw Error('TASKS_STORAGE_LIMIT');own(input,['schema','context','revision','settings','tasks']);
  if(input.schema!==1||JSON.stringify(tradingTaskContext(input.context))!==JSON.stringify(tradingTaskContext(context)))throw Error('TASKS_CONTEXT_INVALID');
  const store={schema:1,context:tradingTaskContext(context),revision:integer(input.revision),settings:tradingPublicSettings(input.settings),tasks:list(input.tasks,100).map(t=>{
-  own(t,['id','revision','name','mode','settings','players','owned','excluded','state','createdAt','updatedAt','activity','stopRequested']);const {name,mode,settings,players,owned,excluded}=t;
+  own(t,['id','revision','name','mode','settings','players','owned','excluded','state','createdAt','updatedAt','activity','stopRequested','schedule']);const {name,mode,settings,players,owned,excluded,schedule}=t;
   if(t.stopRequested!==undefined&&t.stopRequested!==true)throw Error('TASKS_INVALID');
   own(t.activity,['receipts','unresolved']);if(typeof t.activity.unresolved!=='boolean')throw Error('TASKS_INVALID');
   const receipts=list(t.activity.receipts,1000).map(r=>{own(r,['kind','itemId','definitionId','coins','at']);return {kind:one(r.kind,['bought','moved','listed','sold']),itemId:text(r.itemId,30),definitionId:integer(r.definitionId,1),coins:optional(r.coins),at:integer(r.at)};});
-  return {id:text(t.id,100),revision:integer(t.revision??0),...normalizeTradingTaskInput({name,mode,settings,players,owned,excluded}),state:one(t.state,['ready','queued','running','paused','stopped','archived','review']),createdAt:integer(t.createdAt),updatedAt:integer(t.updatedAt),activity:{receipts,unresolved:t.activity.unresolved},...(t.stopRequested?{stopRequested:true}:{})};
+  return {id:text(t.id,100),revision:integer(t.revision??0),...normalizeTradingTaskInput({name,mode,settings,players,owned,excluded,schedule}),state:one(t.state,['ready','queued','running','paused','stopped','archived','review']),createdAt:integer(t.createdAt),updatedAt:integer(t.updatedAt),activity:{receipts,unresolved:t.activity.unresolved},...(t.stopRequested?{stopRequested:true}:{})};
  })};if(new Set(store.tasks.map(t=>t.id)).size!==store.tasks.length)throw Error('TASKS_INVALID');return store;
 }

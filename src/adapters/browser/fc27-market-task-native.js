@@ -124,7 +124,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       return { eligible: true, itemId: row.itemId, definitionId: row.definitionId, pile: result.candidate.item.pile,
         cost: Number.isSafeInteger(cost) && cost > 0 && cost <= 15000000 ? cost : null };
     },
-    async preflight({ action }) {
+    async preflight({ action, task }) {
       await guards();
       if (['move', 'list'].includes(action.kind)) {
         const result = await owned(action), pile = result.candidate.item.pile;
@@ -139,6 +139,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         }
       } else { await refresh('unassigned'); await refresh('transfer'); }
       const cap = capabilities();
+      if (task?.schedule && ['search','buy','move'].includes(action.kind) && cap.freeSlots < 1) fail('TRANSFER_FULL');
       if (action.kind === 'buy' || action.kind === 'search') {
         const count = repository.numItemsInCache(6), max = root.MAX_NEW_ITEMS;
         if (!Number.isSafeInteger(count) || !Number.isSafeInteger(max) || count < 0 || count >= max || cap.freeSlots < 1) fail('FUNDS_OR_CAPACITY');

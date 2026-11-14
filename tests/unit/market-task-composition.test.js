@@ -48,6 +48,17 @@ it('runs a filter task through the production composition, with exact native rul
   expect(f.runtime.inspect().tasks[0].candidateScope).toMatchObject({ known: 1, matched: 1, complete: false });
   expect(f.gmRequest).not.toHaveBeenCalled();
 });
+it('carries a scheduled purchase sale gate through the production native composition', async () => {
+  const f=await fixture('filter');f.makeCard(101,901);
+  const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];
+  const snapshot=await f.store.saveTask({...f.snapshot,id:'sell',input:{name,mode,settings,players,owned,excluded,
+    schedule:{repeat:'once',zone:'UTC',start:'1970-01-01T00:00',end:null,sell:null}}});
+  let stopped=false;
+  f.runtime.subscribe(s=>{if(!stopped&&s.evidence?.some(e=>e.counts[1]===1)){stopped=true;f.runtime.pauseAll();}});
+  await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
+  expect(f.calls.filter(c=>['bid','move','list'].includes(c[0])).map(c=>c[0])).toEqual(['bid','move','list']);
+  expect((await f.coordinator.inspect()).ledger.holdings).toMatchObject([{phase:'listed',sellAt:0,cost:600}]);
+});
 it.each(['rating','league','rarity'])('rejects native %s changes between the frozen filter catalog and actual payment', async field => {
   const f = await fixture('filter'), card = f.makeCard(101, 901);
   if (field === 'rating') card._rating = 85;

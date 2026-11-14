@@ -1,3 +1,4 @@
+import { validateMarketSchedules } from './market-task-schedule.js';
 // Account-wide bookkeeping primitives. They do not authorize or send requests.
 // P3 adapters must supply freshly verified EA facts and exact receipts.
 import { validateMarketClocks } from './market-task-clock.js';
@@ -26,7 +27,8 @@ export const emptyMarketCoordination = () => ({ schema: 1, revision: 0, lastTask
 
 export function readMarketCoordination(value) {
   if (value == null) return emptyMarketCoordination();
-  fields(value, [...Object.keys(emptyMarketCoordination()), 'clocks', 'handoffs']);
+  fields(value, [...Object.keys(emptyMarketCoordination()), 'clocks', 'handoffs', 'schedules']);
+  if (value.schedules !== undefined) validateMarketSchedules(value.schedules);
   if (value.clocks !== undefined) validateMarketClocks(value.clocks);
   if (value.handoffs !== undefined) {
     if (!Array.isArray(value.handoffs) || value.handoffs.length > 2000) fail('STORAGE_LIMIT');
@@ -50,7 +52,8 @@ export function readMarketCoordination(value) {
     choice(event.status, ['dispatching', 'sent', 'not-sent']);
   }
   for (const entry of value.intents) {
-    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt', 'listing', 'acknowledged', 'previousTradeId']);
+    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt', 'listing', 'acknowledged', 'previousTradeId', 'sellAt']);
+    if (entry.sellAt !== undefined) { number(entry.sellAt); if (entry.kind !== 'buy') fail('INVALID'); }
     if (entry.previousTradeId !== undefined) { id(entry.previousTradeId); if (entry.kind !== 'list' || !entry.listing) fail('INVALID'); }
     id(entry.id); id(entry.taskId); id(entry.itemId); number(entry.definitionId, 1); number(entry.at);
     choice(entry.kind, ['buy', 'move', 'list']); choice(entry.phase, ['pending', 'confirmed', 'rejected']);
@@ -71,7 +74,8 @@ export function readMarketCoordination(value) {
     else if (entry.receipt !== null) fail('INVALID');
   }
   for (const holding of value.holdings) {
-    fields(holding, ['taskId', 'itemId', 'definitionId', 'cost', 'phase', 'listingTradeId', 'salePrice']);
+    fields(holding, ['taskId', 'itemId', 'definitionId', 'cost', 'phase', 'listingTradeId', 'salePrice', 'sellAt']);
+    if (holding.sellAt !== undefined) number(holding.sellAt);
     id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
     if (holding.cost !== null) number(holding.cost);
     choice(holding.phase, ['held', 'transfer', 'listed', 'unsold', 'sold']);
@@ -153,8 +157,9 @@ export function marketOccupancy(state, taskId = null) {
 }
 
 export function claimMarketHolding(state, holding, phase = 'held') {
-  fields(holding, ['taskId', 'itemId', 'definitionId', 'cost']);
-  id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
+  fields(holding, ['taskId', 'itemId', 'definitionId', 'cost', 'sellAt']);
+  if (holding.sellAt !== undefined) number(holding.sellAt);
+    id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
   if (holding.cost !== null) number(holding.cost);
   if (state.holdings.some(h => h.itemId === holding.itemId) || state.intents.some(i => i.itemId === holding.itemId && i.phase === 'pending')) fail('ITEM_OCCUPIED');
   choice(phase, ['held', 'transfer']);
@@ -162,7 +167,7 @@ export function claimMarketHolding(state, holding, phase = 'held') {
 }
 
 export function reserveMarketWrite(state, command, funds) {
-  fields(command, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'listing', 'previousTradeId']);
+  fields(command, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'listing', 'previousTradeId', 'sellAt']);
   const entry = { ...command, phase: 'pending', receipt: null };
   // Validate before changing any caller-owned state.
   readMarketCoordination({ ...emptyMarketCoordination(), intents: [entry] });
@@ -221,7 +226,7 @@ export function settleMarketWrite(state, requestId, result) {
     if (entry.kind === 'buy') {
       if (holding) fail('ITEM_OCCUPIED');
       state.holdings.push({ taskId: entry.taskId, itemId: entry.itemId, definitionId: entry.definitionId,
-        cost: entry.coins, phase: 'held', listingTradeId: null, salePrice: null });
+        cost: entry.coins, phase: 'held', listingTradeId: null, salePrice: null, ...(entry.sellAt !== undefined ? { sellAt: entry.sellAt } : {}) });
     } else {
       if (!holding || holding.taskId !== entry.taskId || holding.definitionId !== entry.definitionId) fail('RECEIPT_CONFLICT');
       holding.phase = entry.kind === 'move' ? 'transfer' : 'listed';

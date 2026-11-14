@@ -1,3 +1,4 @@
+import { marketScheduleGate, marketScheduleWake } from './market-task-schedule.js';
 import { marketTaskPrice } from './market-task-prices.js';
 import { marketLastListing, marketRelistAllowed } from './market-coordination.js';
 import { taskCandidateAllowed } from './task-catalog.js';
@@ -42,6 +43,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
   const bound = (action, task = null, settings = null) => {
     check(); const saved = prepared.get(action.taskId);
     if (!saved || !same(saved.action, action) || task && !same(saved.task, task) || settings && !same(saved.settings, settings)) fail('ACTION_CHANGED');
+    if (!marketScheduleGate(saved.task, cursors.get(action.taskId)?.schedule, action.kind, action, now())) fail('SCHEDULE_WINDOW_CLOSED');
     if (action.expiresAt <= now()) fail('ACTION_EXPIRED_OR_INVALID');
     if (saved.task.mode === 'filter' && ['search','buy'].includes(action.kind)) {
       const c = cursors.get(action.taskId), row = c?.rows?.find(r => r.definitionId === action.definitionId);
@@ -56,6 +58,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
   };
   const api = {
     dispatchBoundary: true,
+    async checkCapacity(task) { return native.preflight({ action: { kind: 'search' }, task }); },
     async begin({ task, settings, isCurrent = () => true }) {
       check(); cursors.delete(task.id); prepared.delete(task.id);
       const c = cursor(task, settings); c.isCurrent = isCurrent;
@@ -75,11 +78,15 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     async prepare({ task, settings, ledger }) {
       check(); if (!['fixed', 'sell', 'filter'].includes(task.mode)) fail('TASK_SELECTION_INVALID');
       const c = cursor(task, settings), held = ledger.holdings.filter(h => h.taskId === task.id);
+      c.schedule = ledger.schedules?.find(r => r.taskId === task.id);
+      const scheduleWait = () => { const wake = marketScheduleWake(task, c.schedule, ledger.holdings, now(),h=>marketRelistAllowed(ledger,task,h));
+        return wake === null ? { kind: 'done' } : { kind: 'wait', until: Math.max(now()+1000,wake), scheduleWait: true }; };
       if (task.mode === 'filter' && (!c.catalog || !c.isCurrent?.())) fail('CATALOG_UNAVAILABLE');
-      const pending = held.find(h => h.phase === 'held' || h.phase === 'transfer' || marketRelistAllowed(ledger, task, h));
+      const due = h => h.phase === 'transfer' && marketScheduleGate(task, c.schedule, 'list', h, now()) || marketRelistAllowed(ledger, task, h);
+      const pending = task.schedule ? held.find(due) ?? held.find(h=>h.phase==='held') : held.find(h => h.phase === 'held' || due(h));
       if (pending) {
         const action = { kind: pending.phase === 'held' ? 'move' : 'list', itemId: pending.itemId,
-          definitionId: pending.definitionId, coins: 0 };
+          definitionId: pending.definitionId, coins: 0, ...(pending.sellAt !== undefined ? { sellAt: pending.sellAt } : {}) };
         if (action.kind === 'list') {
           if (pending.phase === 'unsold') {
             action.previousTradeId = pending.listingTradeId;
@@ -98,9 +105,11 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
       if (task.mode === 'sell') {
         const unclaimed = task.owned.find(row => !held.some(h => h.itemId === row.itemId));
-        if (unclaimed) return remember(task, settings, { kind: 'claim', itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
+        if (unclaimed && marketScheduleGate(task, c.schedule, 'claim', null, now())) return remember(task, settings, { kind: 'claim', itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
       }
       if (held.some(h => h.phase === 'listed') && now() >= c.salesAt) return remember(task, settings, { kind: 'sales' });
+      if (task.schedule && (task.mode === 'sell' && (held.some(h=>h.phase==='transfer') || task.owned.some(r=>!held.some(h=>h.itemId===r.itemId)))
+        || task.mode !== 'sell' && !marketScheduleGate(task,c.schedule,'buy',null,now()))) return scheduleWait();
       if (task.mode === 'sell') return held.some(h => h.phase === 'listed') ? { kind: 'wait', until: Math.max(now() + 1000, c.salesAt) }
         : { kind: 'done', ...(held.some(h => h.phase === 'unsold') ? { reason: 'MARKET_RELIST_PAUSED' } : {}) };
       // Consume only offers from the last search for this task. Rejections are

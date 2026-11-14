@@ -48,7 +48,8 @@ export async function verifyMarketTaskPage(context, page, directory) {
         functionDeclaration: `function () { return { open: !!this.querySelector('dialog[open]'),
           rows: this.querySelectorAll('#pool .picker-row').length, page: this.getElementById('poolPage')?.textContent,
           summary: this.getElementById('filterCount')?.textContent,
-          pending: this.getElementById('pool')?.textContent?.includes('正在查找') }; }` });
+          pending: this.getElementById('pool')?.textContent?.includes('正在查找'),
+          scheduleControl: !!this.getElementById('schedule-enabled'), scheduleEnabled: this.getElementById('schedule-enabled')?.checked }; }` });
       if (value.exceptionDetails) throw Error('MARKET_INSPECTION_READ_FAILED'); return value.result.value;
     };
     const clickDraft = async selector => {
@@ -70,7 +71,8 @@ export async function verifyMarketTaskPage(context, page, directory) {
         if (await clickDraft('[data-mode="filter"]') && await clickDraft('#previewPool')) {
           let draft;
           for (let i = 0; i < 100; i++) { await page.waitForTimeout(100); draft = await inspectDraft(); if (!draft.pending) break; }
-          catalogPreview = { status: 'observed', rows: draft.rows, page: draft.page, summary: draft.summary };
+          catalogPreview = { status: 'observed', rows: draft.rows, page: draft.page, summary: draft.summary,
+            scheduleControl: draft.scheduleControl, scheduleEnabled: draft.scheduleEnabled };
         } else catalogPreview = { status: 'control-unavailable' };
       } finally { await clickDraft('[data-close="editor"]'); }
     }

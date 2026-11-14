@@ -18,7 +18,7 @@ export function createFc27MarketTaskExecution({ root, get, set, gmRequest, trans
       const native = await createNative({ root, assertCurrent, ...guards, now }); assertCurrent();
       const provider = createMarketTaskProvider({ context, native, assertCurrent, now, catalog: candidates,
         loadQuotes: (ids, options) => quotes.load(ids, { ...options, isCurrent: () => { assertCurrent(); return options.isCurrent?.() ?? true; } }) });
-      return createMarketTaskScheduler({ taskStore, coordinator, provider, enabled: liveEnabled === true, now, supportedModes: modes,
+      return createMarketTaskScheduler({ taskStore, coordinator, provider, enabled: liveEnabled === true, now, supportedModes: modes, monotonic: root.performance?.now ? () => root.performance.now() : null,
         onDiagnostic: fields => diagnosticLog?.record?.(fields) });
     },
   });

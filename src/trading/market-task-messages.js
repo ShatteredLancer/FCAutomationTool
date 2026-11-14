@@ -1,4 +1,10 @@
 export const marketTaskMessages = Object.freeze({
+  MARKET_SCHEDULE_INVALID: '请检查定时日期、时间和时区；结束必须晚于开始。',
+  MARKET_SCHEDULE_TIME_AMBIGUOUS: '此时区的时间因夏令时不存在或出现两次，请换一个明确时间。',
+  MARKET_SCHEDULE_WAIT: '等待预定买入／挂牌时间；没有提前搜索或交易。',
+  MARKET_SCHEDULE_WINDOW_CLOSED: '买入时段已结束，不再发送购买；已购卡仍按计划挂牌。',
+  MARKET_SCHEDULE_CLOCK_CHANGED: '系统时间发生明显变化，已暂停定时，请核对时间后继续。',
+  MARKET_TRANSFER_FULL: 'Transfer List 已满，本轮停止买入，继续处理已购卡与定时挂牌。',
   MARKET_BUSY: '另一个交易操作正在处理，请稍后再试。',
   MARKET_CATALOG_UNAVAILABLE: '已知球员目录尚未就绪，请载入俱乐部或 Gallery 卡池后重新启动任务。',
   MARKET_CATALOG_EMPTY: '本轮已知目录中没有满足条件的版本；这不代表全市场无货。',
