@@ -1,0 +1,226 @@
+// Account-wide bookkeeping primitives. They do not authorize or send requests.
+// P3 adapters must supply freshly verified EA facts and exact receipts.
+const fail = reason => { throw Error(`MARKET_${reason}`); };
+const number = (value, min = 0) => {
+  if (!Number.isSafeInteger(value) || value < min) fail('INVALID');
+  return value;
+};
+const id = value => {
+  if (typeof value !== 'string' || !value.trim() || value.length > 120) fail('INVALID');
+  return value;
+};
+const fields = (value, keys) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some(key => !keys.includes(key))) fail('INVALID');
+};
+const choice = (value, choices) => { if (!choices.includes(value)) fail('INVALID'); return value; };
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const DAY = 86400000;
+const HOUR = 3600000;
+export const MARKET_COORDINATION_BYTES = 1000000;
+
+export const emptyMarketCoordination = () => ({ schema: 1, revision: 0, lastTask: null,
+  searches: [], nextSearchAt: 0, cycleCount: 0, cycleTarget: null, stopped: null,
+  intents: [], holdings: [] });
+
+export function readMarketCoordination(value) {
+  if (value == null) return emptyMarketCoordination();
+  fields(value, Object.keys(emptyMarketCoordination()));
+  if (value.schema !== 1) fail('INVALID');
+  number(value.revision); number(value.nextSearchAt); number(value.cycleCount);
+  if (value.lastTask !== null) id(value.lastTask);
+  if (value.cycleTarget !== null) number(value.cycleTarget, 1);
+  if (value.stopped !== null) choice(value.stopped, ['authentication', 'captcha', 'throttle', 'unknown-write', 'manual']);
+  for (const [key, max] of [['searches', 10000], ['intents', 2000], ['holdings', 2000]]) {
+    if (!Array.isArray(value[key]) || value[key].length > max) fail('STORAGE_LIMIT');
+  }
+  for (const event of value.searches) {
+    fields(event, ['id', 'at', 'status']); id(event.id); number(event.at);
+    choice(event.status, ['dispatching', 'sent', 'not-sent']);
+  }
+  for (const entry of value.intents) {
+    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt']);
+    id(entry.id); id(entry.taskId); id(entry.itemId); number(entry.definitionId, 1); number(entry.at);
+    choice(entry.kind, ['buy', 'move', 'list']); choice(entry.phase, ['pending', 'confirmed', 'rejected']);
+    if (entry.tradeId !== null) id(entry.tradeId);
+    if (entry.kind === 'buy' && entry.tradeId === null) fail('INVALID');
+    number(entry.coins, entry.kind === 'move' ? 0 : 150);
+    if (entry.coins > 15000000 || entry.kind === 'move' && entry.coins !== 0) fail('INVALID');
+    if (entry.phase === 'confirmed') validateReceipt(entry, entry.receipt);
+    else if (entry.receipt !== null) fail('INVALID');
+  }
+  for (const holding of value.holdings) {
+    fields(holding, ['taskId', 'itemId', 'definitionId', 'cost', 'phase', 'listingTradeId', 'salePrice']);
+    id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
+    if (holding.cost !== null) number(holding.cost);
+    choice(holding.phase, ['held', 'transfer', 'listed', 'sold']);
+    if (holding.listingTradeId !== null) id(holding.listingTradeId);
+    if (['listed', 'sold'].includes(holding.phase) && holding.listingTradeId === null) fail('INVALID');
+    if (holding.phase === 'sold') { number(holding.salePrice, 150); if (holding.salePrice > 15000000) fail('INVALID'); }
+    else if (holding.salePrice !== null) fail('INVALID');
+  }
+  for (const [rows, key] of [[value.searches, 'id'], [value.intents, 'id'], [value.holdings, 'itemId']]) {
+    if (new Set(rows.map(row => row[key])).size !== rows.length) fail('INVALID');
+  }
+  if (new Set(value.intents.filter(i => i.phase === 'pending').map(i => i.itemId)).size
+    !== value.intents.filter(i => i.phase === 'pending').length) fail('INVALID');
+  if (new globalThis.TextEncoder().encode(JSON.stringify(value)).length > MARKET_COORDINATION_BYTES) fail('STORAGE_LIMIT');
+  return structuredClone(value);
+}
+
+function windowRelease(events, limit, window, now) {
+  number(limit, 1);
+  const times = events.filter(e => e.status !== 'not-sent' && e.at + window > now).map(e => e.at).sort((a, b) => a - b);
+  // If limits were lowered, more than one event may need to expire.
+  return { count: times.length, at: times.length < limit ? now : times[times.length - limit] + window };
+}
+
+export function marketSearchGate(state, settings, now) {
+  number(now);
+  const hour = windowRelease(state.searches, settings.hourLimit, HOUR, now);
+  const day = windowRelease(state.searches, settings.dayLimit, DAY, now);
+  return { hour: hour.count, day: day.count, nextAt: Math.max(now, hour.at, day.at, state.nextSearchAt),
+    uncertain: state.searches.filter(e => e.status === 'dispatching' && e.at + DAY > now).length,
+    recoveryRequired: state.intents.some(i => i.phase === 'pending'),
+    stopped: state.stopped };
+}
+
+function randomSeconds(min, max, random) {
+  number(min); number(max); if (max < min) fail('INVALID');
+  const value = random(); if (!Number.isFinite(value) || value < 0 || value >= 1) fail('INVALID');
+  return min + Math.floor(value * (max - min + 1));
+}
+
+// Persist immediately before dispatch. A crash between persistence and sending
+// is displayed as uncertain and conservatively occupies the rolling window.
+export function reserveMarketSearch(state, { requestId, now, settings, random = Math.random }) {
+  id(requestId);
+  const gate = marketSearchGate(state, settings, now);
+  if (gate.stopped) fail('STOPPED');
+  if (gate.recoveryRequired) fail('RECOVERY_REQUIRED');
+  if (gate.nextAt > now) fail('SEARCH_WAIT');
+  if (state.searches.some(e => e.id === requestId)) fail('DUPLICATE_REQUEST');
+  state.searches = state.searches.filter(e => e.at + DAY > now);
+  state.searches.push({ id: requestId, at: now, status: 'dispatching' });
+  state.cycleTarget ??= randomSeconds(settings.cycleMin, settings.cycleMax, random);
+  let wait = randomSeconds(settings.gapMin, settings.gapMax, random);
+  state.cycleCount++;
+  if (state.cycleCount >= state.cycleTarget) {
+    wait += randomSeconds(settings.restMin, settings.restMax, random);
+    state.cycleCount = 0; state.cycleTarget = null;
+  }
+  state.nextSearchAt = now + wait * 1000;
+}
+
+export function settleMarketSearch(state, requestId, status) {
+  choice(status, ['sent', 'not-sent']);
+  const event = state.searches.find(e => e.id === requestId);
+  if (!event || event.status !== 'dispatching') fail('RECEIPT_CONFLICT');
+  event.status = status;
+  // A definite no-send releases quota, but never shortens shared pacing.
+}
+
+export function marketOccupancy(state, taskId = null) {
+  const pending = state.intents.filter(i => i.phase === 'pending' && i.kind === 'buy' && (taskId === null || i.taskId === taskId));
+  const held = state.holdings.filter(h => h.phase !== 'sold' && (taskId === null || h.taskId === taskId));
+  return { reservedCoins: pending.reduce((sum, i) => sum + i.coins, 0),
+    holdingCoins: held.reduce((sum, h) => sum + (h.cost ?? 0), 0),
+    unknownCosts: held.filter(h => h.cost === null).length,
+    count: held.length + pending.length,
+    spent: state.intents.filter(i => i.kind === 'buy' && i.phase === 'confirmed' && (taskId === null || i.taskId === taskId))
+      .reduce((sum, i) => sum + i.coins, 0) };
+}
+
+export function claimMarketHolding(state, holding) {
+  fields(holding, ['taskId', 'itemId', 'definitionId', 'cost']);
+  id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
+  if (holding.cost !== null) number(holding.cost);
+  if (state.holdings.some(h => h.itemId === holding.itemId) || state.intents.some(i => i.itemId === holding.itemId && i.phase === 'pending')) fail('ITEM_OCCUPIED');
+  state.holdings.push({ ...holding, phase: 'held', listingTradeId: null, salePrice: null });
+}
+
+export function reserveMarketWrite(state, command, funds) {
+  fields(command, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at']);
+  const entry = { ...command, phase: 'pending', receipt: null };
+  // Validate before changing any caller-owned state.
+  readMarketCoordination({ ...emptyMarketCoordination(), intents: [entry] });
+  if (state.stopped) fail('STOPPED');
+  if (state.intents.some(i => i.phase === 'pending')) fail('RECOVERY_REQUIRED');
+  if (state.intents.some(i => i.id === entry.id)) fail('DUPLICATE_REQUEST');
+  const holding = state.holdings.find(h => h.itemId === entry.itemId);
+  if (entry.kind === 'buy') {
+    if (holding || state.intents.some(i => i.kind === 'buy' && i.tradeId === entry.tradeId && i.phase !== 'rejected')) fail('ITEM_OCCUPIED');
+    fields(funds, ['balance', 'reserve', 'totalCap', 'taskCap', 'spendCap', 'freeSlots', 'perVersion']);
+    number(funds.balance); number(funds.freeSlots);
+    for (const key of ['reserve', 'totalCap', 'taskCap', 'spendCap']) if (funds[key] !== null) number(funds[key]);
+    const all = marketOccupancy(state), task = marketOccupancy(state, entry.taskId);
+    if (funds.perVersion != null) {
+      number(funds.perVersion, 1);
+      const copies = state.holdings.filter(h => h.taskId === entry.taskId && h.definitionId === entry.definitionId && h.phase !== 'sold').length;
+      if (copies >= funds.perVersion) fail('VERSION_CAP');
+    }
+    if (funds.freeSlots < 1 || funds.balance - all.reservedCoins - entry.coins < (funds.reserve ?? 0)) fail('FUNDS_OR_CAPACITY');
+    for (const [cap, occupancy] of [[funds.totalCap, all], [funds.taskCap, task]]) {
+      if (cap !== null && (occupancy.unknownCosts || occupancy.reservedCoins + occupancy.holdingCoins + entry.coins > cap)) fail('HOLDING_CAP');
+    }
+    if (funds.spendCap !== null && task.spent + task.reservedCoins + entry.coins > funds.spendCap) fail('SPEND_CAP');
+  } else if (!holding || holding.taskId !== entry.taskId || holding.definitionId !== entry.definitionId
+    || entry.kind === 'move' && holding.phase !== 'held' || entry.kind === 'list' && holding.phase !== 'transfer') fail('ITEM_OCCUPIED');
+  state.intents.push(entry);
+}
+
+function validateReceipt(entry, receipt) {
+  fields(receipt, ['itemId', 'definitionId', 'tradeId', 'coins']);
+  if (receipt.itemId !== entry.itemId || receipt.definitionId !== entry.definitionId || receipt.coins !== entry.coins) fail('RECEIPT_CONFLICT');
+  if (entry.kind === 'buy' && receipt.tradeId !== entry.tradeId || entry.kind === 'move' && receipt.tradeId !== null) fail('RECEIPT_CONFLICT');
+  if (entry.kind === 'list') id(receipt.tradeId);
+}
+
+// Only an adapter's independently verified exact receipt may call confirmed.
+// A transport exception is not a rejection: leave the pending entry intact.
+export function settleMarketWrite(state, requestId, result) {
+  fields(result, ['status', 'receipt']); choice(result.status, ['confirmed', 'rejected', 'unknown']);
+  const entry = state.intents.find(i => i.id === requestId);
+  if (!entry) fail('RECEIPT_CONFLICT');
+  if (entry.phase !== 'pending') {
+    if (entry.phase === result.status && same(entry.receipt, result.receipt)) return;
+    fail('RECEIPT_CONFLICT');
+  }
+  if (result.status !== 'confirmed' && result.receipt !== null) fail('RECEIPT_CONFLICT');
+  if (result.status === 'unknown') { state.stopped ??= 'unknown-write'; return; }
+  if (result.status === 'confirmed') {
+    validateReceipt(entry, result.receipt);
+    const holding = state.holdings.find(h => h.itemId === entry.itemId);
+    if (entry.kind === 'buy') {
+      if (holding) fail('ITEM_OCCUPIED');
+      state.holdings.push({ taskId: entry.taskId, itemId: entry.itemId, definitionId: entry.definitionId,
+        cost: entry.coins, phase: 'held', listingTradeId: null, salePrice: null });
+    } else {
+      if (!holding || holding.taskId !== entry.taskId || holding.definitionId !== entry.definitionId) fail('RECEIPT_CONFLICT');
+      holding.phase = entry.kind === 'move' ? 'transfer' : 'listed';
+      if (entry.kind === 'list') holding.listingTradeId = result.receipt.tradeId;
+    }
+  }
+  entry.phase = result.status; entry.receipt = structuredClone(result.receipt);
+  // Reconciling evidence never automatically clears a global stop or restarts.
+}
+
+export function settleMarketSale(state, receipt) {
+  fields(receipt, ['itemId', 'definitionId', 'tradeId', 'price', 'sold']);
+  if (receipt.sold !== true) fail('RECEIPT_CONFLICT');
+  number(receipt.price, 150); if (receipt.price > 15000000) fail('RECEIPT_CONFLICT');
+  const holding = state.holdings.find(h => h.itemId === receipt.itemId);
+  if (!holding || !['listed', 'sold'].includes(holding.phase) || holding.definitionId !== receipt.definitionId
+    || holding.listingTradeId !== receipt.tradeId || holding.phase === 'sold' && holding.salePrice !== receipt.price) fail('RECEIPT_CONFLICT');
+  holding.phase = 'sold'; holding.salePrice = receipt.price;
+}
+
+export function nextMarketTask(state, readyIds) {
+  if (state.stopped || state.intents.some(i => i.phase === 'pending')) return null;
+  if (!Array.isArray(readyIds) || readyIds.length > 100 || new Set(readyIds).size !== readyIds.length) fail('INVALID');
+  readyIds.forEach(id);
+  if (!readyIds.length) return null;
+  const next = readyIds[(readyIds.indexOf(state.lastTask) + 1) % readyIds.length];
+  state.lastTask = next;
+  return next;
+}
