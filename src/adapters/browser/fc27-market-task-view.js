@@ -61,8 +61,8 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
  const readInputs=()=>{for(const [key,base]of Object.entries(defaultTradingTaskSettings())){const node=$(key),raw=node.value;draft.settings[key]=node.type==='number'||key==='duration'||['league','nation','club','position'].includes(key)?(raw===''&&base===null?null:Number(raw)):raw;}draft.name=$('taskName').value.trim();};
  const playerTile=c=>`<div class="player"><span class="card">${esc(c.rating??'—')}</span><div><b>${esc(c.name)}</b><small>${esc(c.version||'版本')} · EA ${esc(c.definitionId)}</small></div></div>`;
  const fillSelect=(key,rows)=>{const field={league:'leagueId',nation:'nationId',club:'teamId',position:'preferredPosition'}[key],value=draft.settings[key];
-  const values=[...new Set(rows.map(c=>c[field]).filter(v=>Number.isSafeInteger(v)&&v>=0))];if(value!==null&&!values.includes(value))values.push(value);
-  $(key).innerHTML='<option value="">全部</option>'+values.sort((a,b)=>a-b).map(v=>`<option value="${v}">${esc(rows.find(c=>c[field]===v)?.[`${key}Name`]??`ID ${v}`)}</option>`).join('');$(key).value=String(value??'');};
+  const labels=new Map();for(const card of rows){const id=card[field];if(Number.isSafeInteger(id)&&id>=0&&!labels.has(id))labels.set(id,card[`${key}Name`]??`ID ${id}`);}if(value!==null&&!labels.has(value))labels.set(value,`ID ${value}`);
+  $(key).innerHTML='<option value="">全部</option>'+[...labels.keys()].sort((a,b)=>a-b).map(v=>`<option value="${v}">${esc(labels.get(v))}</option>`).join('');$(key).value=String(value??'');};
  const loadCatalog=async()=>{if(catalog)return catalog;check();const rows=await readCatalog();check();if(!Array.isArray(rows))throw Error('TASKS_CATALOG_UNAVAILABLE');catalog=rows;for(const key of ['league','nation','club','position'])fillSelect(key,rows);return rows;};
  const renderDraft=()=>{for(const b of shadow.querySelectorAll('[data-mode]'))b.classList.toggle('active',b.dataset.mode===draft.mode);for(const mode of ['fixed','filter','sell'])$(`${mode}Box`).classList.toggle('hidden',draft.mode!==mode);$('buyFields').classList.toggle('hidden',draft.mode==='sell');
   $('selectedRows').innerHTML=draft.players.map(p=>`<tr><td>${playerTile(p)}</td><td><input type="number" min="150" max="15000000" placeholder="沿用买入规则" aria-label="${esc(p.name)} 买入上限" data-cap="${p.definitionId}" value="${p.cap??''}"></td><td><input type="number" min="1" placeholder="不限" aria-label="${esc(p.name)} 持仓上限" data-qty="${p.definitionId}" value="${p.qty??''}"></td><td><button type="button" data-remove="${p.definitionId}">移除</button></td></tr>`).join('');
@@ -99,6 +99,7 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
   const report=coordination?marketTaskReport(coordination.ledger,task.id):null;
   const money=value=>value===null?'未知':esc(value);
   const elapsedMs=runtimeRow(task)?.elapsedMs??report?.elapsedMs??0;
+  const scope=runtimeRow(task)?.candidateScope;
   const receipts=report&&(report.events.length||report.holdings.length)
    ? `<p>已买 ${report.purchased} · 已挂 ${report.listed} · 已售 ${report.sold} · 持仓成本 ${money(report.heldCost)} · 已实现利润 ${money(report.realizedProfit)}</p><p class="hint">仅已售回执计入收益，按 5% 交易税计算；成本缺失时利润保持未知。</p><h3>持仓（最近 40 张 / 共 ${report.holdings.length} 张）</h3>${report.holdings.slice(-40).reverse().map(h=>`<p>EA ${h.definitionId} · ${esc(h.itemId)} · ${({held:'待移卡',transfer:'待挂牌',listed:'已挂牌',unsold:'未售出',sold:'已售出'})[h.phase]} · 买入 ${money(h.cost)}${h.phase==='sold'?` · 售出 ${money(h.salePrice)}`:''}</p>`).join('')}<h3>交易回执（最近 40 条 / 共 ${report.events.length} 条）</h3>${report.events.slice(-40).reverse().map(r=>`<p>${r.previousTradeId?'重挂':({buy:'买入',move:'移动',list:'挂牌'})[r.kind]} · EA ${r.definitionId} · ${({pending:'待核对',confirmed:'已确认',rejected:'未成交／未发送'})[r.phase]} · ${r.coins}${r.listing?` · ${r.listing.startPrice}/${r.listing.buyNow} · ${r.listing.durationSeconds/3600}h`:''}</p>`).join('')}`
    : `<h3>交易回执</h3>${task.activity.receipts.map(r=>`<p>${({bought:'买入',moved:'移动',listed:'挂牌',sold:'售出'})[r.kind]} · EA ${r.definitionId} · ${r.coins??'金额未知'}</p>`).join('')||'<p>暂无交易</p>'}`;
@@ -106,6 +107,11 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
   const extra=document.createElement('section');extra.className='box';
   extra.innerHTML=`<p>累计运行 ${Math.ceil(elapsedMs/1000)} 秒 · 重挂：${({original:'原挂牌价',reference:'当前卖出规则重新定价',pause:'暂停此卡'})[task.settings.relist]} · 最多 ${task.settings.relistTimes??'不限'} 次</p><p class="hint">暂停和继续不重置用时、支出或重挂次数。异常关闭最多保守计入剩余 60 秒；离线时间不累计。</p>${(report?.handoffs??[]).slice(-40).map(h=>`<p>${h.fromTaskId===task.id?'移交给':'接收自'} ${esc(snapshot.store.tasks.find(t=>t.id===(h.fromTaskId===task.id?h.toTaskId:h.fromTaskId))?.name??'历史任务')} · EA ${h.definitionId} · 成本 ${money(h.cost)}</p>`).join('')}`;
   $('taskDetailBody').append(extra);
+  if(task.mode==='filter'){
+   const note=document.createElement('p');note.className='hint';note.textContent=scope
+    ?`本轮 ${scope.revision} · 已知目录 ${scope.known} 个版本 · 已匹配 ${scope.matched} 个 · 当前批 ${scope.batch} 个 · 缺价 ${scope.missing} 个。仅已知目录，非全市场；每次重新启动更新目录。`
+    :'启动后按最新已知目录分批筛选，每批最多 20 个版本；预览每页 5 张。不代表全市场覆盖，缺少所需字段的版本不参与。';extra.append(note);
+  }
   if(runtime&&report&&['stopped','archived'].includes(task.state)&&!factsOf(task).unresolved){
    const holdings=report.holdings.filter(h=>['held','transfer','unsold'].includes(h.phase));
    const targets=snapshot.store.tasks.filter(t=>t.id!==task.id&&t.mode==='sell'&&['ready','paused'].includes(stateFor(t)));

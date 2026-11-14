@@ -3,10 +3,10 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Page lifetime facade. Loading the tab reads only local state; the native
 // factory runs solely after an explicit start/recovery click. Late factory
 // completion cannot revive a permission revoked by navigation or pause.
-export function createMarketTaskRuntime({ context, createScheduler, enabled = false }) {
+export function createMarketTaskRuntime({ context, createScheduler, enabled = false, modes = ['fixed', 'sell'] }) {
   let scheduler = null, binding = null, initializing = false, generation = 0, disposed = false, unsubscribe = null;
   const listeners = new Set();
-  const inspect = () => scheduler?.inspect() ?? { available: enabled && !disposed, modes: ['fixed', 'sell'],
+  const inspect = () => scheduler?.inspect() ?? { available: enabled && !disposed, modes: [...modes],
     context: binding, busy: initializing, phase: initializing ? 'initialize' : 'idle', taskId: null,
     reason: null, evidence: [], errors: [], tasks: [] };
   const publish = () => { for (const listener of listeners) { try { listener(inspect()); } catch { /* UI only. */ } } };

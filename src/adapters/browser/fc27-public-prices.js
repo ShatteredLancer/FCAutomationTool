@@ -13,6 +13,7 @@ const positions = ['GK','SW','RWB','RB','RCB','CB','LCB','LB','LWB','RDM','CDM',
 const mappingWriters = new WeakMap();
 export function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog = null, now = () => Date.now(), policyReader = null }) {
   const rows = new Map();
+  const taskFacts = new Map();
   const futbinPages = new Map();
   const record = fields => {
     try { Promise.resolve(diagnosticLog?.record?.({ area: 'pricing', ...fields })).catch(() => {}); }
@@ -141,6 +142,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     scope: () => capture().scope,
     context: () => {const value=capture();return {scope:value.scope,season:value.context.season,platform:value.platform};},
     knownPlayers: () => [...rows.values()].map(row=>({...row})).slice(0,1000),
+    knownTaskPlayers: () => [...rows.values()].map(row=>({...row,...taskFacts.get(row.definitionId)})),
     async tradingCandidates({isCurrent=()=>true,onProgress=()=>{},names=[],namesOnly=false}={}){
       const captured=capture(),market=captured.platform,queries=tradingMentionNames(names),key=JSON.stringify([market,queries,namesOnly===true]);
       const check=async()=>{captured.assert();if(!isCurrent())throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
@@ -180,6 +182,8 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
     remember(items) {
       for (const row of items ?? []) {
         const definitionId = row.eaId ?? row.definitionId;
+        taskFacts.set(definitionId,{playerId:row.playerId??row.basePlayerEaId,rarity:row.rarity??row.rarityEaId??row.rareflag,
+          quality:row.quality,evolution:row.evolution,cosmetic:row.cosmetic});
         rows.set(definitionId, { definitionId, rating: row.rating ?? row.overall ?? row._rating,
           name:String(row.name??row.cardName??row.definitionId??row.eaId??'').slice(0,100),version:String(row.version??row.rarityName??'').slice(0,60),
           nationId: row.nationId ?? row.nationEaId, leagueId: row.leagueId ?? row.leagueEaId,

@@ -50,7 +50,8 @@ import { createTradingTaskStore } from '../adapters/browser/fc27-trading-task-st
 import { createMarketCoordinator } from '../adapters/browser/fc27-market-coordinator.js';
 import { createFc27MarketTaskExecution } from '../adapters/browser/fc27-market-task-execution.js';
 import { marketTaskEvidence } from '../trading/market-coordination.js';
-import { readTradingTaskInventory } from '../adapters/ea/fc27-trading-task-catalog.js';
+import { readTradingTaskInventory, readTradingTaskCatalog } from '../adapters/ea/fc27-trading-task-catalog.js';
+import { createMarketTaskCatalog } from '../trading/market-task-catalog.js';
 import { createFc27TradingExecution } from '../adapters/browser/fc27-trading-execution.js';
 import { createFc27TradingIntel } from '../adapters/browser/fc27-trading-intel.js';
 import { readFc27TradingCandidates } from '../adapters/ea/fc27-trading-candidates.js';
@@ -209,13 +210,15 @@ const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set
   intel:createFc27TradingIntel({gmRequest:GM_xmlhttpRequest,get:GM_getValue,set:GM_setValue}),
   readCandidates:()=>readFc27TradingCandidates(unsafeWindow)});
 const marketCoordinator=createMarketCoordinator({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks});
+const marketTaskCatalog=createMarketTaskCatalog({context:()=>publicPrices.context(),
+  readRows:async options=>[...await readTradingTaskCatalog(unsafeWindow,options),...publicPrices.knownTaskPlayers()]});
 const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
     readEvidence:async taskId=>marketTaskEvidence((await marketCoordinator.inspect()).ledger,taskId)}),
   readCoordination:()=>marketCoordinator.inspect(),
-  readCatalog:()=>[...new Map([...readFc27TradingCandidates(unsafeWindow),...publicPrices.knownPlayers()].map(row=>[row.definitionId,row])).values()],
+  readCatalog:async ids=>ids?marketTaskCatalog.lookup(ids):(await marketTaskCatalog.read()).rows,
   readInventory:()=>readTradingTaskInventory(unsafeWindow)};
 tradingTasks.runtime=createFc27MarketTaskExecution({root:unsafeWindow,get:GM_getValue,set:GM_setValue,gmRequest:GM_xmlhttpRequest,
-  transport:galleryTransport,taskStore:tradingTasks.service,coordinator:marketCoordinator,readCatalog:tradingTasks.readCatalog,
+  transport:galleryTransport,taskStore:tradingTasks.service,coordinator:marketCoordinator,readCatalog:tradingTasks.readCatalog,catalog:marketTaskCatalog,
   liveEnabled:dependencies.liveEnabled,diagnosticLog});
 unsafeWindow.addEventListener?.('beforeunload',()=>tradingTasks.runtime.dispose(),{once:true});
 let storageMaintenancePending = true;

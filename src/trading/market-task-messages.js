@@ -1,5 +1,8 @@
 export const marketTaskMessages = Object.freeze({
   MARKET_BUSY: '另一个交易操作正在处理，请稍后再试。',
+  MARKET_CATALOG_UNAVAILABLE: '已知球员目录尚未就绪，请载入俱乐部或 Gallery 卡池后重新启动任务。',
+  MARKET_CATALOG_EMPTY: '本轮已知目录中没有满足条件的版本；这不代表全市场无货。',
+  MARKET_CANDIDATE_CHANGED: '候选不再满足本轮筛选或排除条件，已阻止购买。',
   MARKET_USER_STOP: '已取消后续操作。', MARKET_STOPPED: '全局已暂停，请先核对回执，再解除暂停。',
   MARKET_REFERENCE_UNAVAILABLE: '所选来源没有有效报价；固定价格不依赖报价。',
   MARKET_PRICE_LIMIT: '价格不符合 EA 档位或允许范围，请修改任务价格。',

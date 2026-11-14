@@ -35,10 +35,14 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
     reason: lastReason, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
     tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
-      startedAt: row.startedAt, elapsedMs: elapsed(row) })) });
+      startedAt: row.startedAt, elapsedMs: elapsed(row), candidateScope: provider?.describe?.(row.id) ?? null })) });
   const publish = () => { for (const listener of [onStatus, ...listeners]) { try { listener(inspect()); } catch { /* Presentation is not authorization. */ } } };
+  const scopeFields = () => {
+    const scope = provider?.describe?.(currentTask);
+    return scope ? { count: scope.known, usableCandidates: scope.matched, batchSize: scope.batch, unknownCount: scope.missing } : {};
+  };
   const reportFailure = reason => {
-    try { Promise.resolve(onDiagnostic({ area: 'trading', event: 'task-scheduler', phase, status: 'blocked', reason })).catch(() => {}); }
+    try { Promise.resolve(onDiagnostic({ area: 'trading', event: 'task-scheduler', phase, status: 'blocked', reason, ...scopeFields() })).catch(() => {}); }
     catch { /* A logging failure cannot change task authorization or receipts. */ }
   };
   const diagnostic = (state, reason = null, code = null) => {
@@ -55,7 +59,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       status: reason ? 'blocked' : 'observed', reason, errorCode: code,
       pendingWriteCount: state.intents.filter(i => i.phase === 'pending').length,
       requestedCount: tasks.size, ownedCount: occupancy.count, spent: occupancy.spent,
-      reservedCoins: occupancy.reservedCoins })).catch(() => {}); } catch { /* No evidence objects/IDs. */ }
+      reservedCoins: occupancy.reservedCoins, ...scopeFields() })).catch(() => {}); } catch { /* No evidence objects/IDs. */ }
   };
   const current = () => {
     if (!same(taskStore.context(), runContext)) throw Error('TASKS_CONTEXT_CHANGED');
@@ -201,7 +205,13 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           const selected = nextMarketTask(structuredClone(ledger), ready), task = taskConfig(selected);
           currentTask = selected; phase = 'prepare'; stateOf(selected, 'running');
           let action;
-          try { action = structuredClone(await provider.prepare({ task: structuredClone(task), settings: structuredClone(store.settings),
+          try {
+            const row = tasks.get(selected), isCurrent = () => { current(); return allowed(selected) && tasks.get(selected) === row; };
+            if (!row.initialized && typeof provider.begin === 'function') {
+              await provider.begin({ task: structuredClone(task), settings: structuredClone(store.settings), isCurrent }); current();
+              if (!isCurrent()) continue; row.initialized = true; publish();
+            }
+            action = structuredClone(await provider.prepare({ task: structuredClone(task), settings: structuredClone(store.settings),
             ledger: structuredClone(ledger), now: now() })); current(); }
           catch (error) { reportFailure(safeReason(error)); stateOf(selected, 'paused', safeReason(error)); continue; }
           if (!allowed(selected)) continue;
@@ -254,7 +264,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   ...(action.kind === 'list' && action.listing ? { listing: structuredClone(action.listing) } : {}) };
                 if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
                 if (command?.kind === 'buy') {
-                  const row = fresh.players.find(p => p.definitionId === command.definitionId);
+                  const row = fresh.mode === 'fixed' ? fresh.players.find(p => p.definitionId === command.definitionId) : null;
                   if (fresh.mode === 'sell' || fresh.mode === 'fixed' && !row
                     || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap
                     || row?.cap == null && fresh.settings.buyRule === 'fixed' && command.coins > fresh.settings.buyValue

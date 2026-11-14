@@ -13,14 +13,14 @@ export function createFc27MarketTaskQuotes({ taskStore, readCatalog, ...options 
     return normalizeGalleryPricePolicy({ readSources: source, source: source === 'futgg' ? 'futgg' : 'futbin',
       futbinPlatform: snapshot.context.platform === 'pc' ? 'pc' : 'ps' });
   } });
-  return Object.freeze({ async load(ids, { source, context, isCurrent = () => true }) {
+  return Object.freeze({ async load(ids, { source, context, rows: suppliedRows = null, isCurrent = () => true }) {
     const check = async () => {
       if (!isCurrent() || !same(context, prices.context()) || !same(context, taskStore.context())) throw Error('TASKS_CONTEXT_CHANGED');
       const snapshot = await taskStore.read();
       if (!same(snapshot.context, context) || snapshot.store.settings.source !== source) throw Error('TASKS_AUTHORIZATION_CHANGED');
     };
     await check();
-    const rows = await readCatalog(); await check();
+    const rows = suppliedRows ?? await readCatalog(ids); await check();
     const policy = await prices.readSettings(); await check();
     const result = await prices.load(ids, { policy, purpose: 'purchase', rows,
       sources: source === 'both' ? ['futbin', 'futgg'] : [source],

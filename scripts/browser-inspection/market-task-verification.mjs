@@ -41,8 +41,41 @@ export async function verifyMarketTaskPage(context, page, directory) {
     await page.mouse.click(before.recoverPoint.x, before.recoverPoint.y);
     let after;
     for (let i = 0; i < 100; i++) { await page.waitForTimeout(100); after = await read(); if (after.runtime !== '核对交易接口' && after.readonlyRecovery && after.status !== before.status) break; }
+    // Open a disposable draft solely to exercise the local catalog. Never save
+    // it, start it, change account settings, or close an existing user draft.
+    const inspectDraft = async () => {
+      const value = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
+        functionDeclaration: `function () { return { open: !!this.querySelector('dialog[open]'),
+          rows: this.querySelectorAll('#pool .picker-row').length, page: this.getElementById('poolPage')?.textContent,
+          summary: this.getElementById('filterCount')?.textContent,
+          pending: this.getElementById('pool')?.textContent?.includes('正在查找') }; }` });
+      if (value.exceptionDetails) throw Error('MARKET_INSPECTION_READ_FAILED'); return value.result.value;
+    };
+    const clickDraft = async selector => {
+      const result = await cdp.send('Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
+        arguments: [{ value: selector }], functionDeclaration: `function (selector) {
+          const node = this.querySelector(selector); if (!node || node.disabled || !node.checkVisibility()) return null;
+          node.scrollIntoView({block:'center'}); const r = node.getBoundingClientRect(), x=r.x+r.width/2,y=r.y+r.height/2;
+          const outer=this.host.getRootNode(), hit=this.elementFromPoint(x,y);
+          if (!(hit===node || node.contains(hit)) || outer.elementFromPoint(x,y)!==this.host
+            || this.ownerDocument.elementFromPoint(x,y)!==outer.host) return null;
+          return {x,y};
+        }` });
+      if (result.exceptionDetails || !result.result.value) return false;
+      await page.mouse.click(result.result.value.x, result.result.value.y); return true;
+    };
+    let catalogPreview = { status: 'skipped-existing-dialog' };
+    if (!(await inspectDraft()).open && await clickDraft('#newTask')) {
+      try {
+        if (await clickDraft('[data-mode="filter"]') && await clickDraft('#previewPool')) {
+          let draft;
+          for (let i = 0; i < 100; i++) { await page.waitForTimeout(100); draft = await inspectDraft(); if (!draft.pending) break; }
+          catalogPreview = { status: 'observed', rows: draft.rows, page: draft.page, summary: draft.summary };
+        } else catalogPreview = { status: 'control-unavailable' };
+      } finally { await clickDraft('[data-close="editor"]'); }
+    }
     await page.screenshot({ path: path.join(directory, 'market-task-readonly.png') });
     return { status: 'observed', before: { ...before, recoverPoint: undefined }, after: { ...after, recoverPoint: undefined },
-      taskStarts: 0, settingsWrites: 0, eaMutations: 0 };
+      catalogPreview, taskStarts: 0, taskSaves: 0, settingsWrites: 0, eaMutations: 0 };
   } finally { await cdp.send('Runtime.releaseObjectGroup', { objectGroup: 'market-inspection' }).catch(() => {}); await cdp.detach(); }
 }

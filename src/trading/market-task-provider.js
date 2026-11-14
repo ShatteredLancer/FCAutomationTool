@@ -1,5 +1,7 @@
 import { marketTaskPrice } from './market-task-prices.js';
 import { marketLastListing, marketRelistAllowed } from './market-coordination.js';
+import { taskCandidateAllowed } from './task-catalog.js';
+import { taskCandidatePage } from './market-task-catalog.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw Error(`MARKET_${reason}`); };
@@ -8,7 +10,7 @@ const publicId = n => Number.isSafeInteger(n) && n > 0;
 // Task orchestration is independent of the EA transport. The native port MUST
 // invoke beforeDispatch synchronously at every market search / mutation, and
 // supply independent, exact receipts. Constructing this provider grants no permit.
-export function createMarketTaskProvider({ context, native, loadQuotes, assertCurrent,
+export function createMarketTaskProvider({ context, native, loadQuotes, assertCurrent, catalog = null,
   now = () => Date.now(), id = () => globalThis.crypto.randomUUID() }) {
   if (!native || typeof assertCurrent !== 'function' || typeof loadQuotes !== 'function') fail('PROVIDER_UNAVAILABLE');
   const cursors = new Map(), prepared = new Map();
@@ -23,10 +25,10 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     return value;
   };
   const price = (task, settings, definitionId, side, quotes) => marketTaskPrice({ task, source: settings.source,
-    player: task.players.find(p => p.definitionId === definitionId), quotes, definitionId, side,
+    player: task.mode === 'fixed' ? task.players.find(p => p.definitionId === definitionId) : null, quotes, definitionId, side,
     context, now: now(), priceTiers: native.priceTiers() });
   const priceFor = async (task, settings, definitionId, side) => {
-    const player = task.players.find(p => p.definitionId === definitionId);
+    const player = task.mode === 'fixed' ? task.players.find(p => p.definitionId === definitionId) : null;
     const fixed = side === 'buy' ? player?.cap != null || task.settings.buyRule === 'fixed' : task.settings.sellRule === 'fixed';
     const quotes = fixed ? null : await loadQuotes([definitionId], { source: settings.source, context }); check();
     return { ...price(task, settings, definitionId, side, quotes?.[definitionId]), quotes: quotes?.[definitionId] ?? null };
@@ -41,6 +43,10 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     check(); const saved = prepared.get(action.taskId);
     if (!saved || !same(saved.action, action) || task && !same(saved.task, task) || settings && !same(saved.settings, settings)) fail('ACTION_CHANGED');
     if (action.expiresAt <= now()) fail('ACTION_EXPIRED_OR_INVALID');
+    if (saved.task.mode === 'filter' && ['search','buy'].includes(action.kind)) {
+      const c = cursors.get(action.taskId), row = c?.rows?.find(r => r.definitionId === action.definitionId);
+      if (!c?.isCurrent?.() || !row || !taskCandidateAllowed(row, saved.task)) fail('CANDIDATE_CHANGED');
+    }
     return saved;
   };
   const holdingFor = (ledger, task, action) => {
@@ -50,9 +56,26 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
   };
   const api = {
     dispatchBoundary: true,
+    async begin({ task, settings, isCurrent = () => true }) {
+      check(); cursors.delete(task.id); prepared.delete(task.id);
+      const c = cursor(task, settings); c.isCurrent = isCurrent;
+      if (task.mode === 'filter') {
+        if (!catalog?.read) fail('CATALOG_UNAVAILABLE');
+        const snapshot = await catalog.read({ isCurrent }); check();
+        if (!isCurrent()) fail('USER_STOP');
+        if (snapshot.context !== JSON.stringify(context)) fail('CONTEXT_CHANGED');
+        c.catalog = snapshot; c.next = 0; c.rows = []; c.quotes = {}; c.matched = 0; c.cycled = false;
+      }
+    },
+    describe(taskId) {
+      const c = cursors.get(taskId);
+      return c?.catalog ? { revision: c.catalog.revision, known: c.catalog.rows.length, matched: c.matched,
+        batch: c.rows.length, missing: c.missing ?? 0, complete: false } : null;
+    },
     async prepare({ task, settings, ledger }) {
-      check(); if (!['fixed', 'sell'].includes(task.mode)) fail('TASK_SELECTION_INVALID');
+      check(); if (!['fixed', 'sell', 'filter'].includes(task.mode)) fail('TASK_SELECTION_INVALID');
       const c = cursor(task, settings), held = ledger.holdings.filter(h => h.taskId === task.id);
+      if (task.mode === 'filter' && (!c.catalog || !c.isCurrent?.())) fail('CATALOG_UNAVAILABLE');
       const pending = held.find(h => h.phase === 'held' || h.phase === 'transfer' || marketRelistAllowed(ledger, task, h));
       if (pending) {
         const action = { kind: pending.phase === 'held' ? 'move' : 'list', itemId: pending.itemId,
@@ -83,11 +106,47 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       // Consume only offers from the last search for this task. Rejections are
       // removed in accept, so one stale/competitive auction is never rebid.
       while (c.offers.length) {
-        const offer = c.offers[0], row = task.players.find(p => p.definitionId === offer.definitionId);
+        const offer = c.offers[0], row = (task.mode === 'filter' ? c.rows : task.players).find(p => p.definitionId === offer.definitionId);
         const copies = held.filter(h => h.definitionId === offer.definitionId && h.phase !== 'sold').length;
+        const cap = task.mode === 'filter' ? task.settings.perVersion : row?.qty;
         if (!row || offer.expiresAt <= now() || ledger.intents.some(i => i.kind === 'buy' && i.tradeId === offer.tradeId)
-          || row.qty !== null && copies >= row.qty) { c.offers.shift(); continue; }
+          || cap != null && copies >= cap || task.mode === 'filter' && !taskCandidateAllowed(row, task)) { c.offers.shift(); continue; }
         return remember(task, settings, { ...offer, kind: 'buy' });
+      }
+      if (task.mode === 'filter') {
+        if (c.index >= c.rows.length) {
+          if (c.next >= c.catalog.candidates.length) { c.next = 0; c.cycled = true; }
+          const page = await taskCandidatePage(c.catalog, task, { cursor: c.next, isCurrent: c.isCurrent }); check();
+          if (!c.isCurrent()) fail('USER_STOP');
+          c.rows = page.rows; c.next = page.next; c.index = 0; c.quotes = {}; c.quotedAt = null;
+          if (!c.cycled) c.matched += c.rows.length;
+          if (!c.rows.length) {
+            if (!c.matched) fail('CATALOG_EMPTY');
+            return { kind: 'wait', until: now() + 30000 };
+          }
+        }
+        const eligible = c.rows.slice(c.index).filter(row => task.settings.perVersion === null
+          || held.filter(h => h.definitionId === row.definitionId && h.phase !== 'sold').length < task.settings.perVersion);
+        if (task.settings.buyRule !== 'fixed' && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 30000
+          && eligible.some(row => { try { price(task, settings, row.definitionId, 'buy', c.quotes[row.definitionId]); return false; } catch { return true; } }))) {
+          c.quotes = await loadQuotes(eligible.map(row => row.definitionId), { source: settings.source, context, rows: eligible, isCurrent: c.isCurrent }); check();
+          if (!c.isCurrent()) fail('USER_STOP');
+          c.quotedAt = now(); c.missing = 0;
+          for (const row of eligible) {
+            try { price(task, settings, row.definitionId, 'buy', c.quotes[row.definitionId]); }
+            catch (error) { if (error.message !== 'MARKET_REFERENCE_UNAVAILABLE') throw error; c.missing++; }
+          }
+          if (c.missing === eligible.length) fail('REFERENCE_UNAVAILABLE');
+        }
+        for (; c.index < c.rows.length; c.index++) {
+          const row = c.rows[c.index]; if (!eligible.includes(row)) continue;
+          let p;
+          try { p = price(task, settings, row.definitionId, 'buy', c.quotes[row.definitionId]); }
+          catch (error) { if (error.message !== 'MARKET_REFERENCE_UNAVAILABLE') throw error; continue; }
+          return remember(task, settings, { kind: 'search', definitionId: row.definitionId, maxBuy: p.price,
+            quotes: c.quotes[row.definitionId] ?? null, expiresAt: p.expiresAt, limit: settings.perSearch });
+        }
+        return { kind: 'wait', until: now() + (c.next >= c.catalog.candidates.length ? 30000 : 1000) };
       }
       for (let i = 0; i < task.players.length; i++) {
         const row = task.players[(c.index + i) % task.players.length];
@@ -142,7 +201,9 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       if (action.kind === 'sales') c.salesAt = now() + 30000;
       if (action.kind === 'buy') c.offers = c.offers.filter(o => o.tradeId !== action.tradeId);
       if (action.kind === 'search') {
-        const saved = prepared.get(action.taskId); c.index = (saved.task.players.findIndex(p => p.definitionId === action.definitionId) + 1) % saved.task.players.length;
+        const saved = prepared.get(action.taskId);
+        c.index = saved.task.mode === 'filter' ? c.rows.findIndex(p => p.definitionId === action.definitionId) + 1
+          : (saved.task.players.findIndex(p => p.definitionId === action.definitionId) + 1) % saved.task.players.length;
         if (response.sent === true && response.status === 'confirmed') {
           if (!Array.isArray(response.offers) || response.offers.length > 21) fail('SEARCH_UNCONFIRMED');
           const seen = new Set();

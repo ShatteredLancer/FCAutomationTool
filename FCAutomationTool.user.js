@@ -565,12 +565,12 @@
       const formation = data(squad, "_formation");
       const id15 = data(formation, "id");
       const raw = data(formation, "positions");
-      let positions3 = null;
+      let positions4 = null;
       if (Array.isArray(raw) && data(raw, "length") === 11) {
         const copied = Array.from({ length: 11 }, (_, index) => data(data(raw, String(index)), "typeId"));
-        if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions3 = copied;
+        if (copied.every((value) => Number.isInteger(value) && value >= 0 && value <= 27)) positions4 = copied;
       }
-      return { id: Number.isSafeInteger(id15) && id15 >= 0 && id15 < 1e9 ? id15 : null, positions: positions3 };
+      return { id: Number.isSafeInteger(id15) && id15 >= 0 && id15 < 1e9 ? id15 : null, positions: positions4 };
     }
     function find() {
       if (![27, "27"].includes(data(root, "APP_YEAR_SHORT"))) return null;
@@ -1924,8 +1924,8 @@
     const id15 = ownData(formation, "id");
     const raw = ownData(formation, "positions");
     if (!Number.isSafeInteger(id15) || id15 <= 0 || !Array.isArray(raw) || raw.length !== 11) return fail37();
-    const positions3 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
-    if (positions3.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail37();
+    const positions4 = Array.from({ length: 11 }, (_, index) => ownData(ownData(raw, String(index)), "typeId"));
+    if (positions4.some((value) => !Number.isInteger(value) || value < 0 || value > 27)) return fail37();
     return {
       status: "observed",
       setId,
@@ -1934,7 +1934,7 @@
       simpleBrickIndices: [...simple],
       customBrickIndices: [...custom],
       requiredPlayerCount: 11 - bricks.length,
-      formation: { id: id15, positions: positions3 },
+      formation: { id: id15, positions: positions4 },
       squadEmpty: ids2.every((value) => value === 0 || value === -1)
     };
   }
@@ -14356,7 +14356,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   var planned = (id15, title, description, features, status = "\u89C4\u5212\u4E2D \xB7 \u5C1A\u672A\u63A5\u5165") => `
   <section id="page-${id15}" role="tabpanel" aria-labelledby="tab-${id15}" tabindex="0" hidden>
     <div class="section-heading"><div><p class="eyebrow">${title}</p><h2>${description}</h2></div><span class="badge planned">${status}</span></div>
-    <div class="feature-grid">${features.map(([name2, text6]) => `<article class="card"><h3>${name2}</h3><p>${text6}</p></article>`).join("")}</div>
+    <div class="feature-grid">${features.map(([name2, text7]) => `<article class="card"><h3>${name2}</h3><p>${text7}</p></article>`).join("")}</div>
     <p class="module-note">\u672C\u9875\u5F53\u524D\u4EC5\u5C55\u793A\u529F\u80FD\u89C4\u5212\uFF0C\u5C1A\u4E0D\u6267\u884C\u64CD\u4F5C\u3002</p>
   </section>`;
   function fc27WorkbenchMarkup({ installationChecks = false } = {}) {
@@ -14862,7 +14862,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   }
   async function encodeGalleryCacheValue(value) {
     if (typeof globalThis.CompressionStream !== "function") return value;
-    const text6 = JSON.stringify(value), bytes = new globalThis.TextEncoder().encode(text6);
+    const text7 = JSON.stringify(value), bytes = new globalThis.TextEncoder().encode(text7);
     if (bytes.byteLength < MIN_BYTES || bytes.byteLength > MAX_BYTES) return value;
     const packed = await collect(new globalThis.Blob([bytes]).stream().pipeThrough(new globalThis.CompressionStream("gzip")));
     let binary = "";
@@ -14870,7 +14870,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       binary += String.fromCharCode(...packed.subarray(offset, offset + 8192));
     }
     const data = globalThis.btoa(binary);
-    if (data.length >= text6.length) return value;
+    if (data.length >= text7.length) return value;
     return { schema: 4, format: FORMAT, data };
   }
   async function decodeGalleryCacheValue(value) {
@@ -18063,10 +18063,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
 
   // src/adapters/browser/fc27-listing-range.js
   function mountListingRange({ document, parent, label, labels: labels2, min, max, value, onValueChange, enabled }) {
-    const add3 = (parent2, tag, className, text6 = "") => {
+    const add3 = (parent2, tag, className, text7 = "") => {
       const node = document.createElement(tag);
       node.className = className;
-      node.textContent = text6;
+      node.textContent = text7;
       parent2.append(node);
       return node;
     };
@@ -18192,9 +18192,9 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (!service) return { open() {
     }, dispose() {
     } };
-    const add3 = (parent2, tag, text6 = "") => {
+    const add3 = (parent2, tag, text7 = "") => {
       const e = document.createElement(tag);
-      e.textContent = text6;
+      e.textContent = text7;
       parent2.append(e);
       return e;
     };
@@ -18443,7 +18443,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     tableWrap.className = "list-table-wrap";
     const table = add3(tableWrap, "table");
     const heading = add3(table, "thead"), hr = add3(heading, "tr");
-    for (const text6 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add3(hr, "th", text6);
+    for (const text7 of ["", "Player", "Previously Listed", "Price", "Bought For", "Profit/Loss"]) add3(hr, "th", text7);
     const body = add3(table, "tbody");
     const footer = add3(add3(table, "tfoot"), "tr");
     const totalLabel = add3(footer, "td", "\u9009\u4E2D\u76C8\u4E8F");
@@ -19035,15 +19035,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
  .fcat-fodder .fd-retry-screen{display:flex;flex-direction:column;gap:14px;min-height:0}.fcat-fodder .fd-retry-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;border-bottom:1px solid #ffffff18;padding-bottom:12px}.fcat-fodder .fd-retry-head strong{font-size:18px}.fcat-fodder .fd-retry-head span,.fcat-fodder .fd-retry-side small{color:#aab3c2}.fcat-fodder .fd-retry-layout{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:20px;min-height:0}.fcat-fodder .fd-retry-table{min-width:0}.fcat-fodder .fd-retry-row{display:grid;grid-template-columns:20px 35px minmax(120px,1fr) 92px 112px;gap:10px;align-items:center;min-height:52px;padding:8px 0;border-bottom:1px solid #ffffff12}.fcat-fodder .fd-retry-head-row{min-height:30px;color:#929ead;text-transform:uppercase;font-size:11px}.fcat-fodder .fd-retry-row input[type=number]{width:112px}.fcat-fodder .fd-retry-who{min-width:0;overflow-wrap:anywhere}.fcat-fodder .fd-retry-state{color:#34d399;font-size:12px}.fcat-fodder .fd-retry-side{border-left:1px solid #ffffff18;padding-left:18px;display:flex;flex-direction:column;gap:8px}.fcat-fodder .fd-retry-total{margin-top:auto;border-top:1px solid #ffffff18;padding-top:10px}.fcat-fodder .fd-retry-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid #ffffff18;padding-top:12px}.fcat-fodder .fd-retry-actions button{border-radius:20px}.fcat-fodder .fd-retry-error{color:#ffb9aa}.fcat-fodder .fd-retry-screen .primary{background:#145e4b;color:#c7f9e8;border-color:#34d39966}
 @media(max-width:640px){.fcat-fodder .fd-retry-layout{grid-template-columns:1fr}.fcat-fodder .fd-retry-side{border-left:0;border-top:1px solid #ffffff18;padding:12px 0 0}.fcat-fodder .fd-retry-row{grid-template-columns:20px 28px minmax(85px,1fr) 78px 88px;gap:6px}.fcat-fodder .fd-retry-row input[type=number]{width:88px}}
 `;
-  var fodderAdd = (document, parent, tag, text6 = "", className = "") => {
+  var fodderAdd = (document, parent, tag, text7 = "", className = "") => {
     const node = document.createElement(tag);
-    node.textContent = text6;
+    node.textContent = text7;
     node.className = className;
     parent.append(node);
     return node;
   };
   function createFodderDialog(document, parent, id15, title) {
-    const add3 = (parent2, tag, text6, cls) => fodderAdd(document, parent2, tag, text6, cls);
+    const add3 = (parent2, tag, text7, cls) => fodderAdd(document, parent2, tag, text7, cls);
     const dialog = add3(parent, "dialog", "", "fcat-fodder");
     dialog.id = id15;
     dialog.setAttribute("aria-label", title);
@@ -19072,8 +19072,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const selected = /* @__PURE__ */ new Set(), overrides = {}, rows = /* @__PURE__ */ new Map();
     let lastSelected = null;
     const current2 = () => !disposed && dialog.open && isActive() && identity5 === accountScope() && targetCurrent();
-    const button = (parent2, text6, action) => {
-      const el = add3(parent2, "button", text6);
+    const button = (parent2, text7, action) => {
+      const el = add3(parent2, "button", text7);
       el.type = "button";
       el.addEventListener("click", (event) => {
         if (event.isTrusted && !busy && current2()) action();
@@ -19348,9 +19348,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFodderRetryResults({ document, parent, refreshPrices, retry, resume, isCurrent }) {
     let outcome = null, context = null, references = {}, edits = /* @__PURE__ */ new Map(), selected = /* @__PURE__ */ new Set();
     let busy = false, running = false, disposed = false, errorText = "";
-    const add3 = (host, tag, text6 = "", className = "") => {
+    const add3 = (host, tag, text7 = "", className = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       if (className) node.className = className;
       host.append(node);
       return node;
@@ -19626,7 +19626,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       rows.clear();
       table.replaceChildren();
       const head = add3(table, "div", "", "fd-buy-row");
-      for (const text6 of ["", "OVR", "Player", "Source", "Price"]) add3(head, "small", text6);
+      for (const text7 of ["", "OVR", "Player", "Source", "Price"]) add3(head, "small", text7);
       for (const item2 of items) {
         const line = add3(table, "div", "", "fd-buy-row"), art = add3(line, "div", "", "fd-mini-card");
         const raw = readCard(item2.definitionId), slot = add3(art, "slot");
@@ -19944,9 +19944,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let running = false;
     const expanded = /* @__PURE__ */ new Set();
     let edits = /* @__PURE__ */ new Map(), references = {}, selected = /* @__PURE__ */ new Set(), actionError = "";
-    const add3 = (container, tag, text6 = "") => {
+    const add3 = (container, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       container.append(node);
       return node;
     };
@@ -20127,8 +20127,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!retryBlocked && rows.some(failed) && context) {
         const mode = add3(actions, "select");
         mode.disabled = busy;
-        for (const [value, text6] of [["fixed", "\u52A0\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u52A0\u767E\u5206\u6BD4"]]) {
-          const option = add3(mode, "option", text6);
+        for (const [value, text7] of [["fixed", "\u52A0\u56FA\u5B9A\u91D1\u5E01"], ["percent", "\u52A0\u767E\u5206\u6BD4"]]) {
+          const option = add3(mode, "option", text7);
           option.value = value;
         }
         const premium = add3(actions, "input");
@@ -20419,8 +20419,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-diagnostic-download.js
-  function downloadFc27Diagnostics(runtime, document, text6, filename) {
-    const blob = new runtime.Blob([String(text6)], { type: "application/json;charset=utf-8" });
+  function downloadFc27Diagnostics(runtime, document, text7, filename) {
+    const blob = new runtime.Blob([String(text7)], { type: "application/json;charset=utf-8" });
     const url = runtime.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -20556,9 +20556,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-gallery-reference-table.js
   function renderGalleryReferenceTable(document, parent, targets, snapshot) {
     parent.replaceChildren();
-    const add3 = (root, tag, text6 = "") => {
+    const add3 = (root, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       root.append(node);
       return node;
     };
@@ -22138,9 +22138,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     return "FC27_GALLERY_ROADMAP_FAILED";
   };
-  var add = (document, parent, tag, text6 = "") => {
+  var add = (document, parent, tag, text7 = "") => {
     const node = document.createElement(tag);
-    node.textContent = text6;
+    node.textContent = text7;
     parent.append(node);
     return node;
   };
@@ -22187,14 +22187,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const lossLimit = input("\u6700\u591A\u9884\u8BA1\u635F\u8017\uFF08\u53EF\u9009\uFF09", "\u7559\u7A7A\u4E0D\u9650\uFF0C\u4E0D\u7B49\u4E8E\u91C7\u8D2D\u603B\u989D");
     const goalLabel = add(document, controls, "label", "\u89C4\u5212\u76EE\u6807"), goal = add(document, goalLabel, "select");
     goal.setAttribute("aria-label", "\u89C4\u5212\u76EE\u6807");
-    for (const [value, text6] of [["tokens", "\u62FF token\uFF08S \u2192 A \u2192 B\uFF09"], ["score", "\u51B2\u7EA7\u589E\u5206\uFF08\u672C\u5730\u8BA1\u5206\u4F30\u7B97\uFF09"]]) {
-      const option = add(document, goal, "option", text6);
+    for (const [value, text7] of [["tokens", "\u62FF token\uFF08S \u2192 A \u2192 B\uFF09"], ["score", "\u51B2\u7EA7\u589E\u5206\uFF08\u672C\u5730\u8BA1\u5206\u4F30\u7B97\uFF09"]]) {
+      const option = add(document, goal, "option", text7);
       option.value = value;
     }
     const discountLabel = add(document, controls, "label", "\u56DE\u552E\u4EF7\u5047\u8BBE");
     const discount = add(document, discountLabel, "select");
-    for (const [value, text6] of [[0, "\u6309\u4E70\u5165\u4EF7\u5356\u56DE\uFF0C\u4EC5\u4F30\u7A0E\u8D39"], [500, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 5%\uFF0C\u53E6\u6263\u7A0E"], [1e3, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 10%\uFF0C\u53E6\u6263\u7A0E"]]) {
-      const option = add(document, discount, "option", text6);
+    for (const [value, text7] of [[0, "\u6309\u4E70\u5165\u4EF7\u5356\u56DE\uFF0C\u4EC5\u4F30\u7A0E\u8D39"], [500, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 5%\uFF0C\u53E6\u6263\u7A0E"], [1e3, "\u6BD4\u4E70\u5165\u4EF7\u4F4E 10%\uFF0C\u53E6\u6263\u7A0E"]]) {
+      const option = add(document, discount, "option", text7);
       option.value = String(value);
     }
     const actions = add(document, dialog, "div");
@@ -22426,7 +22426,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const tableWrap = add(document, output2, "div");
       tableWrap.className = "gallery-roadmap-table";
       const table = add(document, tableWrap, "table"), head = add(document, table, "tr");
-      for (const text6 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", scoreMode ? "\u65B0\u589E\u8BA1\u7B97\u5206" : "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u8DE8\u5408\u96C6\u5171\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text6);
+      for (const text7 of ["\u987A\u5E8F / \u5408\u96C6", "\u73B0\u72B6 \u2192 \u76EE\u6807", scoreMode ? "\u65B0\u589E\u8BA1\u7B97\u5206" : "\u65B0\u589E token", "\u672C\u6279\u65B0\u4E70 / \u8DE8\u5408\u96C6\u5171\u7528", "\u6267\u884C\u5165\u53E3"]) add(document, head, "th", text7);
       for (const step of result.route) {
         const tr = add(document, table, "tr");
         add(document, tr, "th", `${step.order}. ${step.name}`);
@@ -22974,9 +22974,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryLevel({ document, parent, service, visible = () => true, timers = document.defaultView }) {
     if (!service || !parent) return null;
     parent.hidden = false;
-    const add3 = (tag, text6 = "") => {
+    const add3 = (tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       parent.append(node);
       return node;
     };
@@ -23271,10 +23271,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         listingRange = document.createElement("select");
         listingRange.id = "gallery-list-range";
         listingRange.setAttribute("aria-label", "\u6302\u724C\u8303\u56F4");
-        for (const [value, text6] of [["purchased", "\u6302\u724C\u5DF2\u8D2D\u5361"], ["set", "\u6302\u724C\u53EF\u552E\u5361"]]) {
+        for (const [value, text7] of [["purchased", "\u6302\u724C\u5DF2\u8D2D\u5361"], ["set", "\u6302\u724C\u53EF\u552E\u5361"]]) {
           const option = document.createElement("option");
           option.value = value;
-          option.textContent = text6;
+          option.textContent = text7;
           option.disabled = value === "set";
           listingRange.append(option);
         }
@@ -23850,8 +23850,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           native?.remove?.();
         } catch {
         }
-        const text6 = renderTextCard(parent, row);
-        parent.insertBefore(text6, parent.querySelector(".gallery-card-select"));
+        const text7 = renderTextCard(parent, row);
+        parent.insertBefore(text7, parent.querySelector(".gallery-card-select"));
       };
       try {
         native = nativeRenderer?.render?.({
@@ -24022,12 +24022,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const button = [...node("gallery-categories").children].find((row) => row.dataset.categoryId === category.id);
         const area = button?.querySelector(".gallery-category-score");
         if (!area) continue;
-        const text6 = `\u5DF2\u8BA1\u5206 ${completed}/${total}`;
-        area.querySelector("span").textContent = text6;
+        const text7 = `\u5DF2\u8BA1\u5206 ${completed}/${total}`;
+        area.querySelector("span").textContent = text7;
         const bar = area.querySelector("progress");
         bar.max = Math.max(1, total);
         bar.value = completed;
-        bar.setAttribute("aria-label", `${category.name}\uFF1A${text6}`);
+        bar.setAttribute("aria-label", `${category.name}\uFF1A${text7}`);
         area.dataset.scoreCounts = JSON.stringify(counts);
         area.title = "\u5DF2\u5B8C\u6210\u8BA1\u5206\u7684\u96C6\u5408\u6570\u91CF\uFF1B\u5177\u4F53\u5206\u6570\u548C\u52A0\u6210\u89C1\u96C6\u5408\u8BE6\u60C5\u3002";
       }
@@ -24177,8 +24177,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       overview.setAttribute("aria-live", "polite");
       const rewardText = (snapshot) => {
         if (!snapshot) return "\u8BF7\u91CD\u65B0\u751F\u6210";
-        const text6 = snapshot.rewards.map((reward) => `${reward.label} \xD7${count3(reward.quantity)}`).join("\u3001");
-        return `${text6 || (snapshot.rewardsComplete ? "\u65E0" : "\u672A\u63D0\u4F9B")}${snapshot.rewardsComplete ? "" : "\uFF08\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1\uFF09"}`;
+        const text7 = snapshot.rewards.map((reward) => `${reward.label} \xD7${count3(reward.quantity)}`).join("\u3001");
+        return `${text7 || (snapshot.rewardsComplete ? "\u65E0" : "\u672A\u63D0\u4F9B")}${snapshot.rewardsComplete ? "" : "\uFF08\u76EE\u5F55\u672A\u63D0\u4F9B\u5168\u90E8\u5956\u52B1\uFF09"}`;
       };
       const showRewardChange = (parent, current2, projected2) => {
         const line = add3(parent, "small", "", "gallery-reward-estimate");
@@ -24717,8 +24717,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let syncing = false, syncRefresh = null;
     let foregroundSync = null, resumeBackground = false;
     let autoSyncKey = null;
-    const targetStatus = (text6) => {
-      node("gallery-target-status").textContent = text6;
+    const targetStatus = (text7) => {
+      node("gallery-target-status").textContent = text7;
     };
     const targetValue = () => ({
       targets: [...jointTargets].map(([setId, grade]) => ({ setId, grade })),
@@ -26210,9 +26210,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFc27PriceSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add3 = (parent2, tag, text6 = "") => {
+    const add3 = (parent2, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       parent2.append(node);
       return node;
     };
@@ -26225,8 +26225,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const select = (label, values8) => {
       const control = add3(add3(fields5, "label", label), "select");
       control.setAttribute("aria-label", label);
-      for (const [value, text6] of values8) {
-        const option = add3(control, "option", text6);
+      for (const [value, text7] of values8) {
+        const option = add3(control, "option", text7);
         option.value = value;
       }
       return control;
@@ -26349,9 +26349,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryTradeSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add3 = (parent2, tag, text6 = "") => {
+    const add3 = (parent2, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       parent2.append(node);
       return node;
     };
@@ -26364,8 +26364,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const select = (label, options) => {
       const control = add3(add3(grid, "label", label), "select");
       control.setAttribute("aria-label", label);
-      for (const [value, text6] of options) {
-        const option = add3(control, "option", text6);
+      for (const [value, text7] of options) {
+        const option = add3(control, "option", text7);
         option.value = value;
       }
       return control;
@@ -26428,9 +26428,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountGalleryPlanningSettings({ document, parent, service }) {
     if (!service) return { refresh() {
     } };
-    const add3 = (owner, tag, text6 = "") => {
+    const add3 = (owner, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       owner.append(node);
       return node;
     };
@@ -26664,9 +26664,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/adapters/browser/fc27-trading-plan-view.js
   function mountTradingPlanView({ document, parent, service, isCurrent, onDiscovery = () => {
   }, now = () => Date.now(), timers = globalThis }) {
-    const add3 = (p, tag, text6 = "", cls = "") => {
+    const add3 = (p, tag, text7 = "", cls = "") => {
       const n = document.createElement(tag);
-      n.textContent = text6;
+      n.textContent = text7;
       if (cls) n.className = cls;
       p.append(n);
       return n;
@@ -26709,9 +26709,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     progress.setAttribute("role", "status");
     progress.setAttribute("aria-label", "\u81EA\u52A8\u4EA4\u6613\u8FDB\u5EA6");
     progress.setAttribute("aria-live", "polite");
-    const positions3 = add3(parent, "section");
-    positions3.setAttribute("aria-label", "\u81EA\u52A8\u4EA4\u6613\u6301\u4ED3");
-    positions3.hidden = true;
+    const positions4 = add3(parent, "section");
+    positions4.setAttribute("aria-label", "\u81EA\u52A8\u4EA4\u6613\u6301\u4ED3");
+    positions4.hidden = true;
     const rules = add3(parent, "details");
     add3(rules, "summary", "\u4EA4\u6613\u89C4\u5219\u4E0E\u98CE\u9669");
     add3(rules, "small", "\u6BCF\u7248\u672C\u4E00\u5F20\u3001\u6700\u591A\u516D\u5F20\uFF1B\u672A\u4E70\u5230\u7684\u539F\u6E05\u5355\u6BCF 60 \u79D2\u91CD\u67E5\uFF0C\u81F3\u539F\u62A5\u4EF7\u5230\u671F\uFF0C\u4E0D\u81EA\u52A8\u7EED\u671F\u3002\u65B0\u8D2D\u5361\u6309\u56FA\u5B9A\u76EE\u6807\u4EF7\u4E0A\u67B6\u4E00\u5C0F\u65F6\uFF0C\u4E0D\u81EA\u52A8\u964D\u4EF7\u3001\u91CD\u6302\u6216\u8FFD\u6DA8\u3002\u53EA\u6709\u786E\u8BA4\u5356\u51FA\u624D\u8BA1\u6536\u76CA\u3002");
@@ -26782,8 +26782,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const renderRecord = (value) => {
       record = value;
-      positions3.replaceChildren();
-      positions3.hidden = !record;
+      positions4.replaceChildren();
+      positions4.hidden = !record;
       if (!record) {
         sync();
         return;
@@ -26798,8 +26798,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       progress.dataset.state = record.reason || pending3() ? "error" : "ready";
       progress.textContent = `${summary3} \xB7 \u5DF2\u786E\u8BA4\u4E70\u5165 ${bought} / ${record.entries.length} \xB7 \u5DF2\u8DF3\u8FC7 ${skipped.length} \xB7 \u5DF2\u7528/\u5F85\u6838\u5BF9 ${spent} / \u4E0A\u9650 ${record.plan.capitalLimit} \xB7 \u5DF2\u786E\u8BA4\u5356\u51FA ${sold.length} \xB7 \u5DF2\u5B9E\u73B0\u7A0E\u540E\u76C8\u4E8F ${profit}${record.reason ? `\u3002${explain(record.reason)}` : ""}` + (buyArmed === record.plan.id ? ` \xB7 \u6BCF 60 \u79D2\u81EA\u52A8\u91CD\u67E5\u672A\u4E70\u5230\u7684\u5361\uFF0C\u4E0B\u6B21 ${new Date(nextBuyAt).toLocaleTimeString()}\uFF0C\u622A\u6B62 ${new Date(record.plan.expiresAt).toLocaleTimeString()}\u3002` : buyExpired ? " \xB7 \u81EA\u52A8\u91CD\u67E5\u5DF2\u5230\u671F\uFF1B\u8BF7\u91CD\u65B0\u751F\u6210\u5E76\u5BA1\u6838\uFF0C\u539F\u9884\u7B97\u548C\u5355\u5361\u9650\u4EF7\u672A\u53D8\u3002" : "");
       diagnostic(record.reason);
-      add3(positions3, "h3", "\u6267\u884C\u4E0E\u6301\u4ED3");
-      const wrap = add3(positions3, "div", "", "trading-table-wrap"), t = add3(wrap, "table", "", "trading-table");
+      add3(positions4, "h3", "\u6267\u884C\u4E0E\u6301\u4ED3");
+      const wrap = add3(positions4, "div", "", "trading-table-wrap"), t = add3(wrap, "table", "", "trading-table");
       const head = add3(add3(t, "thead"), "tr");
       for (const label of ["\u7403\u5458", "\u5F53\u524D\u72B6\u6001", "\u4E70\u4EF7 / \u4E0A\u9650", "\u6302\u724C\u76EE\u6807", "\u786E\u8BA4\u5356\u4EF7"]) add3(head, "th", label).scope = "col";
       const body = add3(t, "tbody");
@@ -26933,7 +26933,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       metric(metrics, "\u7A0E\u540E\u60C5\u666F\u51C0\u5229", money2(plan.expectedNet));
       metric(metrics, "\u6279\u51C6\u4E0A\u9650", money2(plan.capitalLimit));
       const t = add3(table, "table", "", "trading-table"), header = add3(add3(t, "thead"), "tr");
-      for (const text6 of ["\u7403\u5458 \xB7 \u5404\u4E00\u5F20", "\u4E70\u5165\u4E0A\u9650", "\u76EE\u6807\u5356\u4EF7", "\u7A0E\u540E\u60C5\u666F\u51C0\u5229", "\u64CD\u4F5C"]) add3(header, "th", text6).scope = "col";
+      for (const text7 of ["\u7403\u5458 \xB7 \u5404\u4E00\u5F20", "\u4E70\u5165\u4E0A\u9650", "\u76EE\u6807\u5356\u4EF7", "\u7A0E\u540E\u60C5\u666F\u51C0\u5229", "\u64CD\u4F5C"]) add3(header, "th", text7).scope = "col";
       const body = add3(t, "tbody");
       for (const row of plan.rows) {
         const tr = add3(body, "tr"), name2 = add3(tr, "td");
@@ -27052,8 +27052,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     sync();
     return {
       stopMonitoring,
-      setAnalysisStatus(text6) {
-        conclusion.textContent = text6;
+      setAnalysisStatus(text7) {
+        conclusion.textContent = text7;
       },
       setAdvice(value) {
         stopMonitoring();
@@ -27077,8 +27077,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         approval.checked = false;
         table.replaceChildren();
         metrics.replaceChildren();
-        positions3.replaceChildren();
-        positions3.hidden = true;
+        positions4.replaceChildren();
+        positions4.hidden = true;
         progress.textContent = "";
         conclusion.textContent = "\u6B63\u5728\u8BFB\u53D6\u5F53\u524D\u8D26\u53F7\u5019\u9009\uFF1B\u5C1A\u672A\u542F\u52A8\u4EA4\u6613\u3002";
         diagnostic(null);
@@ -27155,9 +27155,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountTradingEventView({ document, parent, service, isCurrent, onChange = async () => {
   }, onRevoke = () => {
   } }) {
-    const add3 = (p, tag, text6 = "", cls = "") => {
+    const add3 = (p, tag, text7 = "", cls = "") => {
       const n = document.createElement(tag);
-      n.textContent = text6;
+      n.textContent = text7;
       if (cls) n.className = cls;
       p.append(n);
       return n;
@@ -27302,9 +27302,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function mountFc27TradingView({ document, parent, tab, service, timers = globalThis, now = () => Date.now() }) {
     if (!parent) return { setActive() {
     } };
-    const add3 = (p, tag, text6 = "", cls = "") => {
+    const add3 = (p, tag, text7 = "", cls = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       if (cls) node.className = cls;
       p.append(node);
       return node;
@@ -27415,7 +27415,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       try {
         if (!current2(token)) throw Error("DESK_CONTEXT_CHANGED");
       } catch {
-        pause();
+        pause2();
         state = null;
         advice = null;
         intelList.replaceChildren();
@@ -27443,7 +27443,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (token === epoch2) busy = false;
       }
     };
-    const pause = () => {
+    const pause2 = () => {
       if (timer !== null) timers.clearInterval(timer);
       timer = null;
       monitor.textContent = "\u5F00\u59CB\u89C2\u5BDF\uFF08\u6BCF 5 \u5206\u949F\uFF09";
@@ -27461,7 +27461,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     button(controls, "\u5237\u65B0\u62A5\u4EF7", refresh);
     const monitor = button(controls, "\u5F00\u59CB\u89C2\u5BDF\uFF08\u6BCF 5 \u5206\u949F\uFF09", async () => {
       if (timer !== null) {
-        pause();
+        pause2();
         status.textContent = "\u5DF2\u505C\u6B62\u5B9A\u65F6\u89C2\u5BDF\u3002";
         return;
       }
@@ -27532,7 +27532,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!event.isTrusted || !active || !busy) return;
       epoch2++;
       busy = false;
-      pause();
+      pause2();
       advice = null;
       investmentView.setAdvice(null);
       investmentView.setAnalysisStatus("\u5019\u9009\u5206\u6790\u5DF2\u53D6\u6D88\uFF0C\u8BF7\u5728\u201C\u5019\u9009\u4E0E\u7EBF\u7D22\u201D\u91CD\u65B0\u5206\u6790\u3002");
@@ -27770,12 +27770,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       target.append(svg);
       const points = Object.values(card.series).flat();
       if (!Object.values(card.series).some((rows) => rows.length >= 2)) {
-        const text6 = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        text6.setAttribute("x", "15");
-        text6.setAttribute("y", "55");
-        text6.setAttribute("fill", "#bdcbd3");
-        text6.textContent = "\u91C7\u6837\u4E2D\uFF1B\u81F3\u5C11\u4E24\u6B21\u5206\u6876\u89C2\u5BDF\u540E\u7ED8\u56FE";
-        svg.append(text6);
+        const text7 = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text7.setAttribute("x", "15");
+        text7.setAttribute("y", "55");
+        text7.setAttribute("fill", "#bdcbd3");
+        text7.textContent = "\u91C7\u6837\u4E2D\uFF1B\u81F3\u5C11\u4E24\u6B21\u5206\u6876\u89C2\u5BDF\u540E\u7ED8\u56FE";
+        svg.append(text7);
         return;
       }
       const start = Math.min(...points.map((p) => p.at)), end = Math.max(start + 1, ...points.map((p) => p.at)), low = Math.min(...points.map((p) => p.price)), high = Math.max(low + 1, ...points.map((p) => p.price));
@@ -27870,7 +27870,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       pairingRevision++;
       busy = false;
       pairBusy = false;
-      pause();
+      pause2();
       investmentView.setActive(false);
       eventView.setActive(false);
       if (!value) return;
@@ -28040,11 +28040,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/trading/task-catalog.js
+  var yieldTaskCatalog = () => yieldStreamlinedTask(typeof globalThis.MessageChannel === "function" ? { MessageChannel: globalThis.MessageChannel } : globalThis);
   function taskMatches(card, settings) {
-    return card.rating >= settings.ratingMin && card.rating <= settings.ratingMax && (settings.quality === "all" || card.quality === settings.quality) && [["league", "leagueId"], ["nation", "nationId"], ["club", "teamId"], ["position", "preferredPosition"]].every(([key2, field]) => settings[key2] === null || card[field] === settings[key2]);
+    return Number.isSafeInteger(card.rating) && card.rating >= settings.ratingMin && card.rating <= settings.ratingMax && (settings.quality === "all" || card.quality === settings.quality) && [["league", "leagueId"], ["nation", "nationId"], ["club", "teamId"], ["position", "preferredPosition"]].every(([key2, field]) => settings[key2] === null || card[field] === settings[key2]);
   }
   var taskExclusion = (card, excluded) => excluded.find((e) => e.type === "version" ? e.id === card.definitionId : card.playerId != null && e.id === card.playerId);
-  async function readTaskCatalogPage({ rows, settings = null, query = "", cursor = 0, isCurrent = () => true, yieldControl = () => new Promise((resolve) => setTimeout(resolve, 0)) }) {
+  var taskCandidateAllowed = (card, task) => taskMatches(card, task.settings) && !taskExclusion(card, task.excluded) && (!task.excluded.some((e) => e.type === "player") || Number.isSafeInteger(card.playerId) && card.playerId > 0);
+  async function readTaskCatalogPage({ rows, settings = null, query = "", cursor = 0, isCurrent = () => true, yieldControl = yieldTaskCatalog }) {
     const search = query.trim().toLocaleLowerCase(), page = [];
     let next = cursor, scanned = 0;
     for (let i = cursor; i < rows.length; i++) {
@@ -28473,6 +28475,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/trading/market-task-messages.js
   var marketTaskMessages = Object.freeze({
     MARKET_BUSY: "\u53E6\u4E00\u4E2A\u4EA4\u6613\u64CD\u4F5C\u6B63\u5728\u5904\u7406\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002",
+    MARKET_CATALOG_UNAVAILABLE: "\u5DF2\u77E5\u7403\u5458\u76EE\u5F55\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u8F7D\u5165\u4FF1\u4E50\u90E8\u6216 Gallery \u5361\u6C60\u540E\u91CD\u65B0\u542F\u52A8\u4EFB\u52A1\u3002",
+    MARKET_CATALOG_EMPTY: "\u672C\u8F6E\u5DF2\u77E5\u76EE\u5F55\u4E2D\u6CA1\u6709\u6EE1\u8DB3\u6761\u4EF6\u7684\u7248\u672C\uFF1B\u8FD9\u4E0D\u4EE3\u8868\u5168\u5E02\u573A\u65E0\u8D27\u3002",
+    MARKET_CANDIDATE_CHANGED: "\u5019\u9009\u4E0D\u518D\u6EE1\u8DB3\u672C\u8F6E\u7B5B\u9009\u6216\u6392\u9664\u6761\u4EF6\uFF0C\u5DF2\u963B\u6B62\u8D2D\u4E70\u3002",
     MARKET_USER_STOP: "\u5DF2\u53D6\u6D88\u540E\u7EED\u64CD\u4F5C\u3002",
     MARKET_STOPPED: "\u5168\u5C40\u5DF2\u6682\u505C\uFF0C\u8BF7\u5148\u6838\u5BF9\u56DE\u6267\uFF0C\u518D\u89E3\u9664\u6682\u505C\u3002",
     MARKET_REFERENCE_UNAVAILABLE: "\u6240\u9009\u6765\u6E90\u6CA1\u6709\u6709\u6548\u62A5\u4EF7\uFF1B\u56FA\u5B9A\u4EF7\u683C\u4E0D\u4F9D\u8D56\u62A5\u4EF7\u3002",
@@ -28686,9 +28691,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const playerTile = (c) => `<div class="player"><span class="card">${esc(c.rating ?? "\u2014")}</span><div><b>${esc(c.name)}</b><small>${esc(c.version || "\u7248\u672C")} \xB7 EA ${esc(c.definitionId)}</small></div></div>`;
     const fillSelect = (key2, rows) => {
       const field = { league: "leagueId", nation: "nationId", club: "teamId", position: "preferredPosition" }[key2], value = draft.settings[key2];
-      const values8 = [...new Set(rows.map((c) => c[field]).filter((v) => Number.isSafeInteger(v) && v >= 0))];
-      if (value !== null && !values8.includes(value)) values8.push(value);
-      $(key2).innerHTML = '<option value="">\u5168\u90E8</option>' + values8.sort((a, b) => a - b).map((v) => `<option value="${v}">${esc(rows.find((c) => c[field] === v)?.[`${key2}Name`] ?? `ID ${v}`)}</option>`).join("");
+      const labels2 = /* @__PURE__ */ new Map();
+      for (const card of rows) {
+        const id15 = card[field];
+        if (Number.isSafeInteger(id15) && id15 >= 0 && !labels2.has(id15)) labels2.set(id15, card[`${key2}Name`] ?? `ID ${id15}`);
+      }
+      if (value !== null && !labels2.has(value)) labels2.set(value, `ID ${value}`);
+      $(key2).innerHTML = '<option value="">\u5168\u90E8</option>' + [...labels2.keys()].sort((a, b) => a - b).map((v) => `<option value="${v}">${esc(labels2.get(v))}</option>`).join("");
       $(key2).value = String(value ?? "");
     };
     const loadCatalog = async () => {
@@ -28830,12 +28839,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const report = coordination ? marketTaskReport(coordination.ledger, task.id) : null;
       const money2 = (value) => value === null ? "\u672A\u77E5" : esc(value);
       const elapsedMs = runtimeRow(task)?.elapsedMs ?? report?.elapsedMs ?? 0;
+      const scope2 = runtimeRow(task)?.candidateScope;
       const receipts = report && (report.events.length || report.holdings.length) ? `<p>\u5DF2\u4E70 ${report.purchased} \xB7 \u5DF2\u6302 ${report.listed} \xB7 \u5DF2\u552E ${report.sold} \xB7 \u6301\u4ED3\u6210\u672C ${money2(report.heldCost)} \xB7 \u5DF2\u5B9E\u73B0\u5229\u6DA6 ${money2(report.realizedProfit)}</p><p class="hint">\u4EC5\u5DF2\u552E\u56DE\u6267\u8BA1\u5165\u6536\u76CA\uFF0C\u6309 5% \u4EA4\u6613\u7A0E\u8BA1\u7B97\uFF1B\u6210\u672C\u7F3A\u5931\u65F6\u5229\u6DA6\u4FDD\u6301\u672A\u77E5\u3002</p><h3>\u6301\u4ED3\uFF08\u6700\u8FD1 40 \u5F20 / \u5171 ${report.holdings.length} \u5F20\uFF09</h3>${report.holdings.slice(-40).reverse().map((h) => `<p>EA ${h.definitionId} \xB7 ${esc(h.itemId)} \xB7 ${{ held: "\u5F85\u79FB\u5361", transfer: "\u5F85\u6302\u724C", listed: "\u5DF2\u6302\u724C", unsold: "\u672A\u552E\u51FA", sold: "\u5DF2\u552E\u51FA" }[h.phase]} \xB7 \u4E70\u5165 ${money2(h.cost)}${h.phase === "sold" ? ` \xB7 \u552E\u51FA ${money2(h.salePrice)}` : ""}</p>`).join("")}<h3>\u4EA4\u6613\u56DE\u6267\uFF08\u6700\u8FD1 40 \u6761 / \u5171 ${report.events.length} \u6761\uFF09</h3>${report.events.slice(-40).reverse().map((r) => `<p>${r.previousTradeId ? "\u91CD\u6302" : { buy: "\u4E70\u5165", move: "\u79FB\u52A8", list: "\u6302\u724C" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${{ pending: "\u5F85\u6838\u5BF9", confirmed: "\u5DF2\u786E\u8BA4", rejected: "\u672A\u6210\u4EA4\uFF0F\u672A\u53D1\u9001" }[r.phase]} \xB7 ${r.coins}${r.listing ? ` \xB7 ${r.listing.startPrice}/${r.listing.buyNow} \xB7 ${r.listing.durationSeconds / 3600}h` : ""}</p>`).join("")}` : `<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
       $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[stateFor(task)]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p><p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p><p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}${receipts}`;
       const extra = document.createElement("section");
       extra.className = "box";
       extra.innerHTML = `<p>\u7D2F\u8BA1\u8FD0\u884C ${Math.ceil(elapsedMs / 1e3)} \u79D2 \xB7 \u91CD\u6302\uFF1A${{ original: "\u539F\u6302\u724C\u4EF7", reference: "\u5F53\u524D\u5356\u51FA\u89C4\u5219\u91CD\u65B0\u5B9A\u4EF7", pause: "\u6682\u505C\u6B64\u5361" }[task.settings.relist]} \xB7 \u6700\u591A ${task.settings.relistTimes ?? "\u4E0D\u9650"} \u6B21</p><p class="hint">\u6682\u505C\u548C\u7EE7\u7EED\u4E0D\u91CD\u7F6E\u7528\u65F6\u3001\u652F\u51FA\u6216\u91CD\u6302\u6B21\u6570\u3002\u5F02\u5E38\u5173\u95ED\u6700\u591A\u4FDD\u5B88\u8BA1\u5165\u5269\u4F59 60 \u79D2\uFF1B\u79BB\u7EBF\u65F6\u95F4\u4E0D\u7D2F\u8BA1\u3002</p>${(report?.handoffs ?? []).slice(-40).map((h) => `<p>${h.fromTaskId === task.id ? "\u79FB\u4EA4\u7ED9" : "\u63A5\u6536\u81EA"} ${esc(snapshot.store.tasks.find((t) => t.id === (h.fromTaskId === task.id ? h.toTaskId : h.fromTaskId))?.name ?? "\u5386\u53F2\u4EFB\u52A1")} \xB7 EA ${h.definitionId} \xB7 \u6210\u672C ${money2(h.cost)}</p>`).join("")}`;
       $("taskDetailBody").append(extra);
+      if (task.mode === "filter") {
+        const note = document.createElement("p");
+        note.className = "hint";
+        note.textContent = scope2 ? `\u672C\u8F6E ${scope2.revision} \xB7 \u5DF2\u77E5\u76EE\u5F55 ${scope2.known} \u4E2A\u7248\u672C \xB7 \u5DF2\u5339\u914D ${scope2.matched} \u4E2A \xB7 \u5F53\u524D\u6279 ${scope2.batch} \u4E2A \xB7 \u7F3A\u4EF7 ${scope2.missing} \u4E2A\u3002\u4EC5\u5DF2\u77E5\u76EE\u5F55\uFF0C\u975E\u5168\u5E02\u573A\uFF1B\u6BCF\u6B21\u91CD\u65B0\u542F\u52A8\u66F4\u65B0\u76EE\u5F55\u3002` : "\u542F\u52A8\u540E\u6309\u6700\u65B0\u5DF2\u77E5\u76EE\u5F55\u5206\u6279\u7B5B\u9009\uFF0C\u6BCF\u6279\u6700\u591A 20 \u4E2A\u7248\u672C\uFF1B\u9884\u89C8\u6BCF\u9875 5 \u5F20\u3002\u4E0D\u4EE3\u8868\u5168\u5E02\u573A\u8986\u76D6\uFF0C\u7F3A\u5C11\u6240\u9700\u5B57\u6BB5\u7684\u7248\u672C\u4E0D\u53C2\u4E0E\u3002";
+        extra.append(note);
+      }
       if (runtime && report && ["stopped", "archived"].includes(task.state) && !factsOf2(task).unresolved) {
         const holdings = report.holdings.filter((h) => ["held", "transfer", "unsold"].includes(h.phase));
         const targets = snapshot.store.tasks.filter((t) => t.id !== task.id && t.mode === "sell" && ["ready", "paused"].includes(stateFor(t)));
@@ -29288,9 +29304,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       node("prepare").disabled = busy || !node("target").value;
       node("export-diagnostics").disabled = busy || typeof exportDiagnostics !== "function";
     };
-    const appendText = (parent, tag, text6) => {
+    const appendText = (parent, tag, text7) => {
       const element = document.createElement(tag);
-      element.textContent = text6;
+      element.textContent = text7;
       parent.append(element);
       return element;
     };
@@ -30028,9 +30044,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
     };
-    const message = (text6) => {
-      output.textContent = text6;
-      if (dialogOutput) dialogOutput.textContent = text6;
+    const message = (text7) => {
+      output.textContent = text7;
+      if (dialogOutput) dialogOutput.textContent = text7;
     };
     const markFailures = (selected, failures = []) => {
       const now = readTarget();
@@ -30468,7 +30484,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return fallback;
       }
     };
-    const positions3 = (item2.possiblePositions ?? []).map((value) => typeof value === "string" ? value : root.PlayerPosition?.[value]).filter((value) => typeof value === "string");
+    const positions4 = (item2.possiblePositions ?? []).map((value) => typeof value === "string" ? value : root.PlayerPosition?.[value]).filter((value) => typeof value === "string");
     return {
       eaId: item2.definitionId,
       playerEaId: item2.definitionId % 16777216,
@@ -30480,7 +30496,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       rarityEaId: readPlayerRareFlag(item2),
       cardName: String(item2.knownAs || [item2.firstName, item2.lastName].filter(Boolean).join(" ") || item2.definitionId),
       rarityName: String(readPlayerRareFlag(item2)),
-      positions: positions3,
+      positions: positions4,
       weakFoot: call("getWeakFoot"),
       skillMoves: call("getSkillMoves"),
       holographic: Object.keys(item2._hyperCosmeticDTOs || item2.hyperCosmeticDTOs || {}).length > 0
@@ -32724,7 +32740,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   function classifyTradeError(error2 = {}) {
     const code2 = errorCode(error2);
     const message = messageText(error2);
-    const text6 = `${String(error2?.kind || "")} ${message}`.toLowerCase();
+    const text7 = `${String(error2?.kind || "")} ${message}`.toLowerCase();
     if (code2 === 427) {
       return {
         kind: "auction-operation-blocked",
@@ -32737,31 +32753,31 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         ambiguous: false
       };
     }
-    if (code2 === 429 || /too many requests|rate.?limit/.test(text6)) {
+    if (code2 === 429 || /too many requests|rate.?limit/.test(text7)) {
       return { kind: "rate-limit", code: code2, action: "stop-and-cooldown", retryable: false, opensCircuit: false, disarm: false, ambiguous: false };
     }
-    if (code2 === 401 || /session expired|not authenticated|unauthori[sz]ed/.test(text6)) {
+    if (code2 === 401 || /session expired|not authenticated|unauthori[sz]ed/.test(text7)) {
       return { kind: "session-expired", code: code2, action: "wait-session", retryable: false, opensCircuit: true, disarm: false, ambiguous: false };
     }
-    if (/captcha/.test(text6)) {
+    if (/captcha/.test(text7)) {
       return { kind: "captcha", code: code2, action: "stop-and-disarm", retryable: false, opensCircuit: true, disarm: true, ambiguous: false };
     }
-    if (code2 === 403 || /permission denied|trade access/.test(text6)) {
+    if (code2 === 403 || /permission denied|trade access/.test(text7)) {
       return { kind: "permission-denied", code: code2, action: "block", retryable: false, opensCircuit: true, disarm: false, ambiguous: false };
     }
-    if (/destination full|trade pile full|transfer.*full/.test(text6)) {
+    if (/destination full|trade pile full|transfer.*full/.test(text7)) {
       return { kind: "destination-full", code: code2, action: "stop", retryable: false, opensCircuit: false, disarm: false, ambiguous: false };
     }
-    if (/card.*(?:in trade|already listed)|item.*trade offer/.test(text6)) {
+    if (/card.*(?:in trade|already listed)|item.*trade offer/.test(text7)) {
       return { kind: "card-in-trade", code: code2, action: "refresh-and-skip", retryable: true, opensCircuit: false, disarm: false, ambiguous: false };
     }
-    if (/competition[- ]lost|lost bid|already purchased|outbid|auction.*expired/.test(text6)) {
+    if (/competition[- ]lost|lost bid|already purchased|outbid|auction.*expired/.test(text7)) {
       return { kind: "competition-lost", code: code2, action: "continue-after-delay", retryable: true, opensCircuit: false, disarm: false, ambiguous: false };
     }
     if ([426, 512, 521].includes(code2)) {
       return { kind: "transient-service", code: code2, action: "bounded-backoff", retryable: true, opensCircuit: false, disarm: false, ambiguous: false };
     }
-    if (/timeout|network|transport|connection|failed to fetch/.test(text6) || code2 === null) {
+    if (/timeout|network|transport|connection|failed to fetch/.test(text7) || code2 === null) {
       return { kind: "ambiguous-transport", code: code2, action: "reconcile-and-stop-if-unknown", retryable: false, opensCircuit: false, disarm: false, ambiguous: true };
     }
     return { kind: "service-error", code: code2, action: "stop", retryable: false, opensCircuit: false, disarm: false, ambiguous: false };
@@ -36350,9 +36366,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!post || seen.has(post.id) || !Number.isSafeInteger(at11) || at11 > now || now - at11 > 7 * 864e5) continue;
       const snowflake = Number((BigInt(post.id) >> 22n) + 1288834974657n);
       if (Math.abs(snowflake - at11) > 3e5) continue;
-      const text6 = String(raw.text ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 1800);
-      if (!text6 || !["evo", "sbc", "meta"].includes(raw.topic)) continue;
-      const key2 = text6.toLowerCase().replace(/https?:\/\/\S+|[^\p{L}\p{N}]/gu, "").slice(0, 300);
+      const text7 = String(raw.text ?? "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 1800);
+      if (!text7 || !["evo", "sbc", "meta"].includes(raw.topic)) continue;
+      const key2 = text7.toLowerCase().replace(/https?:\/\/\S+|[^\p{L}\p{N}]/gu, "").slice(0, 300);
       if (fingerprints.has(key2)) continue;
       fingerprints.add(key2);
       seen.add(post.id);
@@ -36361,19 +36377,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const clean2 = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const players = Array.isArray(raw.players) ? raw.players.slice(0, 8).filter((p) => name(p?.name)).map((p) => {
         const quote2 = String(p.nominationQuote ?? "").trim().slice(0, 180), n = name(p.name), v = name(p.version);
-        const nominated = quote2 && text6.toLowerCase().includes(quote2.toLowerCase()) && clean2(quote2).includes(clean2(n));
+        const nominated = quote2 && text7.toLowerCase().includes(quote2.toLowerCase()) && clean2(quote2).includes(clean2(n));
         return { name: n, version: /^(?:EA\s*)?FC\s*27$/i.test(v) ? null : v || null, nominationQuote: nominated ? quote2 : null };
       }) : [];
-      const maxRating = raw.conditions?.maxRating, positions3 = raw.conditions?.positions;
+      const maxRating = raw.conditions?.maxRating, positions4 = raw.conditions?.positions;
       const evo = raw.topic === "evo" && Number.isSafeInteger(maxRating) && maxRating >= 1 && maxRating <= 99 ? {
         maxRating,
-        positions: Array.isArray(positions3) ? positions3.filter((p) => ["GK", "CB", "LB", "RB", "LWB", "RWB", "CDM", "CM", "CAM", "LM", "RM", "LW", "RW", "ST", "CF"].includes(p)).slice(0, 5) : []
+        positions: Array.isArray(positions4) ? positions4.filter((p) => ["GK", "CB", "LB", "RB", "LWB", "RWB", "CDM", "CM", "CAM", "LM", "RM", "LW", "RW", "ST", "CF"].includes(p)).slice(0, 5) : []
       } : null;
       posts.push({
         url: post.url,
         author: post.author,
         at: at11,
-        text: text6,
+        text: text7,
         topic: raw.topic,
         players,
         parentUrl: authorReply && (!search || checkedReply) ? parent.url : null,
@@ -37355,12 +37371,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/trading/market-task-runtime.js
   var same33 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  function createMarketTaskRuntime({ context, createScheduler, enabled = false }) {
+  function createMarketTaskRuntime({ context, createScheduler, enabled = false, modes: modes2 = ["fixed", "sell"] }) {
     let scheduler = null, binding = null, initializing = false, generation = 0, disposed = false, unsubscribe = null;
     const listeners = /* @__PURE__ */ new Set();
     const inspect = () => scheduler?.inspect() ?? {
       available: enabled && !disposed,
-      modes: ["fixed", "sell"],
+      modes: [...modes2],
       context: binding,
       busy: initializing,
       phase: initializing ? "initialize" : "idle",
@@ -37513,7 +37529,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         reason: row.reason,
         nextAt: row.nextAt,
         startedAt: row.startedAt,
-        elapsedMs: elapsed(row)
+        elapsedMs: elapsed(row),
+        candidateScope: provider?.describe?.(row.id) ?? null
       }))
     });
     const publish = () => {
@@ -37524,9 +37541,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
     };
+    const scopeFields = () => {
+      const scope2 = provider?.describe?.(currentTask);
+      return scope2 ? { count: scope2.known, usableCandidates: scope2.matched, batchSize: scope2.batch, unknownCount: scope2.missing } : {};
+    };
     const reportFailure = (reason) => {
       try {
-        Promise.resolve(onDiagnostic({ area: "trading", event: "task-scheduler", phase, status: "blocked", reason })).catch(() => {
+        Promise.resolve(onDiagnostic({ area: "trading", event: "task-scheduler", phase, status: "blocked", reason, ...scopeFields() })).catch(() => {
         });
       } catch {
       }
@@ -37562,7 +37583,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           requestedCount: tasks.size,
           ownedCount: occupancy.count,
           spent: occupancy.spent,
-          reservedCoins: occupancy.reservedCoins
+          reservedCoins: occupancy.reservedCoins,
+          ...scopeFields()
         })).catch(() => {
         });
       } catch {
@@ -37592,7 +37614,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       wake?.abort();
       publish();
     };
-    const pause = (taskId) => revoke(taskId, "paused");
+    const pause2 = (taskId) => revoke(taskId, "paused");
     const stop6 = (taskId) => revoke(taskId, "stopped");
     const pauseAll = () => revoke(null, "paused");
     const delay = async (ms) => {
@@ -37742,6 +37764,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               stateOf(selected, "running");
               let action;
               try {
+                const row = tasks.get(selected), isCurrent = () => {
+                  current2();
+                  return allowed(selected) && tasks.get(selected) === row;
+                };
+                if (!row.initialized && typeof provider.begin === "function") {
+                  await provider.begin({ task: structuredClone(task), settings: structuredClone(store.settings), isCurrent });
+                  current2();
+                  if (!isCurrent()) continue;
+                  row.initialized = true;
+                  publish();
+                }
                 action = structuredClone(await provider.prepare({
                   task: structuredClone(task),
                   settings: structuredClone(store.settings),
@@ -37836,7 +37869,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                       };
                       if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
                       if (command?.kind === "buy") {
-                        const row = fresh.players.find((p) => p.definitionId === command.definitionId);
+                        const row = fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId) : null;
                         if (fresh.mode === "sell" || fresh.mode === "fixed" && !row || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap || row?.cap == null && fresh.settings.buyRule === "fixed" && command.coins > fresh.settings.buyValue || row?.cap != null && command.coins > row.cap) throw Error("MARKET_BUY_RULE_CHANGED");
                       }
                       if (command?.kind === "list" && !(action.previousTradeId && fresh.settings.relist === "original") && fresh.settings.sellRule === "fixed" && command.coins !== fresh.settings.sellValue) throw Error("MARKET_SELL_RULE_CHANGED");
@@ -38061,7 +38094,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       acknowledgeStop,
       handoff,
       inspect,
-      pause,
+      pause: pause2,
       stop: stop6,
       pauseAll,
       subscribe(listener) {
@@ -38126,6 +38159,134 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { price: price3, reference, expiresAt: reference?.expiresAt ?? null };
   }
 
+  // src/trading/market-task-catalog.js
+  var positions2 = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
+  var positive12 = (n) => Number.isSafeInteger(n) && n > 0 ? n : null;
+  var text6 = (value) => typeof value === "string" ? value.slice(0, 100) : "";
+  var pause = yieldTaskCatalog;
+  function normalizeTaskCatalogCard(row) {
+    if (!row || !positive12(row.definitionId) || !Number.isSafeInteger(row.rating) || row.rating < 1 || row.rating > 99 || row.evolution === true || row.cosmetic === true) return null;
+    const rarity = Number.isSafeInteger(row.rarity) && row.rarity >= 0 ? row.rarity : null;
+    const quality3 = ["bronze", "silver", "gold", "special"].includes(row.quality) ? row.quality : rarity === null ? null : rarity > 1 ? "special" : row.rating >= 75 ? "gold" : row.rating >= 65 ? "silver" : "bronze";
+    const position = typeof row.preferredPosition === "string" ? positions2.indexOf(row.preferredPosition) : row.preferredPosition;
+    return Object.freeze({
+      definitionId: row.definitionId,
+      name: text6(row.name) || `EA ${row.definitionId}`,
+      rating: row.rating,
+      playerId: positive12(row.playerId),
+      quality: quality3,
+      rarity,
+      leagueId: positive12(row.leagueId),
+      nationId: positive12(row.nationId),
+      teamId: positive12(row.teamId),
+      preferredPosition: Number.isSafeInteger(position) && position >= 0 && position <= 27 ? position : null,
+      version: text6(row.version)
+    });
+  }
+  function createMarketTaskCatalog({ readRows, context, yieldControl = pause }) {
+    let previous = null, revision = 0, generation = 0;
+    const read = async ({ isCurrent = () => true } = {}) => {
+      const captured = JSON.stringify(context()), ticket = ++generation;
+      const check = () => {
+        if (!isCurrent() || captured !== JSON.stringify(context())) throw Error("TASKS_CONTEXT_CHANGED");
+      };
+      check();
+      const input = await readRows({ isCurrent: () => {
+        check();
+        return true;
+      } });
+      check();
+      if (!Array.isArray(input) || input.length > 1e5) throw Error("MARKET_CATALOG_UNAVAILABLE");
+      const rows = [], byId = /* @__PURE__ */ new Map();
+      for (let i = 0; i < input.length; i++) {
+        const card = normalizeTaskCatalogCard(input[i]);
+        if (card) {
+          const old = byId.get(card.definitionId);
+          if (old === void 0) {
+            byId.set(card.definitionId, rows.length);
+            rows.push(card);
+          } else if (rows[old]) {
+            const prior = rows[old], keys2 = ["rating", "playerId", "quality", "rarity", "leagueId", "nationId", "teamId", "preferredPosition"];
+            if (keys2.some((k) => prior[k] !== null && card[k] !== null && prior[k] !== card[k])) rows[old] = null;
+            else rows[old] = Object.freeze({ ...prior, ...Object.fromEntries(keys2.map((k) => [k, prior[k] ?? card[k]])) });
+          }
+        }
+        if ((i + 1) % 256 === 0) {
+          await yieldControl();
+          check();
+        }
+      }
+      const unique2 = rows.filter(Boolean);
+      let equal = previous?.context === captured && unique2.length === previous.rows.length;
+      for (let i = 0; equal && i < unique2.length; i++) {
+        equal = JSON.stringify(unique2[i]) === JSON.stringify(previous.rows[i]);
+        if ((i + 1) % 256 === 0) {
+          await yieldControl();
+          check();
+        }
+      }
+      if (equal) return previous;
+      const lanes = /* @__PURE__ */ new Map();
+      for (let i = 0; i < unique2.length; i++) {
+        const card = unique2[i];
+        if (!lanes.has(card.rating)) lanes.set(card.rating, []);
+        lanes.get(card.rating).push(card);
+        if ((i + 1) % 256 === 0) {
+          await yieldControl();
+          check();
+        }
+      }
+      const ordered = [...lanes.keys()].sort((a, b) => a - b).flatMap((rating) => lanes.get(rating));
+      const definitions = new Map(unique2.map((row) => [row.definitionId, row]));
+      const result = Object.freeze({
+        revision: `local-${++revision}`,
+        context: captured,
+        complete: false,
+        rows: Object.freeze(unique2),
+        candidates: Object.freeze(ordered),
+        find: (id15) => definitions.get(id15)
+      });
+      check();
+      if (ticket === generation) previous = result;
+      return result;
+    };
+    return Object.freeze({ read, async lookup(ids2) {
+      const snapshot = previous?.context === JSON.stringify(context()) ? previous : await read();
+      return ids2.map((id15) => snapshot.find(id15)).filter(Boolean);
+    } });
+  }
+  async function taskCandidatePage(snapshot, task, { cursor = 0, limit = 20, isCurrent = () => true, yieldControl = pause } = {}) {
+    const rows = [], source = snapshot.candidates;
+    let next = cursor, scanned = 0;
+    if (cursor === 0) {
+      let end = source.length;
+      while (next < end) {
+        const mid = next + end >>> 1;
+        if (source[mid].rating < task.settings.ratingMin) next = mid + 1;
+        else end = mid;
+      }
+    }
+    for (; next < source.length; next++) {
+      if (!isCurrent()) throw Error("MARKET_USER_STOP");
+      const card = source[next];
+      scanned++;
+      if (card.rating > task.settings.ratingMax) {
+        next = source.length;
+        break;
+      }
+      if (taskCandidateAllowed(card, task)) rows.push(card);
+      if (rows.length === limit) {
+        next++;
+        break;
+      }
+      if (scanned % 256 === 0) {
+        await yieldControl();
+        if (!isCurrent()) throw Error("MARKET_USER_STOP");
+      }
+    }
+    return { rows, next, done: next >= source.length };
+  }
+
   // src/trading/market-task-provider.js
   var same35 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail33 = (reason) => {
@@ -38137,6 +38298,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     native,
     loadQuotes,
     assertCurrent,
+    catalog = null,
     now = () => Date.now(),
     id: id15 = () => globalThis.crypto.randomUUID()
   }) {
@@ -38158,7 +38320,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const price3 = (task, settings, definitionId, side, quotes) => marketTaskPrice({
       task,
       source: settings.source,
-      player: task.players.find((p) => p.definitionId === definitionId),
+      player: task.mode === "fixed" ? task.players.find((p) => p.definitionId === definitionId) : null,
       quotes,
       definitionId,
       side,
@@ -38167,7 +38329,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       priceTiers: native.priceTiers()
     });
     const priceFor2 = async (task, settings, definitionId, side) => {
-      const player = task.players.find((p) => p.definitionId === definitionId);
+      const player = task.mode === "fixed" ? task.players.find((p) => p.definitionId === definitionId) : null;
       const fixed = side === "buy" ? player?.cap != null || task.settings.buyRule === "fixed" : task.settings.sellRule === "fixed";
       const quotes = fixed ? null : await loadQuotes([definitionId], { source: settings.source, context });
       check();
@@ -38186,6 +38348,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const saved = prepared.get(action.taskId);
       if (!saved || !same35(saved.action, action) || task && !same35(saved.task, task) || settings && !same35(saved.settings, settings)) fail33("ACTION_CHANGED");
       if (action.expiresAt <= now()) fail33("ACTION_EXPIRED_OR_INVALID");
+      if (saved.task.mode === "filter" && ["search", "buy"].includes(action.kind)) {
+        const c = cursors.get(action.taskId), row = c?.rows?.find((r) => r.definitionId === action.definitionId);
+        if (!c?.isCurrent?.() || !row || !taskCandidateAllowed(row, saved.task)) fail33("CANDIDATE_CHANGED");
+      }
       return saved;
     };
     const holdingFor = (ledger, task, action) => {
@@ -38195,10 +38361,42 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const api = {
       dispatchBoundary: true,
+      async begin({ task, settings, isCurrent = () => true }) {
+        check();
+        cursors.delete(task.id);
+        prepared.delete(task.id);
+        const c = cursor(task, settings);
+        c.isCurrent = isCurrent;
+        if (task.mode === "filter") {
+          if (!catalog?.read) fail33("CATALOG_UNAVAILABLE");
+          const snapshot = await catalog.read({ isCurrent });
+          check();
+          if (!isCurrent()) fail33("USER_STOP");
+          if (snapshot.context !== JSON.stringify(context)) fail33("CONTEXT_CHANGED");
+          c.catalog = snapshot;
+          c.next = 0;
+          c.rows = [];
+          c.quotes = {};
+          c.matched = 0;
+          c.cycled = false;
+        }
+      },
+      describe(taskId) {
+        const c = cursors.get(taskId);
+        return c?.catalog ? {
+          revision: c.catalog.revision,
+          known: c.catalog.rows.length,
+          matched: c.matched,
+          batch: c.rows.length,
+          missing: c.missing ?? 0,
+          complete: false
+        } : null;
+      },
       async prepare({ task, settings, ledger }) {
         check();
-        if (!["fixed", "sell"].includes(task.mode)) fail33("TASK_SELECTION_INVALID");
+        if (!["fixed", "sell", "filter"].includes(task.mode)) fail33("TASK_SELECTION_INVALID");
         const c = cursor(task, settings), held = ledger.holdings.filter((h) => h.taskId === task.id);
+        if (task.mode === "filter" && (!c.catalog || !c.isCurrent?.())) fail33("CATALOG_UNAVAILABLE");
         const pending3 = held.find((h) => h.phase === "held" || h.phase === "transfer" || marketRelistAllowed(ledger, task, h));
         if (pending3) {
           const action = {
@@ -38235,13 +38433,79 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (held.some((h) => h.phase === "listed") && now() >= c.salesAt) return remember(task, settings, { kind: "sales" });
         if (task.mode === "sell") return held.some((h) => h.phase === "listed") ? { kind: "wait", until: Math.max(now() + 1e3, c.salesAt) } : { kind: "done", ...held.some((h) => h.phase === "unsold") ? { reason: "MARKET_RELIST_PAUSED" } : {} };
         while (c.offers.length) {
-          const offer = c.offers[0], row = task.players.find((p) => p.definitionId === offer.definitionId);
+          const offer = c.offers[0], row = (task.mode === "filter" ? c.rows : task.players).find((p) => p.definitionId === offer.definitionId);
           const copies = held.filter((h) => h.definitionId === offer.definitionId && h.phase !== "sold").length;
-          if (!row || offer.expiresAt <= now() || ledger.intents.some((i) => i.kind === "buy" && i.tradeId === offer.tradeId) || row.qty !== null && copies >= row.qty) {
+          const cap = task.mode === "filter" ? task.settings.perVersion : row?.qty;
+          if (!row || offer.expiresAt <= now() || ledger.intents.some((i) => i.kind === "buy" && i.tradeId === offer.tradeId) || cap != null && copies >= cap || task.mode === "filter" && !taskCandidateAllowed(row, task)) {
             c.offers.shift();
             continue;
           }
           return remember(task, settings, { ...offer, kind: "buy" });
+        }
+        if (task.mode === "filter") {
+          if (c.index >= c.rows.length) {
+            if (c.next >= c.catalog.candidates.length) {
+              c.next = 0;
+              c.cycled = true;
+            }
+            const page = await taskCandidatePage(c.catalog, task, { cursor: c.next, isCurrent: c.isCurrent });
+            check();
+            if (!c.isCurrent()) fail33("USER_STOP");
+            c.rows = page.rows;
+            c.next = page.next;
+            c.index = 0;
+            c.quotes = {};
+            c.quotedAt = null;
+            if (!c.cycled) c.matched += c.rows.length;
+            if (!c.rows.length) {
+              if (!c.matched) fail33("CATALOG_EMPTY");
+              return { kind: "wait", until: now() + 3e4 };
+            }
+          }
+          const eligible = c.rows.slice(c.index).filter((row) => task.settings.perVersion === null || held.filter((h) => h.definitionId === row.definitionId && h.phase !== "sold").length < task.settings.perVersion);
+          if (task.settings.buyRule !== "fixed" && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 3e4 && eligible.some((row) => {
+            try {
+              price3(task, settings, row.definitionId, "buy", c.quotes[row.definitionId]);
+              return false;
+            } catch {
+              return true;
+            }
+          }))) {
+            c.quotes = await loadQuotes(eligible.map((row) => row.definitionId), { source: settings.source, context, rows: eligible, isCurrent: c.isCurrent });
+            check();
+            if (!c.isCurrent()) fail33("USER_STOP");
+            c.quotedAt = now();
+            c.missing = 0;
+            for (const row of eligible) {
+              try {
+                price3(task, settings, row.definitionId, "buy", c.quotes[row.definitionId]);
+              } catch (error2) {
+                if (error2.message !== "MARKET_REFERENCE_UNAVAILABLE") throw error2;
+                c.missing++;
+              }
+            }
+            if (c.missing === eligible.length) fail33("REFERENCE_UNAVAILABLE");
+          }
+          for (; c.index < c.rows.length; c.index++) {
+            const row = c.rows[c.index];
+            if (!eligible.includes(row)) continue;
+            let p;
+            try {
+              p = price3(task, settings, row.definitionId, "buy", c.quotes[row.definitionId]);
+            } catch (error2) {
+              if (error2.message !== "MARKET_REFERENCE_UNAVAILABLE") throw error2;
+              continue;
+            }
+            return remember(task, settings, {
+              kind: "search",
+              definitionId: row.definitionId,
+              maxBuy: p.price,
+              quotes: c.quotes[row.definitionId] ?? null,
+              expiresAt: p.expiresAt,
+              limit: settings.perSearch
+            });
+          }
+          return { kind: "wait", until: now() + (c.next >= c.catalog.candidates.length ? 3e4 : 1e3) };
         }
         for (let i = 0; i < task.players.length; i++) {
           const row = task.players[(c.index + i) % task.players.length];
@@ -38311,7 +38575,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (action.kind === "buy") c.offers = c.offers.filter((o) => o.tradeId !== action.tradeId);
         if (action.kind === "search") {
           const saved = prepared.get(action.taskId);
-          c.index = (saved.task.players.findIndex((p) => p.definitionId === action.definitionId) + 1) % saved.task.players.length;
+          c.index = saved.task.mode === "filter" ? c.rows.findIndex((p) => p.definitionId === action.definitionId) + 1 : (saved.task.players.findIndex((p) => p.definitionId === action.definitionId) + 1) % saved.task.players.length;
           if (response.sent === true && response.status === "confirmed") {
             if (!Array.isArray(response.offers) || response.offers.length > 21) fail33("SEARCH_UNCONFIRMED");
             const seen = /* @__PURE__ */ new Set();
@@ -38389,6 +38653,57 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         boundary = null;
       }
     } };
+  }
+
+  // src/adapters/ea/fc27-trading-task-catalog.js
+  function readTradingTaskCard(raw, name2 = "") {
+    if (!raw || typeof raw !== "object") return null;
+    return normalizeTaskCatalogCard({
+      definitionId: raw.definitionId,
+      name: name2 || raw.name,
+      rating: raw.rating ?? raw._rating,
+      playerId: readPlayerDatabaseId(raw),
+      rarity: readExplicitPlayerRareFlag(raw),
+      nationId: raw.nationId,
+      leagueId: raw.leagueId,
+      teamId: raw.teamId,
+      preferredPosition: raw.preferredPosition,
+      evolution: isPlayerEvolutionCard(raw),
+      cosmetic: hasPlayerCosmetics(raw)
+    });
+  }
+  async function readTradingTaskCatalog(root, { isCurrent = () => true, yieldControl = yieldTaskCatalog } = {}) {
+    const inventory = createEaInventoryAdapter(root), rows = [];
+    let scanned = 0;
+    for (const pile of ["club", "storage", "transfer", "unassigned"]) for (const raw of inventory.readPile(pile)) {
+      if (!isCurrent()) throw Error("TASKS_CONTEXT_CHANGED");
+      const item2 = inventory.snapshotItem(raw, pile);
+      if (item2.type === "player") {
+        const card = readTradingTaskCard(raw, item2.name);
+        if (card) rows.push(card);
+      }
+      if (++scanned % 256 === 0) await yieldControl();
+    }
+    if (!isCurrent()) throw Error("TASKS_CONTEXT_CHANGED");
+    return rows;
+  }
+  function readTradingTaskInventory(root) {
+    const inventory = createEaInventoryAdapter(root), seen = /* @__PURE__ */ new Set(), rows = [];
+    for (const pile of ["transfer", "unassigned", "club"]) for (const raw of inventory.readPile(pile)) {
+      const item2 = inventory.snapshotItem(raw, pile);
+      if (seen.has(item2.id)) continue;
+      seen.add(item2.id);
+      if (item2.type !== "player" || !Number.isSafeInteger(item2.id) || item2.id <= 0 || !Number.isSafeInteger(item2.definitionId) || item2.definitionId <= 0) continue;
+      rows.push({
+        itemId: String(item2.id),
+        definitionId: item2.definitionId,
+        name: item2.name || `EA ${item2.definitionId}`,
+        rating: item2.rating,
+        pile,
+        available: item2.tradeable === true && !item2.activeTrade && !item2.concept && !item2.evolution && !item2.academyEnrolled && !item2.limitedUse
+      });
+    }
+    return rows;
   }
 
   // src/adapters/browser/fc27-market-task-native.js
@@ -38595,6 +38910,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const options = { beforeDispatch: (item2) => {
           assert();
           if (action.kind === "buy") {
+            if (task.mode === "filter") {
+              const facts2 = readTradingTaskCard(item2);
+              if (!facts2 || !taskCandidateAllowed(facts2, task)) fail34("CANDIDATE_CHANGED");
+            }
             const auction = item2?.getAuctionData?.();
             if (item2?.id !== Number(action.itemId) || item2.definitionId !== action.definitionId || String(auction?.tradeId) !== action.tradeId || auction.buyNowPrice !== action.coins || auction.canBuy?.(capabilities().balance) !== true || !(auction.getSecondsRemaining?.() > 0) || purchasePriceCap({
               maxBuy: action.coins,
@@ -40399,7 +40718,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/gallery/reference-prices.js
-  var positive12 = (value) => Number.isSafeInteger(value) && value > 0;
+  var positive13 = (value) => Number.isSafeInteger(value) && value > 0;
   var timestamp = (value) => Number.isSafeInteger(value) && value >= 0;
   var reasonOf2 = (error2) => /^FC27_[A-Z0-9_]+$/.test(error2?.message ?? "") ? error2.message : "FC27_PUBLIC_PRICE_UNAVAILABLE";
   var platformSuffix = (source, options) => source === "futbin" && options.futbinPlatform ? `:${options.futbinPlatform}` : "";
@@ -40591,7 +40910,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       // approval-shaped references; expired prices must never authorize buys.
       async cachedEstimates(ids2, { season = "27", platform, policy = {}, isCurrent = () => true } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id15) => !positive12(id15))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 1280 || ids2.some((id15) => !positive13(id15))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const options = { season, platform, ...policy.source === "futbin" && policy.futbinPlatform ? { futbinPlatform: policy.futbinPlatform } : {} }, prices = /* @__PURE__ */ new Map();
         for (const id15 of new Set(ids2)) {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
@@ -40625,7 +40944,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         deadlineAt = null
       } = {}) {
         policy = normalizeGalleryPricePolicy(policy);
-        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id15) => !positive12(id15)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
+        if (!Number.isSafeInteger(quoteTtlMs) || quoteTtlMs <= 0 || quoteTtlMs > 18e5 || season !== "27" || !["pc", "console"].includes(platform) || !Array.isArray(ids2) || ids2.length > 250 || ids2.some((id15) => !positive13(id15)) || !Array.isArray(sources3) || !sources3.length || sources3.some((source) => !["futgg", "futbin"].includes(source)) || deadlineAt !== null && !timestamp(deadlineAt) || typeof futbinBatch !== "boolean" || new Set(sources3).size !== sources3.length || !Array.isArray(forceSources) || forceSources.some((source) => !["futgg", "futbin"].includes(source))) throw Error("FC27_PUBLIC_PRICE_INPUT_INVALID");
         const current2 = () => {
           if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
         };
@@ -40782,10 +41101,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-public-prices.js
-  var positions2 = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
+  var positions3 = ["GK", "SW", "RWB", "RB", "RCB", "CB", "LCB", "LB", "LWB", "RDM", "CDM", "LDM", "RM", "RCM", "CM", "LCM", "LM", "RAM", "CAM", "LAM", "RF", "CF", "LF", "RW", "RS", "ST", "LS", "LW"];
   var mappingWriters = /* @__PURE__ */ new WeakMap();
   function createFc27PublicPrices({ root, get, set, gmRequest, transport, diagnosticLog: diagnosticLog2 = null, now = () => Date.now(), policyReader = null }) {
     const rows = /* @__PURE__ */ new Map();
+    const taskFacts = /* @__PURE__ */ new Map();
     const futbinPages = /* @__PURE__ */ new Map();
     const record = (fields5) => {
       try {
@@ -40891,7 +41211,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           nationId: row?.nationId ?? row?.nationEaId,
           leagueId: row?.leagueId ?? row?.leagueEaId,
           teamId: row?.teamId ?? row?.clubEaId,
-          preferredPosition: typeof position === "string" ? positions2.indexOf(position) : position
+          preferredPosition: typeof position === "string" ? positions3.indexOf(position) : position
         };
         let result;
         const reader = createFsuReferencePrice({
@@ -40907,7 +41227,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (!publicPriceSourceEnabled(currentPolicy, "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
             if (deadlineAt !== null && now() >= deadlineAt) throw Error("FC27_STREAMLINED_QUOTE_BUDGET");
             const minimal = new URL(url).pathname.endsWith("fetchPlayerInformationMinimal");
-            if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(player.preferredPosition) || !positions2[player.preferredPosition])) throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
+            if (!minimal && (![player.rating, player.nationId, player.leagueId, player.teamId].every((value) => Number.isSafeInteger(value) && value > 0) || !Number.isSafeInteger(player.preferredPosition) || !positions3[player.preferredPosition])) throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
             const response = await request(url);
             result = parsePublicFutbinPrice(response, definitionId, referencePlatform, minimal);
             return response;
@@ -40969,6 +41289,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return { scope: value.scope, season: value.context.season, platform: value.platform };
       },
       knownPlayers: () => [...rows.values()].map((row) => ({ ...row })).slice(0, 1e3),
+      knownTaskPlayers: () => [...rows.values()].map((row) => ({ ...row, ...taskFacts.get(row.definitionId) })),
       async tradingCandidates({ isCurrent = () => true, onProgress = () => {
       }, names = [], namesOnly = false } = {}) {
         const captured = capture(), market = captured.platform, queries = tradingMentionNames(names), key2 = JSON.stringify([market, queries, namesOnly === true]);
@@ -41049,6 +41370,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       remember(items) {
         for (const row of items ?? []) {
           const definitionId = row.eaId ?? row.definitionId;
+          taskFacts.set(definitionId, {
+            playerId: row.playerId ?? row.basePlayerEaId,
+            rarity: row.rarity ?? row.rarityEaId ?? row.rareflag,
+            quality: row.quality,
+            evolution: row.evolution,
+            cosmetic: row.cosmetic
+          });
           rows.set(definitionId, {
             definitionId,
             rating: row.rating ?? row.overall ?? row._rating,
@@ -41131,14 +41459,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         futbinPlatform: snapshot.context.platform === "pc" ? "pc" : "ps"
       });
     } });
-    return Object.freeze({ async load(ids2, { source, context, isCurrent = () => true }) {
+    return Object.freeze({ async load(ids2, { source, context, rows: suppliedRows = null, isCurrent = () => true }) {
       const check = async () => {
         if (!isCurrent() || !same39(context, prices.context()) || !same39(context, taskStore.context())) throw Error("TASKS_CONTEXT_CHANGED");
         const snapshot = await taskStore.read();
         if (!same39(snapshot.context, context) || snapshot.store.settings.source !== source) throw Error("TASKS_AUTHORIZATION_CHANGED");
       };
       await check();
-      const rows = await readCatalog();
+      const rows = suppliedRows ?? await readCatalog(ids2);
       await check();
       const policy = await prices.readSettings();
       await check();
@@ -41165,15 +41493,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     taskStore,
     coordinator,
     readCatalog,
+    catalog = null,
     liveEnabled = false,
     diagnosticLog: diagnosticLog2 = null,
     now = () => Date.now(),
     createNative = createFc27MarketTaskNative
   }) {
     const quotes = createFc27MarketTaskQuotes({ root, get, set, gmRequest, transport, taskStore, readCatalog, diagnosticLog: diagnosticLog2, now });
+    const candidates = catalog ?? createMarketTaskCatalog({ readRows: readCatalog, context: taskStore.context });
+    const modes2 = ["fixed", "filter", "sell"];
     return createMarketTaskRuntime({
       context: taskStore.context,
       enabled: liveEnabled === true,
+      modes: modes2,
       createScheduler: async ({ context, assertCurrent }) => {
         const guards = createFc27MarketTaskGuards({ root, get, context, assertCurrent });
         const native = await createNative({ root, assertCurrent, ...guards, now });
@@ -41183,9 +41515,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           native,
           assertCurrent,
           now,
+          catalog: candidates,
           loadQuotes: (ids2, options) => quotes.load(ids2, { ...options, isCurrent: () => {
             assertCurrent();
-            return true;
+            return options.isCurrent?.() ?? true;
           } })
         });
         return createMarketTaskScheduler({
@@ -41194,30 +41527,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           provider,
           enabled: liveEnabled === true,
           now,
+          supportedModes: modes2,
           onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
         });
       }
     });
-  }
-
-  // src/adapters/ea/fc27-trading-task-catalog.js
-  function readTradingTaskInventory(root) {
-    const inventory = createEaInventoryAdapter(root), seen = /* @__PURE__ */ new Set(), rows = [];
-    for (const pile of ["transfer", "unassigned", "club"]) for (const raw of inventory.readPile(pile)) {
-      const item2 = inventory.snapshotItem(raw, pile);
-      if (seen.has(item2.id)) continue;
-      seen.add(item2.id);
-      if (item2.type !== "player" || !Number.isSafeInteger(item2.id) || item2.id <= 0 || !Number.isSafeInteger(item2.definitionId) || item2.definitionId <= 0) continue;
-      rows.push({
-        itemId: String(item2.id),
-        definitionId: item2.definitionId,
-        name: item2.name || `EA ${item2.definitionId}`,
-        rating: item2.rating,
-        pile,
-        available: item2.tradeable === true && !item2.activeTrade && !item2.concept && !item2.evolution && !item2.academyEnrolled && !item2.limitedUse
-      });
-    }
-    return rows;
   }
 
   // src/adapters/browser/fc27-trading-execution.js
@@ -41770,10 +42084,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var samePost = (a, b) => a && b && a.id === b.id && a.author.toLowerCase() === b.author.toLowerCase();
   function parseEventPostUrl(input) {
     if (typeof input !== "string" || input.length > 2048 || /[\u0000-\u001f\u007f\\]/.test(input)) return null;
-    const text6 = input.trim();
-    if (!/^https:\/\/(?:www\.)?(?:x|twitter)\.com\/[A-Za-z0-9_]{1,15}\/status\/[1-9]\d{14,21}\/?(?:[?#].*)?$/i.test(text6)) return null;
+    const text7 = input.trim();
+    if (!/^https:\/\/(?:www\.)?(?:x|twitter)\.com\/[A-Za-z0-9_]{1,15}\/status\/[1-9]\d{14,21}\/?(?:[?#].*)?$/i.test(text7)) return null;
     try {
-      const value = new URL(text6), match = /^\/([A-Za-z0-9_]{1,15})\/status\/([1-9]\d{14,21})\/?$/.exec(value.pathname);
+      const value = new URL(text7), match = /^\/([A-Za-z0-9_]{1,15})\/status\/([1-9]\d{14,21})\/?$/.exec(value.pathname);
       if (value.protocol !== "https:" || value.username || value.password || value.port || !match || BigInt(match[2]) > 18446744073709551615n) return null;
       return { url: `https://x.com/${match[1]}/status/${match[2]}`, author: match[1], id: match[2] };
     } catch {
@@ -41803,13 +42117,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
     return { search: true, threads: [root.id], authors: checked ? [{ rootId: root.id, handle: root.author }] : [], calls: safe3 };
   }
-  var sourceQuote = (text6, value) => {
+  var sourceQuote = (text7, value) => {
     if (typeof value !== "string" || !value.length || value.length > 180) return null;
     const token = (c) => c != null && /[\p{L}\p{N}]/u.test(c);
     let at11 = -1;
-    while ((at11 = text6.indexOf(value, at11 + 1)) !== -1) {
+    while ((at11 = text7.indexOf(value, at11 + 1)) !== -1) {
       const end = at11 + value.length;
-      if (token(value[0]) && token(text6[at11 - 1]) || token(value.at(-1)) && (token(text6[end]) || /[.,]/.test(text6[end] ?? "") && /[0-9٠-٩۰-۹]/.test(text6[end + 1] ?? ""))) continue;
+      if (token(value[0]) && token(text7[at11 - 1]) || token(value.at(-1)) && (token(text7[end]) || /[.,]/.test(text7[end] ?? "") && /[0-9٠-٩۰-۹]/.test(text7[end + 1] ?? ""))) continue;
       return value;
     }
     return null;
@@ -41826,8 +42140,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return value >= 150n && value <= 15000000n ? Number(value) : null;
     });
   }
-  function entryFromSource(raw, text6) {
-    const quote2 = sourceQuote(text6, raw?.quote);
+  function entryFromSource(raw, text7) {
+    const quote2 = sourceQuote(text7, raw?.quote);
     if (!quote2) return null;
     const strict = quotedAmounts(quote2, "(?:<(?!=)|\\b(?:under|below|less\\s+than)\\b|(?:\u0628?\u0623\u0642\u0644|\u0628?\u0627\u0642\u0644)\\s+\u0645\u0646|\u062A\u062D\u062A|\u062F\u0648\u0646)");
     const inclusive = quotedAmounts(quote2, "(?:<=|\u2264|\\b(?:at\\s+most|up\\s+to)\\b|\u0628\u062D\u062F\\s+\u0623\u0642\u0635\u0649|\u062D\u062A\u0649|\u0644\u0627\\s+\u064A\u0632\u064A\u062F\\s+\u0639\u0646)");
@@ -41836,17 +42150,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (ceiling === null || raw.ceiling !== ceiling || raw.strictBelow !== strictBelow) return null;
     return { ceiling, strictBelow, quote: quote2 };
   }
-  function targetFromSource(raw, text6) {
-    const quote2 = sourceQuote(text6, raw.targetQuote);
+  function targetFromSource(raw, text7) {
+    const quote2 = sourceQuote(text7, raw.targetQuote);
     if (!quote2) return { targetPrice: null, targetQuote: null };
     const prices = quotedAmounts(quote2, "(?:\\b(?:target(?:\\s+price)?|sell(?:\\s+(?:at|for))?)\\b|\u0627\u0644\u0647\u062F\u0641|\u0647\u062F\u0641|\u0627\u0644\u0628\u064A\u0639|\u0628\u064A\u0639)\\s*(?:(?:is|of)\\s*|[:=]\\s*)?");
     return prices.length === 1 && prices[0] !== null && raw.targetPrice === prices[0] ? { targetPrice: prices[0], targetQuote: quote2 } : { targetPrice: null, targetQuote: null };
   }
-  function namedPlayers(raw, text6) {
+  function namedPlayers(raw, text7) {
     if (!Array.isArray(raw)) return [];
     const players = [], seen = /* @__PURE__ */ new Set();
     for (const player of raw.slice(0, 8)) {
-      const name2 = player?.name, quote2 = sourceQuote(text6, player?.nominationQuote);
+      const name2 = player?.name, quote2 = sourceQuote(text7, player?.nominationQuote);
       if (typeof name2 !== "string" || !name2.trim() || name2 !== name2.trim() || name2.length > 100 || !quote2) continue;
       const start = quote2.indexOf(name2), word = (char) => /[\p{L}\p{N}_]/u.test(char ?? "");
       if (start < 0 || word(name2[0]) && word(quote2[start - 1]) || word(name2.at(-1)) && word(quote2[start + name2.length])) continue;
@@ -41865,17 +42179,17 @@ ${version ?? ""}`;
     const snowflake = Number((BigInt(post.id) >> 22n) + 1288834974657n);
     if (!Number.isSafeInteger(at11) || at11 > now || now - at11 > MAX_AGE || snowflake > now || now - snowflake > MAX_AGE || Math.abs(snowflake - at11) > 3e5) return null;
     if (typeof raw.text !== "string") return null;
-    const text6 = raw.text.slice(0, 1800).replace(/[\uD800-\uDBFF]$/, "");
-    if (!text6.trim() || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text6) || raw.topic !== "evo") return null;
+    const text7 = raw.text.slice(0, 1800).replace(/[\uD800-\uDBFF]$/, "");
+    if (!text7.trim() || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text7) || raw.topic !== "evo") return null;
     return {
       url: post.url,
       author: post.author,
       at: at11,
-      text: text6,
+      text: text7,
       topic: raw.topic,
-      players: namedPlayers(raw.players, text6),
-      entry: entryFromSource(raw.entry, text6),
-      ...targetFromSource(raw, text6),
+      players: namedPlayers(raw.players, text7),
+      entry: entryFromSource(raw.entry, text7),
+      ...targetFromSource(raw, text7),
       threadChecked: true,
       threadComplete: false,
       // Partial source hints stay in text; they are never a complete eligibility contract.
@@ -42999,9 +43313,9 @@ ${version ?? ""}`;
   };
   var streamlinedExternalReason = (reason) => reason?.startsWith("prerequisite-") ? `Club \u524D\u7F6E\u5361\uFF1A${labels[reason.slice(13)] ?? reason.slice(13)}` : labels[reason] ?? reason;
   function renderStreamlinedExternalSelection({ document, parent, snapshot, renderCard, onSelection, isBusy }) {
-    const add3 = (parent2, tag, text6 = "") => {
+    const add3 = (parent2, tag, text7 = "") => {
       const node = document.createElement(tag);
-      node.textContent = text6;
+      node.textContent = text7;
       parent2.append(node);
       return node;
     };
@@ -43015,8 +43329,8 @@ ${version ?? ""}`;
     summary3.dataset.externalSummary = "";
     const actions = add3(parent, "div");
     actions.className = "external-actions";
-    const button = (text6, action) => {
-      const node = add3(actions, "button", text6);
+    const button = (text7, action) => {
+      const node = add3(actions, "button", text7);
       node.type = "button";
       controls.add(node);
       node.addEventListener("click", (event) => {
@@ -43183,39 +43497,39 @@ ${version ?? ""}`;
       "checking-holdings": "\u6838\u5BF9 Club \u7248\u672C\u6301\u6709",
       "purchase-rejected": "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u8BF7\u6C42"
     }[p.phase] ?? "\u6267\u884C\u4E2D";
-    let text6 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number4(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
-    if (p.phase === "checking-holdings") text6 += `
+    let text7 = `${Number.isSafeInteger(p.batchNumber) ? `\u7B2C ${number4(p.batchNumber)} \u6279 \xB7 ` : ""}${label}`;
+    if (p.phase === "checking-holdings") text7 += `
 \u7248\u672C\u6838\u5BF9 ${number4(p.holdingsBatch)} / ${number4(p.holdingsBatchTotal)} \u7EC4 \xB7 \u7B2C ${number4(Math.floor((p.offset ?? 0) / 250) + 1)} \u9875`;
-    if (p.playerName || Number.isSafeInteger(p.rating)) text6 += `
+    if (p.playerName || Number.isSafeInteger(p.rating)) text7 += `
 \u5F53\u524D\u5019\u9009\uFF1A${p.playerName ?? "\u59D3\u540D\u672A\u53D6\u5F97"} \xB7 ${number4(p.rating)} OVR \xB7 \u4E0A\u9650 ${number4(p.maxBuy)} \u91D1\u5E01 \xB7 \u5C1D\u8BD5 ${number4(p.attempt)} / ${number4(p.attemptLimit)}`;
-    if (p.purchaseTarget !== void 0) text6 += `
+    if (p.purchaseTarget !== void 0) text7 += `
 \u5DF2\u8D2D ${number4(p.purchased)} / ${number4(p.purchaseTarget)} \u5F20 \xB7 \u5DF2\u82B1\u8D39 ${number4(p.spent)} / ${number4(p.budget)} \u91D1\u5E01`;
-    text6 += `
+    text7 += `
 ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contributed)} \u5F20 \xB7 ` : ""}\u5DF2\u786E\u8BA4 ${number4(p.submittedScore)} / ${number4(p.targetScore)} \u5206`;
-    if (p.readyCount !== void 0) text6 += `
+    if (p.readyCount !== void 0) text7 += `
 \u672C\u6279\u5C31\u7EEA ${number4(p.readyCount)} / ${number4(p.selectionLimit)} \u5F20 \xB7 ${number4(p.readyPoints)} \u5206`;
-    if (p.phase === "materialize") text6 += `
+    if (p.phase === "materialize") text7 += `
 \u5916\u90E8\u5361 ${number4(p.completed)} / ${number4(p.materialTotal)} \u5F20`;
-    if (p.phase === "waiting-supply") text6 += `
+    if (p.phase === "waiting-supply") text7 += `
 \u4F9B\u5E94\u91CD\u8BD5 ${number4(p.attempt)} / ${number4(p.attemptLimit)}`;
-    if (p.phase === "progress-backoff") text6 += `
+    if (p.phase === "progress-backoff") text7 += `
 \u51C6\u5907\u7B2C ${number4(p.attempt + 1)} / ${number4(p.attemptLimit)} \u6B21\u8BFB\u53D6 \xB7 \u7B49\u5F85 ${number4(Math.ceil(p.waitMs / 1e3))} \u79D2`;
-    return text6;
+    return text7;
   }
   function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, active = true) {
     const seconds = (ms) => Math.floor(Math.max(0, Number.isFinite(ms) ? ms : 0) / 1e3);
-    let text6 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
-    if (active) text6 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
+    let text7 = `\u672C\u6B21\u8017\u65F6 ${seconds(elapsedMs)} \u79D2`;
+    if (active) text7 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
     if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
-      text6 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+      text7 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
-      text6 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+      text7 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     if (active && ["batch-cooldown", "progress-backoff"].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
-      text6 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
+      text7 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
-    return text6;
+    return text7;
   }
   function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
     if (reason === "FC27_STREAMLINED_FSU_NOT_READY") {
@@ -43744,10 +44058,10 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
           const row = add3(inventoryList, "div");
           row.className = `inventory-row${item2.consumed ? " consumed" : ""}`;
           add3(row, "strong", number4(item2.rating));
-          const text6 = add3(row, "div");
-          add3(text6, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
+          const text7 = add3(row, "div");
+          add3(text7, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}\uFF08\u59D3\u540D\u672A\u53D6\u5F97\uFF09`);
           const pile = { club: "Club", storage: "SBC \u4ED3\u5E93", unassigned: "\u672A\u5206\u914D \u2192 Club", transfer: "\u8F6C\u4F1A\u5217\u8868 \u2192 Club" }[item2.pile] ?? "\u6765\u6E90\u672A\u6838\u9A8C";
-          add3(text6, "small", `${pile} \xB7 ${number4(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number4(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
+          add3(text7, "small", `${pile} \xB7 ${number4(item2.points)} \u5206 \xB7 ${item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `\u4F30\u503C ${number4(item2.price)} \u91D1\u5E01`} \xB7 ${item2.consumed ? "\u5DF2\u6D88\u8017" : "\u5C06\u6D88\u8017"}`);
         }
         if (rows.length > 50) {
           add3(inventoryList, "small", `\u663E\u793A ${inventoryPage * 50 + 1}\u2013${Math.min((inventoryPage + 1) * 50, rows.length)} / ${rows.length} \u5F20`);
@@ -43885,11 +44199,11 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
             const row = add3(list3, "div");
             row.className = "player-row";
             renderCard(row, item2, generation);
-            const text6 = add3(row, "div");
-            text6.className = "player-text";
-            add3(text6, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
-            add3(text6, "span", `${number4(item2.rating)} OVR \xB7 ${number4(item2.points)} \u5206`);
-            add3(text6, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
+            const text7 = add3(row, "div");
+            text7.className = "player-text";
+            add3(text7, "strong", item2.name ?? `\u7248\u672C ${item2.definitionId}`);
+            add3(text7, "span", `${number4(item2.rating)} OVR \xB7 ${number4(item2.points)} \u5206`);
+            add3(text7, "span", item2.source === "market" ? "\u5F85\u8D2D \xB7 \u5E02\u573A\u6982\u5FF5\u5361" : item2.pile === "storage" ? "SBC \u4ED3\u5E93 \xB7 \u5DF2\u6709" : item2.pile === "unassigned" ? "\u672A\u5206\u914D \u2192 Club \xB7 \u5DF2\u6709" : item2.pile === "transfer" ? "\u8F6C\u4F1A\u5217\u8868 \u2192 Club \xB7 \u5DF2\u6709" : "Club \xB7 \u5DF2\u6709");
             const points = add3(row, "span", `${number4(item2.points)} \u5206`);
             points.className = "player-points";
             const price3 = add3(row, "span", item2.price == null ? "\u4F30\u503C\u672A\u77E5" : `${number4(item2.price)} \u91D1\u5E01`);
@@ -46069,8 +46383,8 @@ ${detail.join(" \xB7 ")}`;
     const staticData = ownData(item2, "_staticData");
     const ownString = (object, key2) => {
       const value = ownData(object, key2);
-      const text6 = typeof value === "string" ? value.trim() : "";
-      return text6 && text6 !== "---" ? text6 : null;
+      const text7 = typeof value === "string" ? value.trim() : "";
+      return text7 && text7 !== "---" ? text7 : null;
     };
     const name2 = ownString(item2, "displayName") ?? ownString(item2, "name") ?? ownString(staticData, "knownAs") ?? ([ownString(staticData, "firstName"), ownString(staticData, "lastName")].filter(Boolean).join(" ") || null) ?? ownString(staticData, "name") ?? ownString(item2, "lastName");
     let points = null;
@@ -49255,6 +49569,10 @@ ${detail.join(" \xB7 ")}`;
     readCandidates: () => readFc27TradingCandidates(unsafeWindow)
   });
   var marketCoordinator = createMarketCoordinator({ context: () => publicPrices.context(), get: GM_getValue, set: GM_setValue, locks: unsafeWindow.navigator.locks });
+  var marketTaskCatalog = createMarketTaskCatalog({
+    context: () => publicPrices.context(),
+    readRows: async (options) => [...await readTradingTaskCatalog(unsafeWindow, options), ...publicPrices.knownTaskPlayers()]
+  });
   var tradingTasks = {
     service: createTradingTaskStore({
       context: () => publicPrices.context(),
@@ -49264,7 +49582,7 @@ ${detail.join(" \xB7 ")}`;
       readEvidence: async (taskId) => marketTaskEvidence((await marketCoordinator.inspect()).ledger, taskId)
     }),
     readCoordination: () => marketCoordinator.inspect(),
-    readCatalog: () => [...new Map([...readFc27TradingCandidates(unsafeWindow), ...publicPrices.knownPlayers()].map((row) => [row.definitionId, row])).values()],
+    readCatalog: async (ids2) => ids2 ? marketTaskCatalog.lookup(ids2) : (await marketTaskCatalog.read()).rows,
     readInventory: () => readTradingTaskInventory(unsafeWindow)
   };
   tradingTasks.runtime = createFc27MarketTaskExecution({
@@ -49276,6 +49594,7 @@ ${detail.join(" \xB7 ")}`;
     taskStore: tradingTasks.service,
     coordinator: marketCoordinator,
     readCatalog: tradingTasks.readCatalog,
+    catalog: marketTaskCatalog,
     liveEnabled: dependencies.liveEnabled,
     diagnosticLog
   });

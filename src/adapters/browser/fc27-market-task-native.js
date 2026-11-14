@@ -7,6 +7,8 @@ import { galleryListingCandidateAllowed } from '../../gallery/bulk-list-session.
 import { galleryListingEvidence } from '../../gallery/listing-readback.js';
 import { purchasePriceCap } from '../../gallery/public-price-policy.js';
 import { marketTaskNativeRuntime } from '../ea/fc27-market-task-runtime.js';
+import { readTradingTaskCard } from '../ea/fc27-trading-task-catalog.js';
+import { taskCandidateAllowed } from '../../trading/task-catalog.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw Error(`MARKET_${reason}`); };
@@ -151,6 +153,10 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       const options = { beforeDispatch: item => {
         assert();
         if (action.kind === 'buy') {
+          if (task.mode === 'filter') {
+            const facts = readTradingTaskCard(item);
+            if (!facts || !taskCandidateAllowed(facts, task)) fail('CANDIDATE_CHANGED');
+          }
           const auction = item?.getAuctionData?.();
           if (item?.id !== Number(action.itemId) || item.definitionId !== action.definitionId || String(auction?.tradeId) !== action.tradeId
             || auction.buyNowPrice !== action.coins || auction.canBuy?.(capabilities().balance) !== true
