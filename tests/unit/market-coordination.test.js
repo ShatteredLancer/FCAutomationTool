@@ -11,6 +11,19 @@ const receipt = entry => ({ itemId: entry.itemId, definitionId: entry.definition
 const confirm = (state, entry) => settleMarketWrite(state, entry.id, { status: 'confirmed', receipt: receipt(entry) });
 
 describe('account-wide market pacing and ledger primitives', () => {
+  it('persists frozen listing terms and a positive acknowledgement without converting an unknown to a sale', () => {
+    const state = emptyMarketCoordination();
+    claimMarketHolding(state, { taskId: 'A', itemId: '101', definitionId: 1001, cost: null }, 'transfer');
+    const listing = { startPrice: 650, buyNow: 700, durationSeconds: 3600 };
+    reserveMarketWrite(state, { ...buy(), id: 'list-1', kind: 'list', coins: 700, tradeId: null, listing }, funds);
+    settleMarketWrite(state, 'list-1', { status: 'unknown', receipt: null, acknowledged: true });
+    const reloaded = readMarketCoordination(state);
+    expect(reloaded.intents[0]).toMatchObject({ phase: 'pending', listing, acknowledged: true });
+    expect(reloaded.holdings[0]).toMatchObject({ phase: 'transfer', cost: null, salePrice: null });
+    expect(() => settleMarketWrite(reloaded, 'list-1', { status: 'rejected', receipt: null })).toThrow('MARKET_RECEIPT_CONFLICT');
+    settleMarketWrite(reloaded, 'list-1', { status: 'confirmed', receipt: { itemId: '101', definitionId: 1001, tradeId: '601', coins: 700 } });
+    expect(reloaded.holdings[0].phase).toBe('listed'); expect(reloaded.stopped).toBe('unknown-write');
+  });
   it('shares cooldown and cycle rest across tasks and reloads', () => {
     let state = emptyMarketCoordination();
     reserveMarketSearch(state, { requestId: 'A-1', now: 0, settings, random: () => 0 });

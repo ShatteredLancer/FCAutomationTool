@@ -39,13 +39,22 @@ export function readMarketCoordination(value) {
     choice(event.status, ['dispatching', 'sent', 'not-sent']);
   }
   for (const entry of value.intents) {
-    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt']);
+    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt', 'listing', 'acknowledged']);
     id(entry.id); id(entry.taskId); id(entry.itemId); number(entry.definitionId, 1); number(entry.at);
     choice(entry.kind, ['buy', 'move', 'list']); choice(entry.phase, ['pending', 'confirmed', 'rejected']);
     if (entry.tradeId !== null) id(entry.tradeId);
     if (entry.kind === 'buy' && entry.tradeId === null) fail('INVALID');
     number(entry.coins, entry.kind === 'move' ? 0 : 150);
     if (entry.coins > 15000000 || entry.kind === 'move' && entry.coins !== 0) fail('INVALID');
+    if (entry.acknowledged !== undefined && entry.acknowledged !== true) fail('INVALID');
+    if (entry.acknowledged && entry.phase === 'rejected') fail('RECEIPT_CONFLICT');
+    if (entry.listing !== undefined) {
+      fields(entry.listing, ['startPrice', 'buyNow', 'durationSeconds']);
+      if (entry.kind !== 'list' || entry.listing.buyNow !== entry.coins) fail('INVALID');
+      number(entry.listing.startPrice, 150);
+      if (entry.listing.startPrice > entry.coins) fail('INVALID');
+      choice(entry.listing.durationSeconds, [3600, 10800, 21600, 43200, 86400, 259200]);
+    }
     if (entry.phase === 'confirmed') validateReceipt(entry, entry.receipt);
     else if (entry.receipt !== null) fail('INVALID');
   }
@@ -131,16 +140,17 @@ export function marketOccupancy(state, taskId = null) {
       .reduce((sum, i) => sum + i.coins, 0) };
 }
 
-export function claimMarketHolding(state, holding) {
+export function claimMarketHolding(state, holding, phase = 'held') {
   fields(holding, ['taskId', 'itemId', 'definitionId', 'cost']);
   id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
   if (holding.cost !== null) number(holding.cost);
   if (state.holdings.some(h => h.itemId === holding.itemId) || state.intents.some(i => i.itemId === holding.itemId && i.phase === 'pending')) fail('ITEM_OCCUPIED');
-  state.holdings.push({ ...holding, phase: 'held', listingTradeId: null, salePrice: null });
+  choice(phase, ['held', 'transfer']);
+  state.holdings.push({ ...holding, phase, listingTradeId: null, salePrice: null });
 }
 
 export function reserveMarketWrite(state, command, funds) {
-  fields(command, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at']);
+  fields(command, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'listing']);
   const entry = { ...command, phase: 'pending', receipt: null };
   // Validate before changing any caller-owned state.
   readMarketCoordination({ ...emptyMarketCoordination(), intents: [entry] });
@@ -179,14 +189,17 @@ function validateReceipt(entry, receipt) {
 // Only an adapter's independently verified exact receipt may call confirmed.
 // A transport exception is not a rejection: leave the pending entry intact.
 export function settleMarketWrite(state, requestId, result) {
-  fields(result, ['status', 'receipt']); choice(result.status, ['confirmed', 'rejected', 'unknown']);
+  fields(result, ['status', 'receipt', 'acknowledged']); choice(result.status, ['confirmed', 'rejected', 'unknown']);
   const entry = state.intents.find(i => i.id === requestId);
   if (!entry) fail('RECEIPT_CONFLICT');
+  if (result.acknowledged !== undefined && result.acknowledged !== true) fail('RECEIPT_CONFLICT');
+  if ((entry.acknowledged || result.acknowledged) && result.status === 'rejected') fail('RECEIPT_CONFLICT');
   if (entry.phase !== 'pending') {
     if (entry.phase === result.status && same(entry.receipt, result.receipt)) return;
     fail('RECEIPT_CONFLICT');
   }
   if (result.status !== 'confirmed' && result.receipt !== null) fail('RECEIPT_CONFLICT');
+  if (result.acknowledged) entry.acknowledged = true;
   if (result.status === 'unknown') { state.stopped ??= 'unknown-write'; return; }
   if (result.status === 'confirmed') {
     validateReceipt(entry, result.receipt);

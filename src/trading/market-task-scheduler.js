@@ -1,6 +1,6 @@
 import { readTradingTasks } from './task-model.js';
 import { marketSearchGate, marketOccupancy, nextMarketTask, reserveMarketSearch, settleMarketSearch,
-  reserveMarketWrite, settleMarketWrite } from './market-coordination.js';
+  reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale } from './market-coordination.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const actionable = row => ['queued', 'waiting', 'running'].includes(row.state);
@@ -168,7 +168,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             stateOf(selected, 'waiting', 'MARKET_TASK_WAIT', action.until); continue;
           }
           if (action?.kind === 'done') { stateOf(selected, 'completed'); continue; }
-          if (!['search', 'buy', 'move', 'list'].includes(action?.kind) || !validAt(action)) {
+          if (!['search', 'buy', 'move', 'list', 'claim', 'sales'].includes(action?.kind) || !validAt(action)) {
             stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); continue;
           }
           if (action.kind === 'search') {
@@ -186,9 +186,27 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 if (await applyError(turn, preflight)) return;
                 if (preflight?.ready !== true) { stateOf(selected, 'paused', 'MARKET_PREFLIGHT_BLOCKED'); return; }
                 if (!validAt(action)) { stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); return; }
+                if (action.kind === 'claim') {
+                  const selectedItem = fresh.owned.find(row => row.itemId === action.itemId && row.definitionId === action.definitionId);
+                  const h = preflight.holding;
+                  if (fresh.mode !== 'sell' || !selectedItem || h?.itemId !== selectedItem.itemId
+                    || h.definitionId !== selectedItem.definitionId || h.taskId !== selected) throw Error('MARKET_ITEM_OCCUPIED');
+                  await turn.checkpoint(state => claimMarketHolding(state, h, preflight.holdingPhase));
+                  diagnostic(turn.inspect()); stateOf(selected, 'queued'); return;
+                }
+                if (action.kind === 'sales') {
+                  if (!Array.isArray(preflight.sales)) throw Error('MARKET_RECEIPT_CONFLICT');
+                  for (const receipt of preflight.sales) {
+                    if (!turn.inspect().holdings.some(h => h.taskId === selected && h.itemId === receipt.itemId)) throw Error('MARKET_RECEIPT_CONFLICT');
+                  }
+                  await turn.checkpoint(state => { for (const receipt of preflight.sales) settleMarketSale(state, receipt); });
+                  if (typeof provider.accept === 'function') await provider.accept({ action, response: { status: 'observed' }, ledger: turn.inspect() });
+                  diagnostic(turn.inspect()); stateOf(selected, 'queued'); return;
+                }
                 const requestId = id();
                 const command = action.kind === 'search' ? null : { id: requestId, taskId: selected, kind: action.kind,
-                  itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: now() };
+                  itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: now(),
+                  ...(action.kind === 'list' && action.listing ? { listing: structuredClone(action.listing) } : {}) };
                 if (command?.kind === 'buy') {
                   const row = fresh.players.find(p => p.definitionId === command.definitionId);
                   if (fresh.mode === 'sell' || fresh.mode === 'fixed' && !row
@@ -211,19 +229,37 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                     : settleMarketWrite(state, requestId, { status: 'rejected', receipt: null }));
                   if (allowed(selected)) stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); return;
                 }
-                current(); let response;
-                try { response = await provider.send({ action: structuredClone(action), requestId }); }
-                catch { response = { status: 'unknown', receipt: null }; }
+                current(); let response, dispatched = false, boundaryFailure = null;
+                // Native adapters opt in only when EVERY write/search invokes
+                // this synchronous hook immediately before its service call.
+                // Legacy/fake providers without that contract remain uncertain.
+                const guarded = provider.dispatchBoundary === true;
+                const beforeDispatch = () => {
+                  current();
+                  if (dispatched) throw Error('MARKET_DUPLICATE_REQUEST');
+                  if (!allowed(selected)) throw Error('MARKET_USER_STOP');
+                  if (!validAt(action)) throw Error('MARKET_ACTION_EXPIRED_OR_INVALID');
+                  const duration = fresh.settings.runMinutes;
+                  if (duration !== null && now() - tasks.get(selected).startedAt >= duration * 60000) throw Error('MARKET_TIME_LIMIT');
+                  dispatched = true;
+                };
+                try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch }); }
+                catch (error) { boundaryFailure = safeReason(error); response = { status: 'unknown', receipt: null, code: codeOf(error) }; }
+                if (guarded && !dispatched) {
+                  response = { ...response, sent: false, status: 'rejected', receipt: null };
+                  if (allowed(selected)) stateOf(selected, 'paused', boundaryFailure ?? 'MARKET_NOT_SENT');
+                }
                 current();
                 if (action.kind === 'search') {
                   // An exception/timeout cannot prove no-send; retain dispatching.
                   if (response?.sent === true || response?.sent === false) await turn.checkpoint(state => settleMarketSearch(state, requestId, response.sent ? 'sent' : 'not-sent'));
                 } else {
                   const status = ['confirmed', 'rejected'].includes(response?.status) ? response.status : 'unknown';
-                  await turn.checkpoint(state => settleMarketWrite(state, requestId, { status, receipt: response?.receipt ?? null }));
+                  await turn.checkpoint(state => settleMarketWrite(state, requestId, { status, receipt: response?.receipt ?? null,
+                    ...(response?.acknowledged === true ? { acknowledged: true } : {}) }));
                 }
                 const halted = await applyError(turn, response);
-                if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true)) {
+                if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true && allowed(selected))) {
                   stateOf(selected, action.kind === 'search' ? 'paused' : 'review', 'MARKET_RESPONSE_UNCONFIRMED');
                 }
                 diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason);
@@ -232,6 +268,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 current();
                 if (allowed(selected)) stateOf(selected, 'queued');
               }); } catch (error) {
+                if (await applyError(turn, error)) return;
                 if (['TASKS_AUTHORIZATION_CHANGED', 'TASKS_NOT_FOUND'].includes(error.message)) stateOf(selected, 'paused', error.message);
                 else throw error;
               }

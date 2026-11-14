@@ -4,6 +4,7 @@ import {marketTaskMarkup} from './fc27-market-task-markup.js';
 import {mountFc27TradingView} from './fc27-trading-view.js';
 import {bindCurrencyArrows,currencyInputStyles} from './fc27-listing-currency.js';
 import {marketSearchGate,marketOccupancy,marketTaskEvidence} from '../../trading/market-coordination.js';
+import {marketTaskReport} from '../../trading/market-task-report.js';
 
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const modes={fixed:'固定名单',filter:'条件选卡',sell:'持仓出售'},states={ready:'待启动',running:'运行中',queued:'排队中',waiting:'等待中',completed:'已完成',paused:'已暂停',stopped:'已停止',archived:'已归档',review:'待核对'};
@@ -86,12 +87,22 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
   $('taskName').value=draft.name;for(const key of Object.keys(defaultTradingTaskSettings()))$(key).value=String(draft.settings[key]??'');for(const key of ['league','nation','club','position'])fillSelect(key,[]);
   $('editTitle').textContent=task?'编辑交易任务':'新建交易任务';editorStatus.textContent='';$('extraFilters').open=$('moreRules').open=false;$('poolPreview').classList.add('hidden');$('pool').replaceChildren();$('poolSearch').value='';$('filterCount').textContent='展开后读取本地缓存';$('pile').value='all';renderDraft();$('editor').showModal();};
  const removeTask=async()=>{runtime?.stop(pendingDelete);const result=await service.action({...snapshot,id:pendingDelete,action:'delete'});$('confirm').close();message('任务已删除或归档，原交易证据保留。');return result;};
+ const showDetail=async task=>{
+  if(readCoordination){const latest=await readCoordination();check();if(JSON.stringify(latest.context)!==JSON.stringify(snapshot.context))throw Error('TASKS_CONTEXT_CHANGED');coordination=latest;}
+  const report=coordination?marketTaskReport(coordination.ledger,task.id):null;
+  const money=value=>value===null?'未知':esc(value);
+  const receipts=report&&(report.events.length||report.holdings.length)
+   ? `<p>已买 ${report.purchased} · 已挂 ${report.listed} · 已售 ${report.sold} · 持仓成本 ${money(report.heldCost)} · 已实现利润 ${money(report.realizedProfit)}</p><p class="hint">仅已售回执计入收益，按 5% 交易税计算；成本缺失时利润保持未知。</p><h3>持仓（最近 40 张 / 共 ${report.holdings.length} 张）</h3>${report.holdings.slice(-40).reverse().map(h=>`<p>EA ${h.definitionId} · ${esc(h.itemId)} · ${({held:'待移卡',transfer:'待挂牌',listed:'已挂牌',sold:'已售出'})[h.phase]} · 买入 ${money(h.cost)}${h.phase==='sold'?` · 售出 ${money(h.salePrice)}`:''}</p>`).join('')}<h3>交易回执（最近 40 条 / 共 ${report.events.length} 条）</h3>${report.events.slice(-40).reverse().map(r=>`<p>${({buy:'买入',move:'移动',list:'挂牌'})[r.kind]} · EA ${r.definitionId} · ${({pending:'待核对',confirmed:'已确认',rejected:'未成交／未发送'})[r.phase]} · ${r.coins}${r.listing?` · ${r.listing.startPrice}/${r.listing.buyNow} · ${r.listing.durationSeconds/3600}h`:''}</p>`).join('')}`
+   : `<h3>交易回执</h3>${task.activity.receipts.map(r=>`<p>${({bought:'买入',moved:'移动',listed:'挂牌',sold:'售出'})[r.kind]} · EA ${r.definitionId} · ${r.coins??'金额未知'}</p>`).join('')||'<p>暂无交易</p>'}`;
+  $('taskDetailBody').innerHTML=`<h3>${esc(task.name)}</h3><p>${modes[task.mode]} · ${states[stateFor(task)]}</p><p>买入：${task.settings.buyRule==='fixed'?'固定上限':'参考价比例'} ${task.settings.buyValue}${task.settings.buyRule==='percent'?'%':''}</p><p>卖出：${task.settings.sellRule==='fixed'?'固定挂牌价':'参考价比例'} ${task.settings.sellValue}${task.settings.sellRule==='reference'?'%':''}</p><p>${task.activity.unresolved||factsOf(task).unresolved?'有待核对交易':'无待核对交易'}</p><h3>已选卡片</h3>${(task.mode==='fixed'?task.players:task.owned).map(p=>`<p>${esc(p.name)} · EA ${p.definitionId}</p>`).join('')||'<p>按条件选卡</p>'}${receipts}`;
+  $('taskDetail').showModal();
+ };
  shadow.addEventListener('click',event=>{if(!event.isTrusted||!active)return;const button=event.target.closest('button');if(!button)return;
   if(button.dataset.close){$(button.dataset.close).close();cancelQuery();return;}if(busy)return;
   try{check();if(button.dataset.mode){readInputs();draft.mode=button.dataset.mode;cancelQuery();renderDraft();}
    if(button.dataset.action){const task=snapshot.store.tasks.find(t=>t.id===button.dataset.id);if(!task)return;const action=button.dataset.action;
     if(action==='start'){pendingDelete=null;pendingStart=task.id;$('confirmBody').textContent=`启动“${task.name}”：按已保存的${modes[task.mode]}和买卖规则持续执行，直到暂停、停止或触及限制。报价源 ${snapshot.store.settings.source.toUpperCase()}。保存本身不会启动。`;$('confirm').showModal();}
-    else if(action==='edit')openEditor(task);else if(action==='detail'){$('taskDetailBody').innerHTML=`<h3>${esc(task.name)}</h3><p>${modes[task.mode]} · ${states[task.state]}</p><p>买入：${task.settings.buyRule==='fixed'?'固定上限':'参考价比例'} ${task.settings.buyValue}${task.settings.buyRule==='percent'?'%':''}</p><p>卖出：${task.settings.sellRule==='fixed'?'固定挂牌价':'参考价比例'} ${task.settings.sellValue}${task.settings.sellRule==='reference'?'%':''}</p><p>${task.activity.unresolved||factsOf(task).unresolved?'有待核对交易':'无待核对交易'}</p><h3>已选卡片</h3>${(task.mode==='fixed'?task.players:task.owned).map(p=>`<p>${esc(p.name)} · EA ${p.definitionId}</p>`).join('')||'<p>按条件选卡</p>'}<h3>交易回执</h3>${task.activity.receipts.map(r=>`<p>${({bought:'买入',moved:'移动',listed:'挂牌',sold:'售出'})[r.kind]} · EA ${r.definitionId} · ${r.coins??'金额未知'}</p>`).join('')||'<p>暂无交易</p>'}`;$('taskDetail').showModal();}
+    else if(action==='edit')openEditor(task);else if(action==='detail')void run(()=>showDetail(task));
     else if(action==='delete'){pendingStart=null;pendingDelete=task.id;$('confirmBody').textContent=task.activity.receipts.length||factsOf(task).hasEvidence?'任务有交易记录，将归档并保留完整回执。':'删除这个尚无交易记录的任务？';$('confirm').showModal();}
     else {if(action==='pause')runtime?.pause(task.id);if(action==='stop')runtime?.stop(task.id);void run(()=>service.action({...snapshot,id:task.id,action}));}
    }

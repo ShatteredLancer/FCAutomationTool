@@ -83,6 +83,12 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await view.locator('#reloadTasks').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
     assert.match(await view.locator('#market-coordination-status').innerText(), /持仓 1/);
     assert.equal(await view.locator('[data-action=delete][data-id="task-1"]').innerText(), '归档');
+    await view.locator('[data-action=detail][data-id="task-1"]').click();
+    await view.locator('#taskDetail').waitFor({ state: 'visible' });
+    assert.match(await view.locator('#taskDetailBody').innerText(), /持仓成本 800/);
+    assert.match(await view.locator('#taskDetailBody').innerText(), /买入 · EA 1001 · 已确认 · 800/);
+    assert.doesNotMatch(await view.locator('#taskDetailBody').innerText(), /暂无交易/);
+    await view.locator('[data-close=taskDetail]').first().click();
     await page.screenshot({ path: path.join(directory, 'market-scheduler-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await host.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);

@@ -53,6 +53,56 @@ const search = { kind: 'search' };
 const buy = (itemId = '100') => ({ kind: 'buy', definitionId: 1001, itemId, tradeId: 'offer-' + itemId, coins: 800 });
 
 describe('approved task scheduler with simulated providers', () => {
+  it('imports only the explicitly selected exact holding and never sends a fake buy or move for Transfer', async () => {
+    const f = await fixture(), input = f.input('Sell'); input.mode = 'sell';
+    input.owned = [{ itemId: '201', definitionId: 1001, name: 'Owned', pile: 'transfer' }];
+    const snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input });
+    let claimed = false;
+    f.provider.prepare.mockImplementation(async () => claimed ? { kind: 'done' }
+      : { kind: 'claim', itemId: '201', definitionId: 1001, expiresAt: 100000 });
+    f.provider.preflight.mockImplementation(async () => {
+      claimed = true; return { ready: true, holdingPhase: 'transfer', holding: { taskId: f.ids[0], itemId: '201', definitionId: 1001, cost: null } };
+    });
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    const ledger = (await f.coordinator.inspect()).ledger;
+    expect(ledger.holdings[0]).toMatchObject({ itemId: '201', phase: 'transfer', cost: null });
+    expect(ledger.intents).toEqual([]); expect(f.provider.send).not.toHaveBeenCalled();
+  });
+  it('persists an authentication stop from a preflight read exception before any dispatch', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [buy()]);
+    f.provider.preflight.mockRejectedValue(Object.assign(Error('MARKET_READ_UNCONFIRMED'), { code: 401 }));
+    await f.run(); const ledger = (await f.coordinator.inspect()).ledger;
+    expect(ledger.stopped).toBe('authentication'); expect(ledger.intents).toEqual([]);
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
+  it('revokes a native dispatch while its adapter is awaiting pacing, without leaving a false unknown buy', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [buy()]);
+    f.provider.dispatchBoundary = true;
+    f.provider.send.mockImplementation(async ({ beforeDispatch }) => {
+      await Promise.resolve(); f.scheduler.pause(f.ids[0]); beforeDispatch();
+      throw Error('must never reach native write');
+    });
+    await f.run();
+    const ledger = (await f.coordinator.inspect()).ledger;
+    expect(ledger.intents[0].phase).toBe('rejected');
+    expect(ledger.stopped).toBeNull(); expect(ledger.holdings).toEqual([]);
+  });
+  it('retains an unknown intent when native dispatch began before cancellation', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [buy()]); f.provider.dispatchBoundary = true;
+    f.provider.send.mockImplementation(async ({ beforeDispatch }) => {
+      beforeDispatch(); f.scheduler.pause(f.ids[0]); throw Error('lost reply');
+    });
+    await f.run();
+    expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+  });
+  it('checks expiry again at the actual native boundary after provider pacing', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [search]); f.provider.dispatchBoundary = true;
+    f.provider.send.mockImplementation(async ({ beforeDispatch }) => {
+      f.advance(100001); beforeDispatch(); return { sent: true, status: 'confirmed' };
+    });
+    await f.run();
+    expect((await f.coordinator.inspect()).ledger.searches[0].status).toBe('not-sent');
+  });
   it('requires a live provider and explicit approval; loading never resumes', async () => {
     const f = await fixture();
     await expect(f.scheduler.run({ snapshot: f.snapshot, taskIds: f.ids })).rejects.toThrow('MARKET_APPROVAL_REQUIRED');

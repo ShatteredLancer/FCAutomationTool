@@ -28111,7 +28111,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       choice(event.status, ["dispatching", "sent", "not-sent"]);
     }
     for (const entry of value.intents) {
-      fields4(entry, ["id", "taskId", "kind", "itemId", "definitionId", "tradeId", "coins", "at", "phase", "receipt"]);
+      fields4(entry, ["id", "taskId", "kind", "itemId", "definitionId", "tradeId", "coins", "at", "phase", "receipt", "listing", "acknowledged"]);
       id10(entry.id);
       id10(entry.taskId);
       id10(entry.itemId);
@@ -28123,6 +28123,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (entry.kind === "buy" && entry.tradeId === null) fail24("INVALID");
       number2(entry.coins, entry.kind === "move" ? 0 : 150);
       if (entry.coins > 15e6 || entry.kind === "move" && entry.coins !== 0) fail24("INVALID");
+      if (entry.acknowledged !== void 0 && entry.acknowledged !== true) fail24("INVALID");
+      if (entry.acknowledged && entry.phase === "rejected") fail24("RECEIPT_CONFLICT");
+      if (entry.listing !== void 0) {
+        fields4(entry.listing, ["startPrice", "buyNow", "durationSeconds"]);
+        if (entry.kind !== "list" || entry.listing.buyNow !== entry.coins) fail24("INVALID");
+        number2(entry.listing.startPrice, 150);
+        if (entry.listing.startPrice > entry.coins) fail24("INVALID");
+        choice(entry.listing.durationSeconds, [3600, 10800, 21600, 43200, 86400, 259200]);
+      }
       if (entry.phase === "confirmed") validateReceipt(entry, entry.receipt);
       else if (entry.receipt !== null) fail24("INVALID");
     }
@@ -28196,6 +28205,25 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return {
       unresolved: entries2.some((entry) => entry.phase === "pending"),
       hasEvidence: entries2.length > 0 || state.holdings.some((holding) => holding.taskId === taskId)
+    };
+  }
+
+  // src/trading/market-task-report.js
+  function marketTaskReport(ledger, taskId) {
+    const holdings = ledger.holdings.filter((h) => h.taskId === taskId);
+    const events = ledger.intents.filter((i) => i.taskId === taskId);
+    const sold = holdings.filter((h) => h.phase === "sold");
+    const unknownSoldCosts = sold.filter((h) => h.cost === null).length;
+    return {
+      holdings: structuredClone(holdings),
+      events: structuredClone(events),
+      purchased: events.filter((i) => i.kind === "buy" && i.phase === "confirmed").length,
+      listed: events.filter((i) => i.kind === "list" && i.phase === "confirmed").length,
+      sold: sold.length,
+      heldCost: holdings.filter((h) => h.phase !== "sold").some((h) => h.cost === null) ? null : holdings.filter((h) => h.phase !== "sold").reduce((sum2, h) => sum2 + h.cost, 0),
+      netRevenue: sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice), 0),
+      realizedProfit: unknownSoldCosts ? null : sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice) - h.cost, 0),
+      unknownSoldCosts
     };
   }
 
@@ -28491,6 +28519,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       message("\u4EFB\u52A1\u5DF2\u5220\u9664\u6216\u5F52\u6863\uFF0C\u539F\u4EA4\u6613\u8BC1\u636E\u4FDD\u7559\u3002");
       return result;
     };
+    const showDetail = async (task) => {
+      if (readCoordination) {
+        const latest = await readCoordination();
+        check();
+        if (JSON.stringify(latest.context) !== JSON.stringify(snapshot.context)) throw Error("TASKS_CONTEXT_CHANGED");
+        coordination = latest;
+      }
+      const report = coordination ? marketTaskReport(coordination.ledger, task.id) : null;
+      const money2 = (value) => value === null ? "\u672A\u77E5" : esc(value);
+      const receipts = report && (report.events.length || report.holdings.length) ? `<p>\u5DF2\u4E70 ${report.purchased} \xB7 \u5DF2\u6302 ${report.listed} \xB7 \u5DF2\u552E ${report.sold} \xB7 \u6301\u4ED3\u6210\u672C ${money2(report.heldCost)} \xB7 \u5DF2\u5B9E\u73B0\u5229\u6DA6 ${money2(report.realizedProfit)}</p><p class="hint">\u4EC5\u5DF2\u552E\u56DE\u6267\u8BA1\u5165\u6536\u76CA\uFF0C\u6309 5% \u4EA4\u6613\u7A0E\u8BA1\u7B97\uFF1B\u6210\u672C\u7F3A\u5931\u65F6\u5229\u6DA6\u4FDD\u6301\u672A\u77E5\u3002</p><h3>\u6301\u4ED3\uFF08\u6700\u8FD1 40 \u5F20 / \u5171 ${report.holdings.length} \u5F20\uFF09</h3>${report.holdings.slice(-40).reverse().map((h) => `<p>EA ${h.definitionId} \xB7 ${esc(h.itemId)} \xB7 ${{ held: "\u5F85\u79FB\u5361", transfer: "\u5F85\u6302\u724C", listed: "\u5DF2\u6302\u724C", sold: "\u5DF2\u552E\u51FA" }[h.phase]} \xB7 \u4E70\u5165 ${money2(h.cost)}${h.phase === "sold" ? ` \xB7 \u552E\u51FA ${money2(h.salePrice)}` : ""}</p>`).join("")}<h3>\u4EA4\u6613\u56DE\u6267\uFF08\u6700\u8FD1 40 \u6761 / \u5171 ${report.events.length} \u6761\uFF09</h3>${report.events.slice(-40).reverse().map((r) => `<p>${{ buy: "\u4E70\u5165", move: "\u79FB\u52A8", list: "\u6302\u724C" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${{ pending: "\u5F85\u6838\u5BF9", confirmed: "\u5DF2\u786E\u8BA4", rejected: "\u672A\u6210\u4EA4\uFF0F\u672A\u53D1\u9001" }[r.phase]} \xB7 ${r.coins}${r.listing ? ` \xB7 ${r.listing.startPrice}/${r.listing.buyNow} \xB7 ${r.listing.durationSeconds / 3600}h` : ""}</p>`).join("")}` : `<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
+      $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[stateFor(task)]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p><p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p><p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}${receipts}`;
+      $("taskDetail").showModal();
+    };
     shadow.addEventListener("click", (event) => {
       if (!event.isTrusted || !active) return;
       const button = event.target.closest("button");
@@ -28519,10 +28560,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             $("confirmBody").textContent = `\u542F\u52A8\u201C${task.name}\u201D\uFF1A\u6309\u5DF2\u4FDD\u5B58\u7684${modes[task.mode]}\u548C\u4E70\u5356\u89C4\u5219\u6301\u7EED\u6267\u884C\uFF0C\u76F4\u5230\u6682\u505C\u3001\u505C\u6B62\u6216\u89E6\u53CA\u9650\u5236\u3002\u62A5\u4EF7\u6E90 ${snapshot.store.settings.source.toUpperCase()}\u3002\u4FDD\u5B58\u672C\u8EAB\u4E0D\u4F1A\u542F\u52A8\u3002`;
             $("confirm").showModal();
           } else if (action === "edit") openEditor(task);
-          else if (action === "detail") {
-            $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[task.state]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p><p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p><p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
-            $("taskDetail").showModal();
-          } else if (action === "delete") {
+          else if (action === "detail") void run(() => showDetail(task));
+          else if (action === "delete") {
             pendingStart = null;
             pendingDelete = task.id;
             $("confirmBody").textContent = task.activity.receipts.length || factsOf2(task).hasEvidence ? "\u4EFB\u52A1\u6709\u4EA4\u6613\u8BB0\u5F55\uFF0C\u5C06\u5F52\u6863\u5E76\u4FDD\u7559\u5B8C\u6574\u56DE\u6267\u3002" : "\u5220\u9664\u8FD9\u4E2A\u5C1A\u65E0\u4EA4\u6613\u8BB0\u5F55\u7684\u4EFB\u52A1\uFF1F";
