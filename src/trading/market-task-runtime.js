@@ -31,7 +31,7 @@ export function createMarketTaskRuntime({ context, createScheduler, enabled = fa
   }
   const invoke = async (method, options) => {
     const ticket = generation;
-    if (['run', 'enqueue', 'acknowledgeStop'].includes(method) && options?.approved !== true) throw Error('MARKET_APPROVAL_REQUIRED');
+    if (['run', 'enqueue', 'acknowledgeStop', 'handoff'].includes(method) && options?.approved !== true) throw Error('MARKET_APPROVAL_REQUIRED');
     const current = await ensure();
     if (ticket !== generation) throw Error('MARKET_USER_STOP');
     return current[method](options);
@@ -39,6 +39,7 @@ export function createMarketTaskRuntime({ context, createScheduler, enabled = fa
   return Object.freeze({ inspect,
     run: options => invoke('run', options), enqueue: options => invoke('enqueue', options),
     recover: () => invoke('recover'), acknowledgeStop: options => invoke('acknowledgeStop', options),
+    handoff: options => invoke('handoff', options),
     pause(id) { invalidate(); scheduler?.pause(id); publish(); },
     stop(id) { invalidate(); scheduler?.stop(id); publish(); },
     pauseAll() { invalidate(); scheduler?.pauseAll(); publish(); },

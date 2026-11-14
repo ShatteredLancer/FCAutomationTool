@@ -7,6 +7,8 @@ export function marketTaskReport(ledger, taskId) {
   const sold = holdings.filter(h => h.phase === 'sold');
   const unknownSoldCosts = sold.filter(h => h.cost === null).length;
   return { holdings: structuredClone(holdings), events: structuredClone(events),
+    handoffs: structuredClone((ledger.handoffs ?? []).filter(h => h.fromTaskId === taskId || h.toTaskId === taskId)),
+    elapsedMs: ledger.clocks?.find(c => c.taskId === taskId)?.elapsedMs ?? 0,
     purchased: events.filter(i => i.kind === 'buy' && i.phase === 'confirmed').length,
     listed: events.filter(i => i.kind === 'list' && i.phase === 'confirmed').length, sold: sold.length,
     heldCost: holdings.filter(h => h.phase !== 'sold').some(h => h.cost === null) ? null

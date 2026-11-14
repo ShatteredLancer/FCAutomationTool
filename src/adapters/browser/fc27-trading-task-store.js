@@ -54,18 +54,27 @@ export function createTradingTaskStore({ context, get, set, locks, now = () => D
       const task = find(fresh.store, taskId);
       if (task.revision !== expected.revision || !same(config(task), config(expected))
         || !same(fresh.store.settings, snapshot.store.settings) || task.state !== expected.state
-        || ['archived', 'review'].includes(task.state) || task.activity.unresolved) throw Error('TASKS_AUTHORIZATION_CHANGED');
+        || ['archived', 'review', 'stopped'].includes(task.state) || task.stopRequested || task.activity.unresolved) throw Error('TASKS_AUTHORIZATION_CHANGED');
       return callback({ task: structuredClone(task), settings: structuredClone(fresh.store.settings) });
     });
   };
 
-  return Object.freeze({ context: capture, read, withTask,
+  const withSnapshot = async (snapshot, callback) => {
+    const c = tradingTaskContext(snapshot.context); current(c);
+    if (!locks?.request) throw Error('TASKS_LOCK_UNAVAILABLE');
+    return locks.request(tradingTaskKey(c), { mode: 'exclusive' }, async () => {
+      const fresh = await read(); current(c);
+      if (!same(fresh.store, readTradingTasks(snapshot.store, c))) throw Error('TASKS_STALE');
+      return callback(fresh.store);
+    });
+  };
+  return Object.freeze({ context: capture, read, withTask, withSnapshot,
     saveTask: options => {
       const input = normalizeTradingTaskInput(options.input);
       return mutate(options, async (store, c) => {
         if (options.id) {
           const task = find(store, options.id);
-          if (!['ready', 'paused'].includes(task.state) || (await evidence(task, c)).unresolved) throw Error('TASKS_EDIT_BLOCKED');
+          if (!['ready', 'paused'].includes(task.state) || task.stopRequested || (await evidence(task, c)).unresolved) throw Error('TASKS_EDIT_BLOCKED');
           Object.assign(task, input); touch(task);
         } else store.tasks.push({ id: id(), revision: 0, ...input, state: 'ready',
           createdAt: now(), updatedAt: now(), activity: emptyTaskActivity() });
@@ -99,10 +108,11 @@ export function createTradingTaskStore({ context, get, set, locks, now = () => D
       }
       const facts = await evidence(task, c);
       if (options.action === 'stop') {
+        task.stopRequested = true;
         if (task.state !== 'archived') task.state = facts.unresolved || task.state === 'review' ? 'review' : 'stopped'; touch(task); return;
       }
       if (options.action === 'acknowledge' && !facts.unresolved && ['ready', 'paused', 'review'].includes(task.state)) {
-        task.state = 'paused'; touch(task); return; // Still requires a fresh explicit run approval.
+        task.state = task.stopRequested ? 'stopped' : 'paused'; touch(task); return;
       }
       if (facts.unresolved || task.state === 'review') throw Error('TASKS_UNRESOLVED');
       if (options.action === 'delete') {

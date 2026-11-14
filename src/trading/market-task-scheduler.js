@@ -1,7 +1,8 @@
 import { readTradingTasks } from './task-model.js';
+import { reserveMarketClock, closeMarketClock, marketElapsed } from './market-task-clock.js';
 import { marketTaskFailureReason } from './market-task-messages.js';
 import { marketSearchGate, marketOccupancy, nextMarketTask, reserveMarketSearch, settleMarketSearch,
-  reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale } from './market-coordination.js';
+  reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale, settleMarketUnsold, transferMarketHoldings, marketLastListing } from './market-coordination.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const actionable = row => ['queued', 'waiting', 'running'].includes(row.state);
@@ -27,12 +28,14 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   if (!Array.isArray(supportedModes) || supportedModes.some(mode => !['fixed', 'sell', 'filter'].includes(mode))) throw Error('MARKET_TASK_SELECTION_INVALID');
   if (!Array.isArray(errorPolicy.codes) || errorPolicy.codes.some(code => !Number.isSafeInteger(code) || code < 100 || code > 99999)
     || !Number.isSafeInteger(errorPolicy.count) || errorPolicy.count < 1) throw Error('MARKET_ERROR_POLICY_INVALID');
-  let busy = false, executing = false, disposed = false, runContext = null, snapshot = null, wake = null, evidence = [];
+  let busy = false, executing = false, disposed = false, runContext = null, snapshot = null, wake = null, evidence = [], controlGeneration = 0;
   let policyRead = null, policyAt = 0;
   let tasks = new Map(), phase = 'idle', currentTask = null, lastReason = null, errorCounts = new Map();
   const listeners = new Set();
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
-    reason: lastReason, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })), tasks: [...tasks.values()].map(row => ({ ...row })) });
+    reason: lastReason, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
+    tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
+      startedAt: row.startedAt, elapsedMs: elapsed(row) })) });
   const publish = () => { for (const listener of [onStatus, ...listeners]) { try { listener(inspect()); } catch { /* Presentation is not authorization. */ } } };
   const reportFailure = reason => {
     try { Promise.resolve(onDiagnostic({ area: 'trading', event: 'task-scheduler', phase, status: 'blocked', reason })).catch(() => {}); }
@@ -40,7 +43,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   };
   const diagnostic = (state, reason = null, code = null) => {
     const occupancy = marketOccupancy(state);
-    evidence = [...new Set([...state.intents.map(i => i.taskId), ...state.holdings.map(h => h.taskId)])].map(taskId => {
+    evidence = [...new Set([...state.intents.map(i => i.taskId), ...state.holdings.map(h => h.taskId),
+      ...(state.handoffs ?? []).flatMap(h => [h.fromTaskId, h.toTaskId])])].map(taskId => {
       const entries = state.intents.filter(i => i.taskId === taskId);
       return { taskId, hasEvidence: true, unresolved: entries.some(i => i.phase === 'pending'),
         counts: [entries.filter(i => i.kind === 'buy' && i.phase === 'confirmed').length,
@@ -58,11 +62,18 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   };
   const allowed = taskId => !disposed && actionable(tasks.get(taskId) ?? {});
   const stateOf = (taskId, state, reason = null, nextAt = 0) => {
-    const row = tasks.get(taskId); if (row) Object.assign(row, { state, reason, nextAt }); publish();
+    const row = tasks.get(taskId); if (row) {
+      if (actionable(row) && !['queued', 'waiting', 'running'].includes(state)) row.endedAt = now();
+      Object.assign(row, { state, reason, nextAt });
+    } publish();
   };
   const revoke = (taskId, state) => {
+    controlGeneration++;
     for (const row of tasks.values()) if (taskId === null || row.id === taskId) {
-      if (actionable(row) || state === 'paused' && row.state === 'review') Object.assign(row, { state, reason: 'MARKET_USER_STOP', nextAt: 0 });
+      if (actionable(row) || state === 'stopped' || state === 'paused' && row.state === 'review') {
+        if (state === 'stopped') row.stopRequested = true;
+        row.endedAt ??= now(); Object.assign(row, { state, reason: 'MARKET_USER_STOP', nextAt: 0 });
+      }
     }
     wake?.abort(); publish();
   };
@@ -76,6 +87,31 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   };
   const validAt = action => Number.isSafeInteger(action?.expiresAt) && action.expiresAt > now();
   const taskConfig = taskId => snapshot.store.tasks.find(t => t.id === taskId);
+  const elapsed = row => row.clock ? marketElapsed(row.clock, row.endedAt ?? now(), row.clockToken) : 0;
+  const clockBoundary = row => {
+    if (!row.clock?.lease || row.clock.lease.token !== row.clockToken || row.clock.lease.until <= now()) throw Error('MARKET_TIME_LIMIT');
+  };
+  const syncClocks = async (session, closing = false) => {
+    const needed = [...tasks.values()].filter(row => closing ? row.clock?.lease
+      : actionable(row) ? !row.clock?.lease || row.clock.lease.until <= now() : row.clock?.lease);
+    if (!needed.length) return true;
+    const result = await session.control(async turn => {
+      await turn.checkpoint(state => {
+        for (const row of needed) {
+          row.clockToken ??= globalThis.crypto.randomUUID();
+          if (closing || !actionable(row)) closeMarketClock(state, row.id, row.clockToken, row.endedAt ?? now(), row.state === 'stopped' || row.stopRequested === true);
+          else reserveMarketClock(state, row.id, row.clockToken, now(), taskConfig(row.id).settings.runMinutes === null
+            ? null : taskConfig(row.id).settings.runMinutes * 60000);
+        }
+      });
+      for (const row of needed) {
+        row.clock = turn.inspect().clocks?.find(c => c.taskId === row.id);
+        row.elapsedMs = elapsed(row);
+        if (row.clock?.stopped && actionable(row)) stateOf(row.id, 'stopped', 'MARKET_TIME_LIMIT');
+      }
+    });
+    return result?.status !== 'busy';
+  };
   const bound = async (taskId, fn) => taskStore.withTask(snapshot, taskId, async args => { current(); return fn(args); });
   const applyError = async (turn, result) => {
     const code = codeOf(result);
@@ -103,7 +139,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       || !taskIds.length || new Set(taskIds).size !== taskIds.length) throw Error('TASKS_AUTHORIZATION_CHANGED');
     for (const taskId of taskIds) {
       const task = next.tasks.find(t => t.id === taskId);
-      if (!task || !supportedModes.includes(task.mode) || !['ready', 'paused'].includes(task.state) || task.activity.unresolved
+      if (!task || !supportedModes.includes(task.mode) || !['ready', 'paused'].includes(task.state) || task.stopRequested || task.activity.unresolved
         || currentTask === taskId || actionable(tasks.get(taskId) ?? {})) throw Error('MARKET_TASK_SELECTION_INVALID');
       await taskStore.withTask(requested, taskId, () => {}); current();
     }
@@ -123,15 +159,18 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     if (busy) throw Error('MARKET_BUSY');
     const store = readTradingTasks(requested?.store, requested?.context);
     if (!taskIds.length || taskIds.length > 100 || new Set(taskIds).size !== taskIds.length
-      || taskIds.some(taskId => !store.tasks.some(t => t.id === taskId && supportedModes.includes(t.mode) && ['ready', 'paused'].includes(t.state) && !t.activity.unresolved))) throw Error('MARKET_TASK_SELECTION_INVALID');
+      || taskIds.some(taskId => !store.tasks.some(t => t.id === taskId && supportedModes.includes(t.mode) && ['ready', 'paused'].includes(t.state) && !t.stopRequested && !t.activity.unresolved))) throw Error('MARKET_TASK_SELECTION_INVALID');
     snapshot = { context: structuredClone(requested.context), store }; runContext = snapshot.context; current();
     busy = true; executing = true; lastReason = null; errorCounts = new Map(); evidence = []; policyRead = null;
     const startedAt = now();
     tasks = new Map(taskIds.map(taskId => [taskId, { id: taskId, state: 'queued', reason: null, nextAt: 0, startedAt }])); publish();
     try {
       const result = await coordinator.withOwner(async session => {
+        try {
         while (!disposed && [...tasks.values()].some(actionable)) {
-          current(); const ledger = await session.inspect();
+          current();
+          if (!await syncClocks(session)) { await delay(1000); continue; }
+          const ledger = await session.inspect();
           if (ledger.stopped || ledger.intents.some(i => i.phase === 'pending')) {
             lastReason = ledger.intents.some(i => i.phase === 'pending') ? 'MARKET_RECOVERY_REQUIRED' : 'MARKET_STOPPED';
             for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, 'review', lastReason);
@@ -150,7 +189,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             if (!fresh || fresh.revision !== expected.revision || fresh.state !== expected.state
               || !same(policyRead.store.settings, store.settings)) stateOf(row.id, 'paused', 'TASKS_AUTHORIZATION_CHANGED');
             const duration = taskConfig(row.id).settings.runMinutes;
-            if (duration !== null && now() - row.startedAt >= duration * 60000 && actionable(row)) stateOf(row.id, 'stopped', 'MARKET_TIME_LIMIT');
+            row.elapsedMs = elapsed(row);
+            if (duration !== null && row.elapsedMs >= duration * 60000 && actionable(row)) stateOf(row.id, 'stopped', 'MARKET_TIME_LIMIT');
           }
           const ready = [...tasks.values()].filter(row => actionable(row) && row.nextAt <= now()).map(row => row.id);
           if (!ready.length) {
@@ -168,7 +208,9 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           if (action?.kind === 'wait' && Number.isSafeInteger(action.until) && action.until > now()) {
             stateOf(selected, 'waiting', 'MARKET_TASK_WAIT', action.until); continue;
           }
-          if (action?.kind === 'done') { stateOf(selected, 'completed'); continue; }
+          if (action?.kind === 'done') {
+            stateOf(selected, action.reason === 'MARKET_RELIST_PAUSED' ? 'paused' : 'completed', action.reason === 'MARKET_RELIST_PAUSED' ? action.reason : null); continue;
+          }
           if (!['search', 'buy', 'move', 'list', 'claim', 'sales'].includes(action?.kind) || !validAt(action)) {
             stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); continue;
           }
@@ -200,7 +242,9 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   for (const receipt of preflight.sales) {
                     if (!turn.inspect().holdings.some(h => h.taskId === selected && h.itemId === receipt.itemId)) throw Error('MARKET_RECEIPT_CONFLICT');
                   }
-                  await turn.checkpoint(state => { for (const receipt of preflight.sales) settleMarketSale(state, receipt); });
+                  await turn.checkpoint(state => { for (const receipt of preflight.sales) {
+                    if (receipt.unsold === true) settleMarketUnsold(state, receipt); else settleMarketSale(state, receipt);
+                  } });
                   if (typeof provider.accept === 'function') await provider.accept({ action, response: { status: 'observed' }, ledger: turn.inspect() });
                   diagnostic(turn.inspect()); stateOf(selected, 'queued'); return;
                 }
@@ -208,6 +252,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 const command = action.kind === 'search' ? null : { id: requestId, taskId: selected, kind: action.kind,
                   itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: now(),
                   ...(action.kind === 'list' && action.listing ? { listing: structuredClone(action.listing) } : {}) };
+                if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
                 if (command?.kind === 'buy') {
                   const row = fresh.players.find(p => p.definitionId === command.definitionId);
                   if (fresh.mode === 'sell' || fresh.mode === 'fixed' && !row
@@ -215,7 +260,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                     || row?.cap == null && fresh.settings.buyRule === 'fixed' && command.coins > fresh.settings.buyValue
                     || row?.cap != null && command.coins > row.cap) throw Error('MARKET_BUY_RULE_CHANGED');
                 }
-                if (command?.kind === 'list' && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
+                if (command?.kind === 'list' && !(action.previousTradeId && fresh.settings.relist === 'original')
+                  && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
                 phase = action.kind; publish();
                 if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random }));
                 else await turn.checkpoint(state => reserveMarketWrite(state, command, {
@@ -240,8 +286,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   if (dispatched) throw Error('MARKET_DUPLICATE_REQUEST');
                   if (!allowed(selected)) throw Error('MARKET_USER_STOP');
                   if (!validAt(action)) throw Error('MARKET_ACTION_EXPIRED_OR_INVALID');
-                  const duration = fresh.settings.runMinutes;
-                  if (duration !== null && now() - tasks.get(selected).startedAt >= duration * 60000) throw Error('MARKET_TIME_LIMIT');
+                  clockBoundary(tasks.get(selected));
                   dispatched = true;
                 };
                 try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch }); }
@@ -278,6 +323,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           } catch (error) { stateOf(selected, 'paused', safeReason(error)); throw error; }
         }
         return inspect();
+        } finally { await syncClocks(session, true); }
       });
       if (result?.status === 'busy') { lastReason = 'MARKET_BUSY'; pauseAll(); }
     } catch (error) {
@@ -294,15 +340,30 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   // never resumes tasks or clears authentication/throttle stops automatically.
   async function recover() {
     ensureProvider(); if (busy) throw Error('MARKET_BUSY');
+    const ticket = controlGeneration;
     runContext = structuredClone(taskStore.context()); busy = true; phase = 'recover'; publish();
     try {
       return await coordinator.withOwner(session => session.control(async turn => {
         const pending = turn.inspect().intents.filter(i => i.phase === 'pending');
         for (const entry of pending) {
+          if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
           current(); const response = await provider.reconcile(structuredClone(entry)); current();
           if (['confirmed', 'rejected'].includes(response?.status)) await turn.checkpoint(state => settleMarketWrite(state, entry.id,
             { status: response.status, receipt: response.receipt ?? null }));
           await applyError(turn, response);
+        }
+        if (!turn.inspect().intents.some(i => i.phase === 'pending') && typeof provider.readHoldings === 'function') {
+          const ledger = turn.inspect(), listed = ledger.holdings.filter(h => h.phase === 'listed');
+          for (let index = 0; index < listed.length; index += 40) {
+            current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
+            const chunk = listed.slice(index, index + 40).map(h => ({ ...h, listing: marketLastListing(ledger, h) }));
+            const receipts = await provider.readHoldings(chunk); current();
+            if (!Array.isArray(receipts) || receipts.some(r => !chunk.some(h => h.itemId === r.itemId))) throw Error('MARKET_RECEIPT_CONFLICT');
+            await turn.checkpoint(state => { for (const receipt of receipts) {
+              if (receipt.unsold === true) settleMarketUnsold(state, receipt); else settleMarketSale(state, receipt);
+            } });
+            diagnostic(turn.inspect()); publish();
+          }
         }
         lastReason = turn.inspect().intents.some(i => i.phase === 'pending') ? 'MARKET_RECOVERY_REQUIRED' : null;
         diagnostic(turn.inspect()); return turn.inspect();
@@ -324,7 +385,37 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       }));
     } finally { busy = false; phase = 'idle'; publish(); }
   }
-  return Object.freeze({ run, enqueue, recover, acknowledgeStop, inspect, pause, stop, pauseAll,
+  async function handoff({ approved = false, snapshot: requested, fromTaskId, toTaskId, itemIds } = {}) {
+    ensureProvider(); if (!approved) throw Error('MARKET_APPROVAL_REQUIRED');
+    if (busy) throw Error('MARKET_BUSY');
+    if (typeof provider.inspectHolding !== 'function' || typeof taskStore.withSnapshot !== 'function') throw Error('MARKET_HANDOFF_INVALID');
+    runContext = structuredClone(taskStore.context());
+    if (!same(requested?.context, runContext)) throw Error('TASKS_CONTEXT_CHANGED');
+    const ticket = controlGeneration;
+    const live = () => { current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP'); };
+    busy = true; phase = 'handoff'; publish();
+    try {
+      return await coordinator.withOwner(session => session.control(turn => taskStore.withSnapshot(requested, async store => {
+        live(); const source = store.tasks.find(t => t.id === fromTaskId), target = store.tasks.find(t => t.id === toTaskId);
+        if (!source || !['stopped', 'archived'].includes(source.state) || source.activity.unresolved
+          || !target || target.mode !== 'sell' || !['ready', 'paused'].includes(target.state) || target.stopRequested
+          || target.activity.unresolved) throw Error('MARKET_HANDOFF_INVALID');
+        const proof = turn.inspect(); transferMarketHoldings(proof, { fromTaskId, toTaskId, itemIds, now: now() });
+        for (const itemId of itemIds) {
+          const h = proof.holdings.find(row => row.itemId === itemId);
+          if (!target.owned.some(row => row.itemId === itemId && row.definitionId === h.definitionId)) throw Error('MARKET_HANDOFF_INVALID');
+          const facts = await provider.inspectHolding(structuredClone(h)); live();
+          if (!facts?.eligible || facts.itemId !== h.itemId || facts.definitionId !== h.definitionId
+            || !['club', 'transfer', 'unassigned'].includes(facts.pile)
+            || ['transfer', 'unsold'].includes(h.phase) && facts.pile !== 'transfer') throw Error('MARKET_HOLDING_UNAVAILABLE');
+        }
+        live();
+        await turn.checkpoint(state => { live(); transferMarketHoldings(state, { fromTaskId, toTaskId, itemIds, now: now() }); });
+        diagnostic(turn.inspect()); return turn.inspect();
+      })));
+    } finally { busy = false; phase = 'idle'; publish(); }
+  }
+  return Object.freeze({ run, enqueue, recover, acknowledgeStop, handoff, inspect, pause, stop, pauseAll,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() { disposed = true; pauseAll(); } });
 }

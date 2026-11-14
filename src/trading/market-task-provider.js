@@ -1,4 +1,5 @@
 import { marketTaskPrice } from './market-task-prices.js';
+import { marketLastListing, marketRelistAllowed } from './market-coordination.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw Error(`MARKET_${reason}`); };
@@ -52,14 +53,23 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     async prepare({ task, settings, ledger }) {
       check(); if (!['fixed', 'sell'].includes(task.mode)) fail('TASK_SELECTION_INVALID');
       const c = cursor(task, settings), held = ledger.holdings.filter(h => h.taskId === task.id);
-      const pending = held.find(h => h.phase === 'held' || h.phase === 'transfer');
+      const pending = held.find(h => h.phase === 'held' || h.phase === 'transfer' || marketRelistAllowed(ledger, task, h));
       if (pending) {
         const action = { kind: pending.phase === 'held' ? 'move' : 'list', itemId: pending.itemId,
           definitionId: pending.definitionId, coins: 0 };
         if (action.kind === 'list') {
-          const p = await priceFor(task, settings, pending.definitionId, 'sell');
-          Object.assign(action, { coins: p.price, quotes: p.quotes, expiresAt: p.expiresAt,
-            listing: { startPrice: p.price, buyNow: p.price, durationSeconds: task.settings.duration } });
+          if (pending.phase === 'unsold') {
+            action.previousTradeId = pending.listingTradeId;
+            action.previousListing = marketLastListing(ledger, pending);
+            if (!action.previousListing) fail('RECEIPT_CONFLICT');
+          }
+          if (action.previousTradeId && task.settings.relist === 'original') {
+            action.listing = structuredClone(action.previousListing); action.coins = action.listing.buyNow;
+          } else {
+            const p = await priceFor(task, settings, pending.definitionId, 'sell');
+            Object.assign(action, { coins: p.price, quotes: p.quotes, expiresAt: p.expiresAt,
+              listing: { startPrice: p.price, buyNow: p.price, durationSeconds: task.settings.duration } });
+          }
         }
         return remember(task, settings, action);
       }
@@ -68,7 +78,8 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
         if (unclaimed) return remember(task, settings, { kind: 'claim', itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
       }
       if (held.some(h => h.phase === 'listed') && now() >= c.salesAt) return remember(task, settings, { kind: 'sales' });
-      if (task.mode === 'sell') return held.some(h => h.phase !== 'sold') ? { kind: 'wait', until: Math.max(now() + 1000, c.salesAt) } : { kind: 'done' };
+      if (task.mode === 'sell') return held.some(h => h.phase === 'listed') ? { kind: 'wait', until: Math.max(now() + 1000, c.salesAt) }
+        : { kind: 'done', ...(held.some(h => h.phase === 'unsold') ? { reason: 'MARKET_RELIST_PAUSED' } : {}) };
       // Consume only offers from the last search for this task. Rejections are
       // removed in accept, so one stale/competitive auction is never rebid.
       while (c.offers.length) {
@@ -101,19 +112,22 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
       if (action.kind === 'sales') {
         const held = ledger.holdings.filter(h => h.taskId === task.id && h.phase === 'listed').map(h => ({ ...h,
-          listing: ledger.intents.find(i => i.taskId === task.id && i.itemId === h.itemId && i.kind === 'list'
-            && i.phase === 'confirmed' && i.receipt.tradeId === h.listingTradeId)?.listing ?? null }));
+          listing: marketLastListing(ledger, h) }));
         const sales = await native.readSales(held); bound(action, task, settings);
         return { ready: true, sales };
       }
-      if (['search', 'buy', 'list'].includes(action.kind)) {
+      if (['search', 'buy', 'list'].includes(action.kind) && !(action.previousTradeId && task.settings.relist === 'original')) {
         const p = price(task, settings, action.definitionId, action.kind === 'list' ? 'sell' : 'buy', action.quotes);
         if (action.kind === 'search' && p.price !== action.maxBuy || action.kind === 'buy' && action.coins > p.price
           || action.kind === 'list' && action.coins !== p.price) fail('PRICE_CHANGED');
       }
       if (['move', 'list'].includes(action.kind)) {
         const holding = holdingFor(ledger, task, action);
-        if (holding.phase !== (action.kind === 'move' ? 'held' : 'transfer')) fail('ITEM_OCCUPIED');
+        if (action.previousTradeId) {
+          if (!marketRelistAllowed(ledger, task, holding) || holding.listingTradeId !== action.previousTradeId
+            || !same(marketLastListing(ledger, holding), action.previousListing)
+            || task.settings.relist === 'original' && !same(action.listing, action.previousListing)) fail('ITEM_OCCUPIED');
+        } else if (holding.phase !== (action.kind === 'move' ? 'held' : 'transfer')) fail('ITEM_OCCUPIED');
       }
       const result = await native.preflight({ task, settings, action, ledger }); bound(action, task, settings); return result;
     },
@@ -145,6 +159,8 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
     },
     reconcile: intent => { check(); return native.reconcile(structuredClone(intent)); },
+    inspectHolding: async holding => { check(); const result = await native.inspectOwned(holding); check(); return result; },
+    readHoldings: async holdings => { check(); const result = await native.readSales(holdings); check(); return result; },
     verifySession: () => { check(); return native.verifySession(); },
   };
   return Object.freeze(api);

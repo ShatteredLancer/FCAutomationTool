@@ -3,7 +3,7 @@ import { marketNativeRuntime } from '../helpers/market-native-runtime.js';
 import { createFc27MarketTaskNative } from '../../src/adapters/browser/fc27-market-task-native.js';
 import { createMarketTaskProvider } from '../../src/trading/market-task-provider.js';
 import { defaultTradingTaskSettings, defaultTradingPublicSettings } from '../../src/trading/task-model.js';
-import { emptyMarketCoordination, reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale } from '../../src/trading/market-coordination.js';
+import { emptyMarketCoordination, reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale, settleMarketUnsold } from '../../src/trading/market-coordination.js';
 import { createMarketTaskScheduler } from '../../src/trading/market-task-scheduler.js';
 import { createTradingTaskStore } from '../../src/adapters/browser/fc27-trading-task-store.js';
 import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-coordinator.js';
@@ -24,11 +24,14 @@ async function fixture(mode = 'fixed', extra = {}) {
     const preflight = await provider.preflight({ task, settings, action, ledger });
     expect(preflight.ready).toBe(true);
     if (action.kind === 'claim') claimMarketHolding(ledger, preflight.holding, preflight.holdingPhase);
-    else if (action.kind === 'sales') for (const receipt of preflight.sales) settleMarketSale(ledger, receipt);
+    else if (action.kind === 'sales') for (const receipt of preflight.sales) {
+      if (receipt.unsold) settleMarketUnsold(ledger, receipt); else settleMarketSale(ledger, receipt);
+    }
     else {
       const requestId = `r${sequence}`;
       if (action.kind !== 'search') reserveMarketWrite(ledger, { id: requestId, taskId: task.id, kind: action.kind, itemId: action.itemId,
-        definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: f.now(), ...(action.listing ? { listing: action.listing } : {}) },
+        definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: f.now(), ...(action.listing ? { listing: action.listing } : {}),
+        ...(action.previousTradeId ? { previousTradeId: action.previousTradeId } : {}) },
       { balance: preflight.balance, freeSlots: preflight.freeSlots, reserve: null, totalCap: null, taskCap: null, spendCap: null, perVersion: 2 });
       const response = await provider.send({ action, requestId, beforeDispatch: () => dispatched.push(action.kind) });
       if (action.kind !== 'search') settleMarketWrite(ledger, requestId, { status: response.status, receipt: response.receipt });
@@ -40,6 +43,92 @@ async function fixture(mode = 'fixed', extra = {}) {
   };
   return { ...f, native, provider, task, settings, ledger, step, dispatched, loadQuotes, assertProtected, checkOtherTransactions };
 }
+
+describe('market task relisting with the production native port', () => {
+  it('runs initial listing, fresh expiry, one relist and count exhaustion through the real scheduler and journals', async () => {
+    const f = await fixture('sell'), data = new Map(), context = { scope: 'test', season: '27', platform: 'console' };
+    f.task.owned = [{ itemId: '101', definitionId: 901, name: 'A', pile: 'transfer' }]; f.task.settings.relistTimes = 1;
+    f.makeCard(101, 901, 'transfer');
+    f.hooks.auctions = items => { for (const card of items) { card.auction.tradeState = 'expired'; card.auction.isSold = () => false; } };
+    const get = async (key, fallback) => structuredClone(data.get(key) ?? fallback), set = async (key, value) => data.set(key, structuredClone(value));
+    const locks = { request: async (name, _options, callback) => callback({ name, mode: 'exclusive' }) };
+    const taskStore = createTradingTaskStore({ context: () => context, get, set, locks, id: () => 't', now: f.now });
+    const coordinator = createMarketCoordinator({ context: () => context, get, set, locks });
+    const { mode, settings, players, owned, excluded } = f.task;
+    const snapshot = await taskStore.saveTask({ ...await taskStore.read(), input: { name: 'Relist', mode, settings, players, owned, excluded } });
+    let serial = 0;
+    const scheduler = createMarketTaskScheduler({ taskStore, coordinator, provider: f.provider, enabled: true, now: f.now,
+      wait: f.sleep, id: () => `r${++serial}` });
+    await scheduler.run({ approved: true, snapshot, taskIds: ['t'] });
+    expect(scheduler.inspect().tasks[0]).toMatchObject({ state: 'paused', reason: 'MARKET_RELIST_PAUSED' });
+    const ledger = (await coordinator.inspect()).ledger;
+    expect(ledger.intents.map(i => [i.kind, i.phase, i.previousTradeId ?? null])).toEqual([
+      ['list', 'confirmed', null], ['list', 'confirmed', '19101']]);
+    expect(ledger.holdings[0].phase).toBe('unsold'); expect(ledger.clocks[0].elapsedMs).toBeGreaterThan(30000);
+    expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(2); expect(f.calls.some(c => c[0] === 'bid')).toBe(false);
+  });
+  async function listed() {
+    const f = await fixture('sell'); const card = f.makeCard(101, 901, 'transfer');
+    f.task.owned = [{ itemId: '101', definitionId: 901, name: 'A', pile: 'transfer' }];
+    await f.step(); await f.step();
+    const expire = () => { card.auction.tradeState = 'expired'; card.auction.isSold = () => false; };
+    return { ...f, card, expire };
+  }
+  it('reuses original start/buy/duration despite a changed rule, with a new trade ID and retained cost', async () => {
+    const f = await listed(); f.task.settings.sellValue = 1000;
+    f.expire(); await f.step(); expect(f.ledger.holdings[0].phase).toBe('unsold');
+    const result = await f.step();
+    expect(result.action).toMatchObject({ previousTradeId: '19101', coins: 700 });
+    expect(result.response).toMatchObject({ status: 'confirmed', receipt: { tradeId: '19102' } });
+    expect(f.calls.filter(c => c[0] === 'list').map(c => c.slice(2))).toEqual([[700, 700, 3600], [700, 700, 3600]]);
+    expect(f.ledger.holdings[0]).toMatchObject({ cost: null, phase: 'listed', listingTradeId: '19102' });
+    expect(f.loadQuotes).not.toHaveBeenCalled(); expect(f.calls.some(c => c[0] === 'bid')).toBe(false);
+  });
+  it('recomputes from the current independent sell rule and honors the persisted count', async () => {
+    const f = await listed(); f.task.settings.relist = 'reference'; f.task.settings.relistTimes = 1; f.task.settings.sellValue = 900;
+    f.expire(); await f.step(); const result = await f.step(); expect(result.action.coins).toBe(900);
+    f.advance(31000); f.expire(); await f.step();
+    expect((await f.step()).kind).toBe('done');
+    expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(2);
+  });
+  it('uses fresh Both quotes for percentage relists and rejects missing references', async () => {
+    const f = await listed(); f.task.settings.relist = 'reference'; f.task.settings.sellRule = 'reference';
+    f.task.settings.sellValue = 100; f.settings.source = 'both';
+    f.loadQuotes.mockImplementation(async () => ({ 901: Object.fromEntries([['futbin', 900], ['futgg', 800]].map(([source, price]) =>
+      [source, { source, price, definitionId: 901, season: '27', platform: 'console', fetchedAt: f.now(), expiresAt: f.now() + 300000 }])) }));
+    f.expire(); await f.step(); expect((await f.step()).action.coins).toBe(900);
+    f.advance(31000); f.expire(); await f.step(); f.loadQuotes.mockResolvedValue({});
+    await expect(f.step()).rejects.toThrow('REFERENCE_UNAVAILABLE');
+    expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(2);
+  });
+  it.each([{ relist: 'pause', relistTimes: null }, { relist: 'original', relistTimes: 0 }])('does not relist disabled cards: %j', async settings => {
+    const f = await listed(); Object.assign(f.task.settings, settings); f.expire(); await f.step();
+    expect((await f.step()).kind).toBe('done'); expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(1);
+  });
+  it.each(['active', 'unknown-sold', 'bid', 'wrong-id', 'wrong-price'])('does not infer unsold from incomplete or contradictory evidence: %s', async reason => {
+    const f = await listed(); f.expire();
+    if (reason === 'active') f.card.auction.tradeState = 'active';
+    if (reason === 'unknown-sold') delete f.card.auction.isSold;
+    if (reason === 'bid') f.card.auction.currentBid = 700;
+    if (reason === 'wrong-id') f.card.auction.tradeId++;
+    if (reason === 'wrong-price') f.card.auction.buyNowPrice = 900;
+    await f.step(); expect(f.ledger.holdings[0].phase).toBe('listed');
+    expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(1);
+  });
+  it('keeps ambiguous relist pending when readback only contains the old trade ID', async () => {
+    const f = await listed(); f.expire(); await f.step();
+    f.hooks.list = card => { card.auction.tradeState = 'active'; return { success: true, status: 200 }; };
+    const result = await f.step(); expect(result.response.status).toBe('unknown');
+    expect(f.ledger.intents.at(-1).phase).toBe('pending');
+    expect((await f.native.reconcile(f.ledger.intents.at(-1))).status).toBe('unknown');
+  });
+  it('does not retry a definite relist rejection against the same old auction', async () => {
+    const f = await listed(); f.expire(); await f.step();
+    f.hooks.list = () => ({ success: false, status: 400 });
+    expect((await f.step()).response.status).toBe('rejected');
+    expect((await f.step()).kind).toBe('done'); expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(2);
+  });
+});
 
 describe('market task native port with synthetic EA services', () => {
   it('runs the real task scheduler/store/coordinator/provider/native adapter through a complete bought-to-sold lifecycle', async () => {

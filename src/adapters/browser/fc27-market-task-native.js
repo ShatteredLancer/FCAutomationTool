@@ -67,6 +67,18 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     if (result.status !== 'loaded' || c?.item?.id !== Number(row.itemId) || c.item.definitionId !== row.definitionId) fail('HOLDING_UNAVAILABLE');
     return result;
   };
+  const unsold = (item, tradeId, listing) => {
+    const a = item?.getAuctionData?.();
+    return Boolean(listing && a && String(a.tradeId) === tradeId && a.isSold?.() === false
+      && (a.isInactive?.() === true || ['inactive', 'expired'].includes(a.tradeState))
+      && a.isActiveTrade?.() !== true && a.currentBid === 0
+      && a.startingBid === listing.startPrice && a.buyNowPrice === listing.buyNow);
+  };
+  const checkRelist = action => {
+    if (!action.previousTradeId) return;
+    const item = repository.getTransferItems().find(i => i.id === Number(action.itemId) && i.definitionId === action.definitionId);
+    if (!unsold(item, action.previousTradeId, action.previousListing)) fail('HOLDING_UNAVAILABLE');
+  };
   const owned = async row => {
     await refresh('unassigned'); await refresh('transfer');
     let result;
@@ -97,7 +109,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       if (entry.kind === 'list' && entry.listing) {
         const proof = galleryListingEvidence({ item: refFor(entry, 'transfer'), ...entry.listing,
           response: entry.acknowledged === true ? { success: true, status: 200 } : null }, result);
-        if (proof.matched) return { status: 'confirmed', receipt: { ...receipt, tradeId: proof.listingTradeId } };
+        if (proof.matched && proof.listingTradeId !== entry.previousTradeId) return { status: 'confirmed', receipt: { ...receipt, tradeId: proof.listingTradeId } };
       }
       return unknown(null);
     } catch (error) { return { ...unknown(null), code: error.code ?? null }; }
@@ -116,6 +128,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         const result = await owned(action), pile = result.candidate.item.pile;
         if (action.kind === 'list' && pile !== 'transfer' || action.kind === 'move' && !['club', 'unassigned'].includes(pile)) fail('HOLDING_UNAVAILABLE');
         if (action.kind === 'list') {
+          checkRelist(action);
           await pace(); const limits = await bounded(() => trade.inspectPriceLimits(result.candidate.item, { refresh: true })); assert();
           readable({ ...limits, status: limits.refreshStatus });
           const limit = limits.after;
@@ -146,6 +159,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
               priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS }) !== action.coins) fail('OFFER_CHANGED');
         }
         if (['move', 'list'].includes(action.kind)) {
+          checkRelist(action);
           const c = exact(action).candidate;
           if (!galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true
             || action.kind === 'list' && c.item.pile !== 'transfer'
@@ -204,6 +218,9 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
             || holding.listing && (auction.currentBid < holding.listing.startPrice || auction.currentBid > holding.listing.buyNow)) fail('RECEIPT_CONFLICT');
           receipts.push({ itemId: holding.itemId, definitionId: item.definitionId, tradeId: holding.listingTradeId,
             price: auction.currentBid, sold: true });
+        } else if (unsold(item, holding.listingTradeId, holding.listing)) {
+          receipts.push({ itemId: holding.itemId, definitionId: item.definitionId, tradeId: holding.listingTradeId,
+            sold: false, unsold: true });
         }
       }
       return receipts;

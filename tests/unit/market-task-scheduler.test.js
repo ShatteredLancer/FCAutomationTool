@@ -46,13 +46,77 @@ async function fixture(options = {}) {
     id: () => `request-${++serial}`, wait: async (ms, signal) => { if (!signal.aborted) clock += ms; if (hooks.wait) await hooks.wait(); },
     onStatus: status => statuses.push(status), onDiagnostic: event => diagnostics.push(event), ...options });
   return { data, account, coordinator, taskStore, scheduler, provider, queues, ids, events, statuses, diagnostics, hooks, input,
-    snapshot, advance: ms => { clock += ms; }, run: () => scheduler.run({ approved: true, snapshot, taskIds: ids }),
+    snapshot, now: () => clock, advance: ms => { clock += ms; }, run: () => scheduler.run({ approved: true, snapshot, taskIds: ids }),
     changeAccount: () => { account = { ...account, scope: 'B' }; } };
 }
 const search = { kind: 'search' };
 const buy = (itemId = '100') => ({ kind: 'buy', definitionId: 1001, itemId, tradeId: 'offer-' + itemId, coins: 800 });
 
 describe('approved task scheduler with simulated providers', () => {
+  it('persists elapsed time across a normal pause and a new scheduler; the original duration still applies', async () => {
+    const f = await fixture(); const input = f.input('Limited'); input.settings.runMinutes = 1;
+    const snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input });
+    f.provider.prepare.mockImplementation(async () => { f.advance(20000); f.scheduler.pauseAll(); return { kind: 'done' }; });
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    expect((await f.coordinator.inspect()).ledger.clocks[0]).toMatchObject({ elapsedMs: 20000, lease: null });
+    f.advance(3600000);
+    const next = createMarketTaskScheduler({ taskStore: f.taskStore, coordinator: f.coordinator, provider: f.provider, enabled: true, now: f.now });
+    f.provider.dispatchBoundary = true;
+    f.provider.prepare.mockImplementation(async () => { f.advance(45000); return { kind: 'search', expiresAt: f.now() + 10000 }; });
+    f.provider.send.mockImplementation(async ({ beforeDispatch }) => { beforeDispatch(); throw Error('must not dispatch'); });
+    await next.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    expect((await f.coordinator.inspect()).ledger.clocks[0].elapsedMs).toBe(60000);
+    expect((await f.coordinator.inspect()).ledger.searches.every(s => s.status === 'not-sent')).toBe(true);
+    f.provider.prepare.mockClear(); await next.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    expect(f.provider.prepare).not.toHaveBeenCalled(); expect(next.inspect().tasks[0].state).toBe('stopped');
+  });
+  it('keeps stop terminal after an unknown receipt is recovered and acknowledged', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [buy()]); f.provider.dispatchBoundary = true;
+    f.provider.send.mockImplementation(async ({ beforeDispatch }) => { beforeDispatch(); f.scheduler.stop(f.ids[0]); throw Error('lost response'); });
+    await f.run();
+    let snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });
+    expect(snapshot.store.tasks[0]).toMatchObject({ state: 'review', stopRequested: true });
+    expect((await f.coordinator.inspect()).ledger.clocks.find(c => c.taskId === f.ids[0]).stopped).toBe(true);
+    f.provider.reconcile.mockImplementation(async i => ({ status: 'confirmed', receipt: { itemId: i.itemId, definitionId: i.definitionId, tradeId: i.tradeId, coins: i.coins } }));
+    await f.scheduler.recover();
+    snapshot = await f.taskStore.action({ ...snapshot, id: f.ids[0], action: 'acknowledge' });
+    expect(snapshot.store.tasks[0].state).toBe('stopped');
+    await expect(f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] })).rejects.toThrow('TASK_SELECTION_INVALID');
+  });
+  async function handoffFixture() {
+    const f = await fixture(), item = { itemId: '201', definitionId: 1001, name: 'Owned', pile: 'transfer' };
+    await f.coordinator.withOwner(s => s.control(t => t.checkpoint(ledger => {
+      ledger.holdings.push({ taskId: f.ids[0], itemId: item.itemId, definitionId: item.definitionId,
+        phase: 'transfer', cost: 650, listingTradeId: null, salePrice: null });
+    })));
+    const input = f.input('Recipient'); input.mode = 'sell'; input.owned = [item];
+    let snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[1], input });
+    snapshot = await f.taskStore.action({ ...snapshot, id: f.ids[0], action: 'stop' });
+    f.provider.inspectHolding = vi.fn(async h => ({ eligible: true, itemId: h.itemId, definitionId: h.definitionId, pile: 'transfer' }));
+    return { ...f, options: { approved: true, snapshot, fromTaskId: f.ids[0], toTaskId: f.ids[1], itemIds: ['201'] } };
+  }
+  it('explicitly transfers exact remaining holdings without buying, moving, starting or resetting costs', async () => {
+    const f = await handoffFixture(); await f.scheduler.handoff(f.options);
+    const ledger = (await f.coordinator.inspect()).ledger;
+    expect(ledger.holdings[0]).toMatchObject({ taskId: f.ids[1], cost: 650, phase: 'transfer' });
+    expect(ledger.handoffs[0]).toMatchObject({ fromTaskId: f.ids[0], toTaskId: f.ids[1], itemId: '201', cost: 650 });
+    expect(f.provider.send).not.toHaveBeenCalled(); expect(f.provider.prepare).not.toHaveBeenCalled();
+    await expect(f.scheduler.handoff(f.options)).rejects.toThrow('HANDOFF_INVALID');
+  });
+  it.each(['unapproved', 'active', 'missing', 'cancelled', 'stale'])('does not hand off when %s', async reason => {
+    const f = await handoffFixture();
+    if (reason === 'unapproved') f.options.approved = false;
+    if (reason === 'active') await f.coordinator.withOwner(s => s.control(t => t.checkpoint(ledger => {
+      ledger.holdings[0].phase = 'listed'; ledger.holdings[0].listingTradeId = '900';
+    })));
+    if (reason === 'missing') f.provider.inspectHolding.mockResolvedValue({ eligible: false });
+    if (reason === 'cancelled') f.provider.inspectHolding.mockImplementation(async () => { f.scheduler.pauseAll(); return {}; });
+    if (reason === 'stale') await f.taskStore.action({ ...f.options.snapshot, id: f.ids[1], action: 'pause' });
+    await expect(f.scheduler.handoff(f.options)).rejects.toThrow();
+    expect((await f.coordinator.inspect()).ledger.holdings[0].taskId).toBe(f.ids[0]);
+    expect((await f.coordinator.inspect()).ledger.handoffs).toBeUndefined();
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
   it('does not restart a stopped task; a copied configuration has a fresh task identity', async () => {
     const f = await fixture();
     let snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });

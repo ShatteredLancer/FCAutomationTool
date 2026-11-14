@@ -53,6 +53,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
         },
         accept: async ({ action }) => { queues.get(action.taskId).shift(); },
         reconcile: async () => ({ status: 'unknown', receipt: null }), verifySession: async () => ({ ready: true }),
+        inspectHolding: async h => ({ eligible: true, itemId: h.itemId, definitionId: h.definitionId, pile: 'unassigned' }),
       };
       const runtime = api.createMarketTaskRuntime({ context: service.context, enabled: true, createScheduler: async () => {
         state.factoryCalls = (state.factoryCalls ?? 0) + 1;
@@ -94,6 +95,23 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     assert.match(await view.locator('#taskDetailBody').innerText(), /买入 · EA 1001 · 已确认 · 800/);
     assert.doesNotMatch(await view.locator('#taskDetailBody').innerText(), /暂无交易/);
     await view.locator('[data-close=taskDetail]').first().click();
+    await page.evaluate(async () => {
+      const state = globalThis.marketSchedulerUI, snapshot = await state.service.read(), first = snapshot.store.tasks[0];
+      await state.service.saveTask({ ...snapshot, input: { name: '接收持仓', mode: 'sell', settings: first.settings, players: [], excluded: [],
+        owned: [{ itemId: '100', definitionId: 1001, name: 'Test player', pile: 'unassigned' }] } });
+    });
+    await view.locator('#reloadTasks').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
+    await view.locator('[data-action=detail][data-id="task-1"]').click();
+    await view.locator('#market-handoff-target').selectOption('task-3');
+    await view.locator('#market-handoff-items input').check();
+    await view.locator('#market-handoff-confirm').click();
+    await view.locator('#toast').getByText('持仓已移交；没有移卡、挂牌或启动接收任务。', { exact: true }).waitFor();
+    assert.match(await view.locator('#taskDetailBody').innerText(), /移交给 接收持仓/);
+    assert.match(await view.locator('#taskDetailBody').innerText(), /累计运行/);
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.holdings[0].taskId), 'task-3');
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), 3);
+    await page.screenshot({ path: path.join(directory, 'market-handoff-desktop.png') });
+    await view.locator('[data-close=taskDetail]').first().click();
     await page.screenshot({ path: path.join(directory, 'market-scheduler-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await host.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
@@ -116,6 +134,6 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), false);
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);
-    console.log('Market scheduler Chrome passed: explicit UI approvals, enqueue second task, independent pause, shared cooldown, stop during simulated buy, exact receipt retained, live counts/archive, desktop/390px; no real requests.');
+    console.log('Market scheduler Chrome passed: explicit UI approvals, enqueue second task, independent pause, shared cooldown, stop during simulated buy, exact receipt retained, explicit holding handoff without EA writes, live counts/archive, desktop/390px; no real requests.');
   } finally { await page.close(); }
 }

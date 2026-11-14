@@ -34,7 +34,9 @@ export function marketNativeRuntime() {
     }
     list(card, start, buyNow, duration) {
       calls.push(['list', card.id, start, buyNow, duration]);
-      card.auction = { tradeId: 19000 + card.id, tradeState: 'active', startingBid: start, buyNowPrice: buyNow, currentBid: 0 };
+      if (hooks.list) return observable(hooks.list(card, start, buyNow, duration));
+      card.auction = { tradeId: 19000 + card.id + calls.filter(c => c[0] === 'list' && c[1] === card.id).length - 1,
+        tradeState: 'active', startingBid: start, buyNowPrice: buyNow, currentBid: 0 };
       return observable({ success: true, status: 200 });
     }
     searchTransferMarket(criteria) {
