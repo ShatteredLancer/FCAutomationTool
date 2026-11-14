@@ -17,7 +17,7 @@ const defaultWait = (ms, signal) => new Promise(resolve => {
 const codeOf = result => Number.isSafeInteger(result?.code) && result.code >= 100 && result.code <= 99999 ? result.code : null;
 const stopReason = result => result?.category === 'captcha' ? 'captcha'
   : codeOf(result) === 401 ? 'authentication'
-    : [403, 429, 512, 521, 426, 459].includes(codeOf(result)) || result?.category === 'market-unavailable' ? 'throttle' : null;
+    : [403, 427, 429, 512, 521, 426, 459].includes(codeOf(result)) || result?.category === 'market-unavailable' ? 'throttle' : null;
 
 // P2 executor contract. No default/real EA provider is installed. prepare may
 // read public quotes outside native locks; preflight/send/reconcile must use
@@ -33,8 +33,9 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   let policyRead = null, policyAt = 0;
   let tasks = new Map(), phase = 'idle', currentTask = null, lastReason = null, errorCounts = new Map();
   const listeners = new Set();
+  let traffic=null;
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
-    reason: lastReason, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
+    reason: lastReason, traffic, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
     tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
       startedAt: row.startedAt, elapsedMs: elapsed(row), candidateScope: provider?.describe?.(row.id) ?? null, schedule: row.schedule ?? null })) });
   const publish = () => { for (const listener of [onStatus, ...listeners]) { try { listener(inspect()); } catch { /* Presentation is not authorization. */ } } };
@@ -155,6 +156,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     const reason = stopReason(result) ?? (errorPolicy.codes.includes(code) && errorCounts.get(code) >= errorPolicy.count ? 'manual' : null);
     if (reason) {
       await turn.checkpoint(state => { state.stopped = reason; });
+      await provider.stopTraffic?.(reason);
       lastReason = reason === 'authentication' ? 'MARKET_AUTHENTICATION' : reason === 'captcha' ? 'MARKET_CAPTCHA'
         : reason === 'manual' ? 'MARKET_ERROR_LIMIT' : 'MARKET_THROTTLED';
       for (const row of tasks.values()) if (actionable(row)) Object.assign(row, { state: 'paused', reason: lastReason });
@@ -208,6 +210,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           if (!await syncSchedules(session)) { await delay(1000); continue; }
           if (!await syncClocks(session)) { await delay(1000); continue; }
           const ledger = await session.inspect();
+          traffic=await provider.traffic?.()??null;
+          if(traffic?.ledger.stopped){lastReason='MARKET_TRAFFIC_STOPPED';for(const row of tasks.values())if(actionable(row))stateOf(row.id,'paused',lastReason);break;}
           if (ledger.stopped || ledger.intents.some(i => i.phase === 'pending')) {
             lastReason = ledger.intents.some(i => i.phase === 'pending') ? 'MARKET_RECOVERY_REQUIRED' : 'MARKET_STOPPED';
             for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, 'review', lastReason);
@@ -267,7 +271,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); continue;
           }
           if (action.kind === 'search') {
-            const gate = marketSearchGate(ledger, store.settings, now());
+            const gate = traffic?.gate ?? marketSearchGate(ledger, store.settings, now());
             if (gate.nextAt > now()) { stateOf(selected, 'waiting', 'MARKET_SEARCH_WAIT', gate.nextAt); continue; }
           }
           try {
@@ -317,7 +321,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 if (command?.kind === 'list' && !(action.previousTradeId && fresh.settings.relist === 'original')
                   && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
                 phase = action.kind; publish();
-                if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random }));
+                if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
                 else await turn.checkpoint(state => reserveMarketWrite(state, command, {
                   balance: preflight.balance, freeSlots: preflight.freeSlots, reserve: settings.reserve,
                   totalCap: settings.totalCap, taskCap: fresh.settings.taskCap, spendCap: fresh.settings.spendCap,
@@ -330,7 +334,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                     : settleMarketWrite(state, requestId, { status: 'rejected', receipt: null }));
                   if (allowed(selected)) stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); return;
                 }
-                current(); let response, dispatched = false, boundaryFailure = null;
+                current(); let response, dispatched = false, boundaryFailure = null, trafficRetryAt = null;
                 // Native adapters opt in only when EVERY write/search invokes
                 // this synchronous hook immediately before its service call.
                 // Legacy/fake providers without that contract remain uncertain.
@@ -345,10 +349,10 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   dispatched = true;
                 };
                 try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch }); }
-                catch (error) { boundaryFailure = safeReason(error); response = { status: 'unknown', receipt: null, code: codeOf(error) }; }
+                catch (error) { boundaryFailure = safeReason(error);trafficRetryAt=error.retryAt;response = { status: 'unknown', receipt: null, code: codeOf(error) }; }
                 if (guarded && !dispatched) {
                   response = { ...response, sent: false, status: 'rejected', receipt: null };
-                  if (allowed(selected)) stateOf(selected, boundaryFailure==='MARKET_SCHEDULE_WINDOW_CLOSED'?'queued':'paused', boundaryFailure ?? 'MARKET_NOT_SENT');
+                  if (allowed(selected)) stateOf(selected, boundaryFailure==='MARKET_TRAFFIC_WAIT'?'waiting':boundaryFailure==='MARKET_SCHEDULE_WINDOW_CLOSED'?'queued':'paused', boundaryFailure ?? 'MARKET_NOT_SENT',boundaryFailure==='MARKET_TRAFFIC_WAIT'?Math.max(now()+1000,trafficRetryAt??0):0);
                 }
                 current();
                 if (action.kind === 'search') {
@@ -361,14 +365,14 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 }
                 if(task.schedule&&action.kind==='move'&&response?.status==='confirmed'&&preflight.freeSlots===1)await closeBuy(turn,selected);
                 const halted = await applyError(turn, response);
-                if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true && allowed(selected) && boundaryFailure!=='MARKET_SCHEDULE_WINDOW_CLOSED')) {
+                if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true && allowed(selected) && !['MARKET_SCHEDULE_WINDOW_CLOSED','MARKET_TRAFFIC_WAIT'].includes(boundaryFailure))) {
                   stateOf(selected, action.kind === 'search' ? 'paused' : 'review', 'MARKET_RESPONSE_UNCONFIRMED');
                 }
                 diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason);
                 // Optional adapter-local cursor update, never a second request.
-                if (typeof provider.accept === 'function') await provider.accept({ action, response, ledger: turn.inspect() });
+                if (boundaryFailure!=='MARKET_TRAFFIC_WAIT'&&typeof provider.accept === 'function') await provider.accept({ action, response, ledger: turn.inspect() });
                 current();
-                if (allowed(selected)) stateOf(selected, 'queued');
+                if (allowed(selected)&&boundaryFailure!=='MARKET_TRAFFIC_WAIT') stateOf(selected, 'queued');
               }); } catch (error) {
                 if (await applyError(turn, error)) return;
                 if(error.message==='MARKET_SCHEDULE_WINDOW_CLOSED'){stateOf(selected,'queued');return;}
@@ -438,6 +442,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
         if (turn.inspect().intents.some(i => i.phase === 'pending')) throw Error('MARKET_RECOVERY_REQUIRED');
         const result = await provider.verifySession(); current();
         if (result?.ready !== true || stopReason(result)) throw Error('MARKET_SESSION_UNVERIFIED');
+        await provider.clearTraffic?.();
+        traffic=await provider.traffic?.()??null;
         await turn.checkpoint(state => { state.stopped = null; });
         return turn.inspect();
       }));

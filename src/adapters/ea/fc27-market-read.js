@@ -1,3 +1,4 @@
+import { runFc27MarketRequest } from './fc27-market-traffic.js';
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { FC27_CLUB_READ_METHODS, isFc27ClubCompatibleHash } from './fc27-club-read.js';
@@ -203,8 +204,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
         failurePhase = 'identification-request';
         reviewed.get('Identification.prototype.handleRequest').call(identifier, req);
       }
-      lastRequestAt = Date.now(); requests++;
-      const dto = await new Promise((resolve, reject) => {
+      const dispatch = (mark=()=>{}) => new Promise((resolve, reject) => {
         const observer = {}; let done = false;
         const finish = (err, value) => {
           if (done) return; done = true; clearTimeout(timer);
@@ -227,9 +227,10 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
               finish(null, value);
             } catch { finish(error('RESPONSE_UNVERIFIED')); }
           });
-          req.send();
+          assertRuntime();mark();lastRequestAt = Date.now(); requests++;req.send();
         } catch { finish(error('REQUEST_FAILED')); }
       });
+      const dto=await (kind==='quotes'?runFc27MarketRequest(root,'search',assertRuntime,dispatch,{exactDispatch:true}):dispatch());
       assertRuntime();
       failurePhase = 'dto-status';
       const status = ownData(dto, 'status');

@@ -1,3 +1,4 @@
+import { fc27TrafficRuntime } from '../ea/fc27-market-traffic-runtime.js';
 import {createTradingExecutionSession} from '../../trading/execution-session.js';
 import {validateInvestmentPlan} from '../../trading/investment-plan.js';
 import {eventStoreKey,readEventStore,eventMatches} from '../../trading/event-candidates.js';
@@ -27,7 +28,11 @@ export async function createNativeTradingExecutionAdapter({root,plan,prices,canW
   const bounded=task=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('DESK_EXECUTION_RESPONSE_UNCONFIRMED')),20000);
     Promise.resolve().then(task).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});});
   const pace=async()=>{assert();const left=3000-(now()-lastRequest);if(left>0)await sleep(left);assert();lastRequest=now();};
-  const trade=tradeFactory(root),saleReader=createFc27GallerySaleReader(root);
+  const trade=tradeFactory(fc27TrafficRuntime(root,{check:async(kind,args)=>{
+    const row=kind==='list'?plan.rows.find(r=>r.definitionId===args[0]?.definitionId):null;
+    await sourceCheck(row,true);writable(row);
+    if(kind==='list'&&(!row||args[1]!==row.sellPrice||args[2]!==row.sellPrice))fail('DESK_PLAN_INVALID');
+  }})),saleReader=createFc27GallerySaleReader(root);
   const readStatuses=new Set(['completed','accepted','rejected','blocked','unsupported','error','ambiguous','observed','not-requested']);
   const readMetadata=result=>({
     httpStatus:Number.isSafeInteger(result?.response?.status)&&result.response.status>=100&&result.response.status<=599?result.response.status:undefined,

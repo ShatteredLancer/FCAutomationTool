@@ -1,3 +1,4 @@
+import { runFc27MarketRequest } from './fc27-market-traffic.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { createFc27ClubReadTransport } from './fc27-club-read.js';
 import { createFc27PurchaseSquad } from './fc27-purchase-squad.js';
@@ -173,7 +174,8 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
         below: price => root.UTCurrencyInputControl.getIncrementBelowVal(price),
         search: async price => {
           verifyCurrent(currentRecord); criteria.maxBuy = price; model.updateSearchCriteria(criteria); service.clearTransferMarketCache();
-          const reply = await observe(() => { onSearch(definitionId); return service.searchTransferMarket(model.searchCriteria, 1); });
+          const reply = await runFc27MarketRequest(root,'search',async()=>{await verifyCurrent(currentRecord);const freshCap=approvedCap(definitionId,maxBuy,item,fresh);if(freshCap.maxBuy===null||price>freshCap.maxBuy)fail(freshCap.reason??'FC27_BUY_PRICE_CAP_EXCEEDED');},
+            mark=>observe(() => { onSearch(definitionId);mark();return service.searchTransferMarket(model.searchCriteria, 1); }),{exactDispatch:true});
           diagnostic('search', { definitionId, maxBuy: model.searchCriteria.maxBuy, referencePrice: initial,
             searchCeiling: maxBuy, attempt: ++searchAttempt, attemptLimit: attempts,
             ...responseCodes(reply), count: reply.data?.items?.length ?? 0 });
@@ -221,7 +223,14 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       if (!auction.canBuy(coins())) return { status: 'rejected', reason: 'FC27_BUY_INSUFFICIENT_COINS' };
       if (!(auction.getSecondsRemaining() > 0)) { rememberRejected(entry); return { status: 'rejected', reason: 'FC27_BUY_LISTING_CHANGED' }; }
       pin('Item - Detail View');
-      const reply = await observe(() => { verifyCurrent(currentRecord); return service.bid(item, entry.price); }, true);
+      let reply;
+      try { reply = await runFc27MarketRequest(root,'buy',async()=>{await verifyCurrent(currentRecord);writable();const liveCap=approvedCap(entry.definitionId,cap.maxBuy,item,cap.fresh);
+        if(liveCap.maxBuy===null||entry.price>liveCap.maxBuy||auction.buyNowPrice!==entry.price||!auction.canBuy(coins())||!(auction.getSecondsRemaining()>0))fail('FC27_BUY_LISTING_CHANGED');},
+        mark=>observe(() => {mark();return service.bid(item, entry.price); }, true),{exactDispatch:true});
+      } catch(error) {
+        if(error.notSent===true&&/^FC27_MARKET_TRAFFIC_/.test(error.message))return {status:'rejected',reason:error.message};
+        throw error;
+      }
       const confirmed = reply?.success === true && Array.isArray(reply.data?.itemIds)
         && reply.data.itemIds.length === 1 && reply.data.itemIds[0] === entry.itemId;
       // A failed callback is not proof that EA did not debit the coins.
@@ -272,7 +281,9 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       writable();
       const item = auctions.get(entry.tradeId);
       if (!item || item.id !== entry.itemId || item.definitionId !== entry.definitionId) fail('FC27_BUY_MOVE_UNCONFIRMED');
-      const reply = await observe(() => service.move(item, root.ItemPile.CLUB), true);
+      let reply;
+      try { reply = await runFc27MarketRequest(root,'move',async()=>{await verifyCurrent(currentRecord);writable();},mark=>observe(() => {mark();return service.move(item, root.ItemPile.CLUB);}, true),{exactDispatch:true}); }
+      catch(error){if(error.notSent===true&&/^FC27_MARKET_TRAFFIC_/.test(error.message))return {status:'rejected',reason:error.message};throw error;}
       diagnostic('move', { definitionId: entry.definitionId, ...responseCodes(reply) });
       if (reply?.success === false) return { status: 'rejected', reason: 'FC27_BUY_MOVE_REJECTED', ...responseCodes(reply) };
       if (reply?.success !== true || !Array.isArray(reply.data?.itemIds) || !reply.data.itemIds.includes(entry.itemId)

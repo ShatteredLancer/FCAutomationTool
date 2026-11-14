@@ -22,6 +22,8 @@
 // @run-at       document-end
 // ==/UserScript==
 
+import { createFc27MarketTraffic } from '../adapters/browser/fc27-market-traffic.js';
+import { registerFc27MarketTraffic } from '../adapters/ea/fc27-market-traffic.js';
 import { createFc27AcceptanceSession } from '../adapters/browser/fc27-acceptance-session.js';
 import { mountFc27AcceptancePanel } from '../adapters/browser/fc27-acceptance-panel.js';
 import { readFc27ChallengeTargets } from '../adapters/ea/fc27-fsu-read.js';
@@ -217,6 +219,10 @@ const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.con
   readCoordination:()=>marketCoordinator.inspect(),
   readCatalog:async ids=>ids?marketTaskCatalog.lookup(ids):(await marketTaskCatalog.read()).rows,
   readInventory:()=>readTradingTaskInventory(unsafeWindow)};
+const marketTraffic=createFc27MarketTraffic({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
+  readSettings:async()=>(await tradingTasks.service.read()).store.settings});
+registerFc27MarketTraffic(unsafeWindow,marketTraffic);
+tradingTasks.readCoordination=async()=>({...await marketCoordinator.inspect(),traffic:await marketTraffic.inspect()});
 tradingTasks.runtime=createFc27MarketTaskExecution({root:unsafeWindow,get:GM_getValue,set:GM_setValue,gmRequest:GM_xmlhttpRequest,
   transport:galleryTransport,taskStore:tradingTasks.service,coordinator:marketCoordinator,readCatalog:tradingTasks.readCatalog,catalog:marketTaskCatalog,
   liveEnabled:dependencies.liveEnabled,diagnosticLog});

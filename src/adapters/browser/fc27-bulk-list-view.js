@@ -1,4 +1,5 @@
 import { moveGalleryListingPrice, previewGalleryListingPrices } from '../../gallery/listing-candidates.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { mountListingCurrency } from './fc27-listing-currency.js';
 import { mountListingRange, listingRangeStyles } from './fc27-listing-range.js';
 
@@ -220,6 +221,7 @@ export function mountFc27BulkListView({ document, parent, host = parent, nativeR
   const current = () => !disposed && identity === accountScope() && targetCurrent();
   const label = state => ({ pending: '待处理', 'list-pending': '核对中', listing: '挂牌中', accepted: '已挂牌', rejected: '失败', skipped: '跳过', unknown: '待恢复' })[state] ?? state;
   const reasonText = reason => ({
+    ...marketTrafficMessages,
     FC27_GALLERY_LISTING_SET_POOL_INCOMPLETE: '此集合仅提供部分卡池，暂不能确认全部可售卡；不会只挂牌最高分的部分版本。',
     FC27_GALLERY_LISTING_SET_UNAVAILABLE: '当前集合尚未读取完成，请等待集合加载后重试。',
     FC27_GALLERY_LISTING_CLUB_INCOMPLETE: 'Club 读取不完整或库存发生变化，请重新打开挂牌窗口。',

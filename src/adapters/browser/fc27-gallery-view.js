@@ -1,4 +1,5 @@
 import { GALLERY_TTL_MS } from './fc27-gallery-catalog.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { diffGalleryCatalog } from '../../gallery/catalog.js';
 import { createGalleryScoreQueue } from '../../gallery/score-queue.js';
 import { galleryCategoryScoring } from '../../gallery/category-scoring.js';
@@ -320,6 +321,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       output.textContent = `${outcome.status === 'purchased' ? '购买完成' : '购买未完成'} · 已购买 ${outcome.purchased ?? 0} 张 · ${count(outcome.spent ?? 0)} 金币`;
       if (outcome.status !== 'purchased') output.textContent += ` · ${outcome.reason ?? outcome.status}`;
       const purchaseMessages = {
+        ...marketTrafficMessages,
         FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED: '购买记录仍有未核对回执，未重新下单；请使用当前购买记录继续恢复。',
         FC27_GALLERY_PURCHASE_RECEIPT_UNCONFIRMED: '买入结果无法确认，未自动重试；请核对购买记录后再继续。',
         FC27_GALLERY_PURCHASE_JOURNAL_UNCONFIRMED: '购买记录格式或保存状态无法确认，未继续下单；请保留记录并导出诊断日志。',

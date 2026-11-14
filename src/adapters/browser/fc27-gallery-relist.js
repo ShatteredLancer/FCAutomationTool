@@ -1,3 +1,4 @@
+import { fc27TrafficRuntime } from '../ea/fc27-market-traffic-runtime.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { createFc27TransactionPersistence } from './fc27-transaction-persistence.js';
@@ -47,7 +48,7 @@ export function createFc27GalleryRelist({ root, get, set, purchase, liveEnabled 
     const context = contextNow(), scope = traditionalJournalScope(context);
     const persistence = createFc27TransactionPersistence({ context, gmGetValue: get, gmSetValue: set, lockManager: root.navigator?.locks });
     const assert = () => { if (!same(context, contextNow())) fail('FC27_GALLERY_CONTEXT_CHANGED'); };
-    const adapter = adapterFactory(root);
+    const adapter = adapterFactory(fc27TrafficRuntime(root,{check:async()=>{await guard();if(stopped)fail('FC27_GALLERY_RELIST_PLAN_CHANGED');}}));
     const guard = async () => {
       assert();
       if (!liveEnabled || !persistence.lock.hasExclusiveAccess(scope)) fail('FC27_GALLERY_LISTING_DISABLED');

@@ -24,7 +24,7 @@ export async function inspectPuzzleMarketLive(page, setId, challengeId) {
     bundle: true, write: false, metafile: true, format: 'iife', globalName: 'MarketRoute', target: 'chrome120' });
   const allowed = new Set(['puzzle-market-live.js', 'src/adapters/ea/fc27-puzzle-read.js',
     'src/adapters/ea/fc27-item-factory-observer.js',
-    'src/adapters/ea/fc27-market-read.js', 'src/adapters/ea/fc27-club-read.js',
+    'src/adapters/ea/fc27-market-read.js', 'src/adapters/ea/fc27-market-traffic.js', 'src/adapters/ea/fc27-club-read.js',
     'src/adapters/ea/fc27-local-read.js', 'src/adapters/ea/fc27-fsu-read.js',
     'src/adapters/ea/fc27-protection-read.js', 'src/streamlined/protection.js',
     'src/adapters/ea/fc27-fsu-diagnostics.js', 'src/adapters/ea/fc27-traditional-read.js',

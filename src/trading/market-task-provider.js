@@ -58,6 +58,9 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
   };
   const api = {
     dispatchBoundary: true,
+    traffic: () => native.traffic?.() ?? null,
+    clearTraffic: () => native.clearTraffic?.(),
+    stopTraffic: reason => native.stopTraffic?.(reason),
     async checkCapacity(task) { return native.preflight({ action: { kind: 'search' }, task }); },
     async begin({ task, settings, isCurrent = () => true }) {
       check(); cursors.delete(task.id); prepared.delete(task.id);

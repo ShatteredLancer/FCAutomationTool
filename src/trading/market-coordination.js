@@ -118,15 +118,18 @@ function randomSeconds(min, max, random) {
 
 // Persist immediately before dispatch. A crash between persistence and sending
 // is displayed as uncertain and conservatively occupies the rolling window.
-export function reserveMarketSearch(state, { requestId, now, settings, random = Math.random }) {
+export function reserveMarketSearch(state, { requestId, now, settings, random = Math.random, externalGate = false }) {
   id(requestId);
   const gate = marketSearchGate(state, settings, now);
   if (gate.stopped) fail('STOPPED');
   if (gate.recoveryRequired) fail('RECOVERY_REQUIRED');
-  if (gate.nextAt > now) fail('SEARCH_WAIT');
+  if (!externalGate && gate.nextAt > now) fail('SEARCH_WAIT');
   if (state.searches.some(e => e.id === requestId)) fail('DUPLICATE_REQUEST');
   state.searches = state.searches.filter(e => e.at + DAY > now);
   state.searches.push({ id: requestId, at: now, status: 'dispatching' });
+  // The shared FC27 transport performs the quota/pace check at native dispatch.
+  // This ledger retains only the task's exact send/no-send evidence in that mode.
+  if (externalGate) return;
   state.cycleTarget ??= randomSeconds(settings.cycleMin, settings.cycleMax, random);
   let wait = randomSeconds(settings.gapMin, settings.gapMax, random);
   state.cycleCount++;

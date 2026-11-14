@@ -6,6 +6,9 @@ import { createFc27GalleryProgressReader } from '../../src/adapters/ea/fc27-gall
 import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
 import october9 from '../fixtures/fc27-request-method-observation-2026-10-09.json';
 import october12 from '../fixtures/fc27-market-method-observation-2026-10-12.json';
+import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
+import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
+import { defaultTradingPublicSettings } from '../../src/trading/task-model.js';
 
 // Public runtime captured without login on 2026-10-02, independently of the
 // production allowlist. All thirteen decoded methods match the old structure.
@@ -96,6 +99,17 @@ function fixture(methodHashes = null) {
 const catalogQuery = { start: 0, count: 20, level: 'silver' };
 const quoteQuery = { definitionId: 101, start: 0, count: 20, maxBuy: 2000 };
 const october12Hashes = FC27_MARKET_READ_METHODS.map(([path]) => october12.methods[path].sha256);
+
+it('counts actual quote requests but not concept catalog pages and shares their throttle with buying',async()=>{
+ const f=fixture(october12Hashes),data=new Map();let clock=1000,id=0;
+ const gate=createFc27MarketTraffic({context:()=>({scope:'account',season:'27',platform:'pc'}),get:async(k,d)=>structuredClone(data.get(k)??d),set:async(k,v)=>data.set(k,structuredClone(v)),
+ locks:{request:async(_k,_o,fn)=>fn()},readSettings:()=>defaultTradingPublicSettings(),now:()=>clock,sleep:async ms=>{clock+=ms;},id:()=>`r${++id}`});registerFc27MarketTraffic(f.root,gate);
+ await (await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery);expect((await gate.inspect()).gate.hour).toBe(0);
+ await (await createFc27MarketReadTransport(f.root)).readQuotePage(quoteQuery);expect((await gate.inspect()).gate.hour).toBe(1);
+ f.control.status=429;
+ await expect((await createFc27MarketReadTransport(f.root)).readQuotePage(quoteQuery)).rejects.toThrow('HTTP_429');
+ expect((await gate.inspect()).gate.hour).toBe(2);const send=vi.fn();await expect(gate.run('buy',()=>{},send)).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();
+});
 
 it('reads an exact Gallery comparison with the October 12 native query and authentication fingerprints', async () => {
   const f = fixture(october12Hashes);

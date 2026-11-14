@@ -1,7 +1,9 @@
 import { purchasePriceCap, galleryReferenceQuote } from '../../gallery/public-price-policy.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { bindCurrencyArrows, currencyInputStyles } from './fc27-listing-currency.js';
 
 const messages = {
+  ...marketTrafficMessages,
   FC27_BUY_NO_LISTING: '上限内无挂牌', FC27_GALLERY_NO_LISTING: '上限内无挂牌',
   FC27_BUY_LISTING_UNAVAILABLE: '挂牌已售出', FC27_BUY_LISTING_CHANGED: '挂牌已失效',
   FC27_BUY_REFERENCE_PRICE_UNAVAILABLE: '所选来源无报价', FC27_BUY_REFERENCE_PRICE_EXPIRED: '报价已过期，请刷新',

@@ -7,13 +7,17 @@ import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-
 import { traditionalJournalScope } from '../../src/fc27/traditional-journal.js';
 import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { defaultTradingTaskSettings } from '../../src/trading/task-model.js';
+import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
+import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
 
-async function fixture(mode = 'sell') {
+async function fixture(mode = 'sell', shared = false) {
   const f = marketNativeRuntime(), data = new Map(), context = { scope: traditionalJournalScope(readFc27Context(f.root)), season: '27', platform: 'pc' };
   const get = async (key, fallback) => structuredClone(data.get(key) ?? fallback), set = async (key, value) => data.set(key, structuredClone(value));
   const locks = { request: async (name, _options, callback) => callback({ name, mode: 'exclusive' }) };
   const store = createTradingTaskStore({ context: () => context, get, set, locks, now: f.now, id: () => 'sell' });
   const coordinator = createMarketCoordinator({ context: () => context, get, set, locks });
+  const traffic=createFc27MarketTraffic({context:()=>context,get,set,locks,readSettings:async()=>(await store.read()).store.settings,now:f.now,sleep:f.sleep});
+  if(shared)registerFc27MarketTraffic(f.root,traffic);
   f.makeCard(201, 901, 'transfer');
   const snapshot = await store.saveTask({ ...await store.read(), input: { name: 'Synthetic sale', mode,
     settings: { ...defaultTradingTaskSettings(), buyRule: 'fixed', buyValue: 800, sellRule: 'fixed', sellValue: 700,
@@ -24,10 +28,10 @@ async function fixture(mode = 'sell') {
   const runtime = createFc27MarketTaskExecution({ root: f.root, get, set, taskStore: store, coordinator, gmRequest,
     readCatalog: () => [{ definitionId: 901, playerId: 901, name: 'Known public', rating: 84, rarity: 0, leagueId: 10 }],
     transport: {}, liveEnabled: true, now: f.now, createNative });
-  return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative };
+  return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative,traffic };
 }
-it('composes production protections/store/provider/native through selected Transfer sale, with no fake purchase or eager request', async () => {
-  const f = await fixture(); expect(f.createNative).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
+it.each([false,true])('composes production protections/store/provider/native through selected Transfer sale (common gate=%s)', async shared => {
+  const f = await fixture('sell',shared); expect(f.createNative).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
   f.runtime.subscribe(s => { if (s.evidence?.some(e => e.counts[1] === 1) && s.tasks.some(t => ['queued', 'running'].includes(t.state))) f.runtime.pauseAll(); });
   await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
   const ledger = (await f.coordinator.inspect()).ledger;
@@ -35,9 +39,10 @@ it('composes production protections/store/provider/native through selected Trans
   expect(f.calls.filter(c => ['bid', 'move', 'list'].includes(c[0]))).toEqual([['list', 201, 700, 700, 3600]]);
   await f.runtime.recover(); expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(1);
   expect(f.gmRequest).not.toHaveBeenCalled();
+  if(shared)expect((await f.traffic.inspect()).writes.list).toBe(1);
 });
-it('runs a filter task through the production composition, with exact native rules and no fixed-price quote requests', async () => {
-  const f = await fixture('filter'); f.makeCard(101, 901);
+it.each([false,true])('runs filter through the production composition and exact native rules (common gate=%s)', async shared => {
+  const f = await fixture('filter',shared); f.makeCard(101, 901);
   expect(f.runtime.inspect().modes).toContain('filter');
   let stopped = false;
   f.runtime.subscribe(s => { if (!stopped && s.evidence?.some(e => e.counts[0] === 1)) { stopped = true; f.runtime.pauseAll(); } });
@@ -47,9 +52,17 @@ it('runs a filter task through the production composition, with exact native rul
   expect((await f.coordinator.inspect()).ledger.holdings[0]).toMatchObject({ definitionId: 901, cost: 600, phase: 'held' });
   expect(f.runtime.inspect().tasks[0].candidateScope).toMatchObject({ known: 1, matched: 1, complete: false });
   expect(f.gmRequest).not.toHaveBeenCalled();
+  if(shared)expect((await f.traffic.inspect()).gate.hour).toBe(1);
 });
-it('carries a scheduled purchase sale gate through the production native composition', async () => {
-  const f=await fixture('filter');f.makeCard(101,901);
+it('a production preflight 401 propagates to other FCAT modules without sending a payment',async()=>{
+ const f=await fixture('filter',true);f.hooks.readStatus=401;
+ await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+ expect((await f.traffic.inspect()).ledger.stopped).toBe('authentication');
+ const send=vi.fn();await expect(f.traffic.run('buy',()=>{},send)).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();
+ expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([]);
+});
+it.each([false,true])('carries scheduled purchase and sale through production native composition (common gate=%s)', async shared => {
+  const f=await fixture('filter',shared);f.makeCard(101,901);
   const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];
   const snapshot=await f.store.saveTask({...f.snapshot,id:'sell',input:{name,mode,settings,players,owned,excluded,
     schedule:{repeat:'once',zone:'UTC',start:'1970-01-01T00:00',end:null,sell:null}}});

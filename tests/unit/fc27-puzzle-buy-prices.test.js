@@ -7,6 +7,9 @@ import { createStreamlinedPurchaseJournal } from '../../src/streamlined/purchase
 import { createFc27PuzzleBuySession } from '../../src/fc27/puzzle-buy-session.js';
 import ceilingCase from '../fixtures/fc27-purchase-ceiling-2026-10-16.json';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
+import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
+import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
+import { defaultTradingPublicSettings } from '../../src/trading/task-model.js';
 vi.mock('../../src/adapters/ea/fc27-transaction-transport.js', () => ({ verifyFc27Methods: async () => () => {} }));
 vi.mock('../../src/adapters/ea/fc27-local-read.js', () => ({ readFc27Context: () => ({ season: '27', accountScope: 'account', platform: 'pc' }) }));
 async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, filterByCap = false, onEvent = () => {}, skipRejectedListings = false } = {}) {
@@ -51,6 +54,29 @@ async function fixture({ premium = 0, excludeOffer = null, quotePrice = 200, fil
   await adapter.verifySquad(record);
   return { state, record, adapter, root, cards, details, reference };
 }
+
+async function sharedGate(f){
+ const data=new Map();let id=0;
+ const options={context:()=>({scope:'account',season:'27',platform:'pc'}),get:async(k,d)=>structuredClone(data.get(k)??d),set:async(k,v)=>data.set(k,structuredClone(v)),
+ locks:{request:async(_k,_o,fn)=>fn()},readSettings:()=>defaultTradingPublicSettings(),now:()=>f.state.time,sleep:async ms=>{f.state.time+=ms;},id:()=>`r${++id}`};
+ const gate=createFc27MarketTraffic(options);registerFc27MarketTraffic(f.root,gate);return gate;
+}
+it('shared buyer stops at another module throttle without buying, then resumes only after explicit clear',async()=>{
+ const f=await fixture({filterByCap:true});f.state.prices=[150];const gate=await sharedGate(f);
+ const offer=await f.adapter.find(10,200);expect((await gate.inspect()).gate.hour).toBe(1);
+ await gate.signal('throttle');expect(await f.adapter.buy(offer)).toEqual({status:'rejected',reason:'FC27_MARKET_TRAFFIC_STOPPED'});
+ expect(f.state.bids).toEqual([]);await gate.clear();expect(await f.adapter.buy(offer)).toMatchObject({status:'bought',price:150});expect(f.state.bids).toEqual([150]);
+});
+it('shared buyer rechecks the original approved quote after another module occupies the mutation cadence',async()=>{
+ const f=await fixture({filterByCap:true});f.state.prices=[150];const gate=await sharedGate(f),offer=await f.adapter.find(10,200);
+ f.state.time=300000;await gate.run('list',()=>{},()=>({success:true}));
+ await expect(f.adapter.buy(offer)).rejects.toThrow('FC27_BUY_LISTING_CHANGED');expect(f.state.bids).toEqual([]);
+});
+it('a native buyer throttle is visible to all registered market callers and does not authorize a second bid',async()=>{
+ const f=await fixture({filterByCap:true});f.state.prices=[150];f.state.bidReply={success:false,status:429};const gate=await sharedGate(f);
+ expect(await f.adapter.buy(await f.adapter.find(10,200))).toMatchObject({status:'rejected'});
+ const send=vi.fn();await expect(gate.run('list',()=>{},send)).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();expect(f.state.bids).toEqual([150]);
+});
 
 it('skips the exact explicitly rejected stale listing before the price walk and finds another within the same cap', async () => {
   const f = await fixture({ skipRejectedListings: true, filterByCap: true });

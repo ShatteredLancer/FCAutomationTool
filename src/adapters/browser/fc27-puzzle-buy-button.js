@@ -1,7 +1,9 @@
 // UI behavior adapted from FSU 26.09 (Futcd_kcka, MIT); no FSU runtime access.
 import { mountFc27PurchaseResults } from './fc27-purchase-results.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { purchaseDialogMarkup, purchaseDialogStyles, updatePurchaseDialogProgress } from './fc27-purchase-dialog.js';
 const reasons = {
+  ...marketTrafficMessages,
   FC27_BUY_BUDGET_EXCEEDED: '已到本次预算；可修改预算后继续剩余购买。',
   FC27_BUY_NO_LISTING: '部分版本在价格范围内暂无挂牌，已继续处理其余球员；未自动提高限价。',
   FC27_BUY_RATE_LIMITED: 'EA 限流，已停止，没有自动重试。',

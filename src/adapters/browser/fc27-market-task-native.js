@@ -1,3 +1,4 @@
+import { fc27MarketTraffic } from '../ea/fc27-market-traffic.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { verifyFc27Methods } from '../ea/fc27-transaction-transport.js';
@@ -42,7 +43,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
   const view = galleryListingInventoryRuntime(root, inventory), trade = tradeFactory(view), taskTrades = new Map();
   const forTask = taskId => {
     if (!taskTrades.has(taskId)) {
-      const facade = marketTaskNativeRuntime(view);
+      const facade = marketTaskNativeRuntime(view, root);
       taskTrades.set(taskId, { ...facade, adapter: tradeFactory(facade.runtime) });
     }
     return taskTrades.get(taskId);
@@ -150,7 +151,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     },
     async send({ action, task, beforeDispatch }) {
       await pace(); await guards();
-      const { adapter, dispatch } = forTask(task.id); let dispatched = false, reply = null;
+      const { adapter, dispatch } = forTask(task.id); let dispatched = false, reply = null, blocked = null;
       const options = { beforeDispatch: item => {
         assert();
         if (action.kind === 'buy') {
@@ -173,11 +174,11 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
             || action.kind === 'move' && !['club', 'unassigned'].includes(c.item.pile)) fail('HOLDING_PROTECTED');
         }
         beforeDispatch(); dispatched = true;
-      }, onResponse: value => { reply = value; } };
+      }, onResponse: value => { reply = value; }, onBlocked: error => { blocked=error; } };
       let result;
       if (action.kind === 'search') {
         result = await dispatch(options, () => bounded(() => adapter.searchMarket({ definitionId: action.definitionId, maxBuyNow: action.maxBuy, page: 1 })));
-        assert();
+        assert();if(blocked)throw blocked;
         const ok = result.status === 'completed' && result.response?.success === true && result.response.status >= 200 && result.response.status < 300;
         if (ok && (!Array.isArray(result.candidates) || result.candidates.length > 21)) return { sent: dispatched, status: 'unknown' };
         return { sent: dispatched, status: ok ? 'confirmed' : 'unknown', ...errorResult(result),
@@ -192,7 +193,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       else if (action.kind === 'move') result = await dispatch(options, () => bounded(() => adapter.routePurchasedItem(exact(action).candidate.item, 'transfer', permitOptions)));
       else if (action.kind === 'list') result = await dispatch(options, () => bounded(() => adapter.listItem(refFor(action, 'transfer'), action.listing, permitOptions)));
       else fail('ACTION_CHANGED');
-      assert();
+      assert();if(blocked)throw blocked;
       if (!dispatched) return { status: 'rejected', receipt: null, ...errorResult(result) };
       const evidence = reply?.data?.itemIds;
       const contradictory = evidence != null && (!Array.isArray(evidence) || evidence.length > 0);
@@ -232,6 +233,9 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       }
       return receipts;
     },
-    async verifySession() { await refresh('transfer'); return capabilities(); },
+    async verifySession() { await guards(); await refresh('transfer'); return capabilities(); },
+    traffic: () => fc27MarketTraffic(root)?.inspect() ?? null,
+    clearTraffic: () => fc27MarketTraffic(root)?.clear(),
+    stopTraffic: reason => fc27MarketTraffic(root)?.signal(reason),
   });
 }

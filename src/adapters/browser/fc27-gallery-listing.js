@@ -1,3 +1,4 @@
+import { fc27TrafficRuntime } from '../ea/fc27-market-traffic-runtime.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { createEaInventoryAdapter } from '../ea/inventory.js';
 import { planFodderListings } from '../../gallery/fodder-trade-options.js';
@@ -70,7 +71,15 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
       if (!same(context, readFc27Context(root)) || !isCurrent()) fail('FC27_GALLERY_CONTEXT_CHANGED');
     };
     if (setSource && !inventory) inventory = inventoryFactory(root, { assertCurrent });
-    const adapter = adapterFactory(inventory ? galleryListingInventoryRuntime(root, inventory) : root);
+    let mutationEntry=null;
+    const adapter = adapterFactory(fc27TrafficRuntime(inventory ? galleryListingInventoryRuntime(root, inventory) : root,{requestRoot:root,check:async()=>{
+      assertCurrent();if(stopped)fail('FC27_GALLERY_CONTEXT_CHANGED');
+      if(!mutationEntry)fail('FC27_GALLERY_LISTING_PLAN_CHANGED');
+      await assertSource();
+      if(setSource)await inventory.validate(mutationEntry.item);
+      if(mutationEntry.priceOrigin==='market'&&mutationEntry.quoteExpiresAt<=Date.now())fail('FC27_GALLERY_LISTING_QUOTE_EXPIRED');
+      await checkOtherTransactions();assertCurrent();if(stopped)fail('FC27_GALLERY_CONTEXT_CHANGED');
+    }}));
     const assertSource = async () => {
       if (setSource) return;
       const currentPurchase = await purchase.inspect();
@@ -88,6 +97,7 @@ export function createFc27GalleryListing({ root, gmGetValue: get, gmSetValue: se
     const session = createGalleryBulkListSession({ scope, context, get, set, exclusive: persistence.exclusive,
       tradeAdapter: adapter, assertCurrent, checkOtherTransactions, shouldStop: () => stopped, sleep,
       beforeMutation: async entry => {
+        mutationEntry=entry;
         assertCurrent();
         await assertSource();
         if (setSource) await inventory.validate(entry.item);

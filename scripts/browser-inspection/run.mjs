@@ -107,6 +107,8 @@ if (help) {
       await exerciseTraditionalPersistence(context, out);
       const { exerciseMarketCoordination } = await import('./market-coordination-smoke.mjs');
       await exerciseMarketCoordination(context, out);
+      const { exerciseMarketTraffic } = await import('./market-traffic-smoke.mjs');
+      await exerciseMarketTraffic(context);
       const { exerciseMarketTaskScheduler } = await import('./market-task-scheduler-smoke.mjs');
       await exerciseMarketTaskScheduler(context, out);
       const { exerciseMarketTaskProvider } = await import('./market-task-provider-smoke.mjs');

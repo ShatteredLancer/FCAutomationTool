@@ -1,4 +1,5 @@
 import { normalizeStreamlinedProtectionFailure } from '../../streamlined/protection.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { renderStreamlinedExternalSelection } from './fc27-streamlined-external-view.js';
 import { streamlinedPurchaseAudit } from '../../streamlined/purchase-journal.js';
 
@@ -102,6 +103,7 @@ export function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, 
 }
 
 export function streamlinedExecutionMessage(reason, recovery = null, protection = null) {
+  if(marketTrafficMessages[reason])return marketTrafficMessages[reason];
   if (reason === 'FC27_STREAMLINED_FSU_NOT_READY') {
     return 'FSU 的当前赛季、初始化或库存缓存尚未就绪，已暂停后续操作。请确认 FSU 增强脚本已启用且无重复版本，刷新 EA 页面并等库存加载完成后重试；持续出现时请导出诊断日志。已确认的贡献记录保留，请勿手动重复投入。';
   }

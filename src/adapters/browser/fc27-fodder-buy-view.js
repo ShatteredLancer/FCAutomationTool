@@ -1,4 +1,5 @@
 import { createFodderDialog } from './fc27-fodder-trade-ui.js';
+import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { fodderAttemptCap } from '../../gallery/fodder-trade-options.js';
 import { purchasePriceCap } from '../../gallery/public-price-policy.js';
 import { bindCurrencyArrows } from './fc27-listing-currency.js';
@@ -67,7 +68,7 @@ function mountFodderRetryResults({ document, parent, refreshPrices, retry, resum
     if (outcome.collection?.status === 'pending') add(side, 'small', '画廊计分待 EA 同步，不影响已确认成交。');
     add(side, 'small', running ? '正在购买，可点击 Stop 停止后续操作。' : recovery ? '成交或入库结果待核对，请先核对并继续。'
       : pending.length ? '尚未处理的卡请点击 Continue pending，沿用本批价格设置。' : 'Select failed players and adjust Buy Now before retrying.');
-    if (outcome.reason) add(side, 'output', outcome.reason);
+    if (outcome.reason) add(side, 'output', marketTrafficMessages[outcome.reason]??outcome.reason);
     const totals = add(side, 'output', '', 'fd-retry-total');
     const actions = add(root, 'div', '', 'fd-retry-actions');
     const retryButton = add(actions, 'button', `Retry selected (${selected.size})`); retryButton.className = 'primary';
