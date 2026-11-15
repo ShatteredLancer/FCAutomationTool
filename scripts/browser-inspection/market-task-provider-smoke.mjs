@@ -21,7 +21,7 @@ export async function exerciseMarketTaskProvider(context) {
     await page.goto(url); await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const result = await page.evaluate(async () => {
       const api = globalThis.marketProviderTest, data = new Map(), context = { scope: 'offline', season: '27', platform: 'console' };
-      let time = 1000000, serial = 0, taskSerial = 0, quotes = 0, stopped = false;
+      let time = 1000000, serial = 0, taskSerial = 0, quotes = 0, stopped = false, delayed = false;
       const calls = [], get = async (k, fallback) => structuredClone(data.get(k) ?? fallback), set = async (k, v) => data.set(k, structuredClone(v));
       const store = api.createTradingTaskStore({ context: () => context, get, set, locks: navigator.locks, now: () => time, id: () => `t${++taskSerial}` });
       const coordinator = api.createMarketCoordinator({ context: () => context, get, set, locks: navigator.locks });
@@ -34,8 +34,10 @@ export async function exerciseMarketTaskProvider(context) {
         priceTiers: () => [{ min: 1000, inc: 100 }, { min: 0, inc: 50 }],
         inspectOwned: async row => ({ ...row, eligible: true, cost: null }),
         preflight: async () => ({ ready: true, balance: 10000, freeSlots: 20 }),
-        send: async ({ action, beforeDispatch }) => {
-          await Promise.resolve(); beforeDispatch(); calls.push([action.taskId, action.kind]);
+        send: async ({ action, beforeDispatch, beforeRequest }) => {
+          await Promise.resolve();
+          if (!delayed && action.kind === 'search') { delayed = true; time += 61000; }
+          await beforeRequest(); beforeDispatch(); calls.push([action.taskId, action.kind]);
           if (action.kind === 'search') return { status: 'confirmed', sent: true, offers: [{ itemId: '101', definitionId: 901, tradeId: '501', coins: 600 }] };
           return { status: 'confirmed', receipt: { itemId: action.itemId, definitionId: action.definitionId, coins: action.coins,
             tradeId: action.kind === 'list' ? `7${action.itemId}` : action.tradeId ?? null } };

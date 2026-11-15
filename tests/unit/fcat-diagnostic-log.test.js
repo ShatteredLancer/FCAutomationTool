@@ -44,6 +44,17 @@ it('retains only known scheduler reasons and numeric occupancy, never its privat
   expect(JSON.stringify(result)).not.toMatch(/private|PRIVATE|taskId|tradeId|ledger/);
 });
 
+it('retains zero-result market searches and their exact approved ceiling without raw auctions', async () => {
+  const t = harness();
+  await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'search', status: 'observed',
+    definitionId: 901, rating: 88, searchCeiling: 11250, responseCount: 0, acceptedCount: 0, errorCode: 200,
+    tradeId: 'private-trade', taskId: 'private-task', response: { auctionInfo: ['private'] } });
+  const result = await t.log.exportPayload();
+  expect(result.entries[0]).toMatchObject({ definitionId: 901, rating: 88, searchCeiling: 11250,
+    responseCount: 0, acceptedCount: 0, errorCode: 200 });
+  expect(JSON.stringify(result)).not.toMatch(/private|tradeId|taskId|auctionInfo/);
+});
+
 it('bounds and restores public pending task timings without identities or nested aliasing',async()=>{
   const t=harness();
   await t.log.record({area:'gallery',event:'roadmap-checkpoint',referenceVerifiedCount:183,optimizationPendingCount:13,

@@ -152,10 +152,10 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       if (action.kind === 'move' && cap.freeSlots < 1) fail('FUNDS_OR_CAPACITY');
       await guards(); return cap;
     },
-    async send({ action, task, beforeDispatch }) {
+    async send({ action, task, beforeDispatch, beforeRequest }) {
       await pace(); await guards();
       const { adapter, dispatch } = forTask(task.id); let dispatched = false, reply = null, blocked = null;
-      const options = { beforeDispatch: item => {
+      const options = { beforeRequest, beforeDispatch: item => {
         assert();
         if (action.kind === 'buy') {
           if (task.mode === 'filter') {
@@ -186,6 +186,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         const ok = result.status === 'completed' && result.response?.success === true && result.response.status >= 200 && result.response.status < 300;
         if (ok && (!Array.isArray(result.candidates) || result.candidates.length > 21)) return { sent: dispatched, status: 'unknown' };
         return { sent: dispatched, status: ok ? 'confirmed' : 'unknown', ...errorResult(result),
+          responseCount: ok ? result.candidates.length : null,
           offers: ok ? result.candidates.filter(c => c.item?.definitionId === action.definitionId && c.auction?.state === 'active'
             && Number.isSafeInteger(c.auction.tradeId) && c.auction.tradeId > 0).map(c => ({ itemId: String(c.item.id),
             definitionId: c.item.definitionId, tradeId: String(c.auction.tradeId), coins: c.auction.buyNowPrice })) : [] };

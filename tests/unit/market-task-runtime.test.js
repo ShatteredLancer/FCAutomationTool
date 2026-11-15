@@ -33,3 +33,21 @@ it('rejects concurrent starts and changed accounts without reusing the old sched
   const fresh = f.runtime.run({ approved: true }); f.release(); await fresh;
   expect(f.created[1].run).toHaveBeenCalledTimes(1);
 });
+
+it('page teardown is idempotent and a restored page cannot resume its disposed runtime', async () => {
+  const f = fixture(), first = f.runtime.run({ approved: true });
+  f.release(); await first;
+  f.runtime.dispose(); f.runtime.dispose();
+  expect(f.created[0].dispose).toHaveBeenCalledTimes(1);
+  await expect(f.runtime.run({ approved: true })).rejects.toThrow('TASKS_EXECUTION_UNAVAILABLE');
+  expect(f.created[0].run).toHaveBeenCalledTimes(1);
+});
+
+it('publishes a bounded initialization failure even when the task panel is hidden', async () => {
+  const createScheduler = vi.fn(async () => { throw Error('MARKET_AUTHENTICATION'); });
+  const runtime = createMarketTaskRuntime({ context: () => context, enabled: true, createScheduler });
+  const states = []; runtime.subscribe(state => states.push(state));
+  await expect(runtime.run({ approved: true })).rejects.toThrow('MARKET_AUTHENTICATION');
+  expect(states.at(-1)).toMatchObject({ busy: false, reason: 'MARKET_AUTHENTICATION', tasks: [] });
+  expect(createScheduler).toHaveBeenCalledTimes(1);
+});

@@ -7,6 +7,8 @@ import { checkMarketSession } from './market-session-check.mjs';
 // task, approves a run, edits settings, or clicks an EA mutation control.
 export async function verifyMarketTaskPage(context, page, directory) {
   const sessionHealth = await checkMarketSession(page, directory);
+  if (sessionHealth.status !== 'online') return { status: 'session-unavailable', sessionHealth,
+    taskStarts: 0, taskSaves: 0, settingsWrites: 0, eaMutations: 0 };
   const publicMethods=await page.evaluate(()=>{
     const source=String(globalThis.UTHttpRequest),fallback=globalThis[source.match(/=(a0_0x[\da-f]+)/)?.[1]];
     return ['UTItemDAO.prototype.searchConceptItems','UTPlayerSearchEngine','UTItemSearchViewModel.prototype.setPlayerData'].map(path=>{
@@ -49,6 +51,7 @@ export async function verifyMarketTaskPage(context, page, directory) {
             && outer.elementFromPoint(x,y) === this.host && this.ownerDocument.elementFromPoint(x,y) === outer.host;
           return { status: text('toast'), runtime: text('market-runtime-status'), coordination: text('market-coordination-status'),
             sessionControl: !!this.getElementById('market-session-status'), sessionStatus: text('market-session-status'),
+            searchControl: !!this.getElementById('market-search-status'), searchStatus: text('market-search-status'),
             sources: [...this.getElementById('source')?.options ?? []].map(o => o.value),
             tasks: this.querySelectorAll('[data-action="start"]').length,
             canStart: this.querySelectorAll('[data-action="start"]:not(:disabled)').length,
@@ -126,8 +129,19 @@ export async function verifyMarketTaskPage(context, page, directory) {
         }
       } finally { await clickDraft('[data-close="editor"]'); }
     }
+    const readBackground = () => page.evaluate(() => {
+      const node = globalThis.document.getElementById('fcat-fc27-production-market-status');
+      return { mounted: !!node, connected: node?.isConnected === true, hidden: node?.hidden ?? null };
+    });
+    const backgroundStatus = await readBackground();
+    await selectPanelTab(context, page, 'sbc');
+    const away = await readBackground();
+    await selectPanelTab(context, page, 'trading');
+    let returned;
+    for (let i = 0; i < 50; i++) { returned = await read(); if (!returned.status?.includes('读取本地任务')) break; await page.waitForTimeout(100); }
+    const navigation = { away, returned: { ...returned, recoverPoint: undefined }, background: await readBackground() };
     await page.screenshot({ path: path.join(directory, 'market-task-readonly.png') });
     return { status: 'observed', sessionHealth, playerSources, before: { ...before, recoverPoint: undefined }, after: { ...after, recoverPoint: undefined },
-      catalogPreview, ratingPreview, playerPreview, taskStarts: 0, taskSaves: 0, settingsWrites: 0, eaMutations: 0 };
+      catalogPreview, ratingPreview, playerPreview, backgroundStatus, navigation, taskStarts: 0, taskSaves: 0, settingsWrites: 0, eaMutations: 0 };
   } finally { await cdp.send('Runtime.releaseObjectGroup', { objectGroup: 'market-inspection' }).catch(() => {}); await cdp.detach(); }
 }

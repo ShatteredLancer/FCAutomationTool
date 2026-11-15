@@ -18,7 +18,7 @@ const errors={...marketTaskMessages,TASKS_STALE:'任务已在其他窗口修改�
 export function mountFc27MarketTasks({document,parent,tab,service,legacyService=null,readCatalog=()=>[],readInventory=()=>[],readCoordination=null,runtime=null,playerPicker=null}){
  parent.replaceChildren();const element=document.createElement('section');element.className='market-task-manager';parent.append(element);
  const shadow=element.attachShadow({mode:'closed'});shadow.innerHTML=marketTaskMarkup;const $=id=>shadow.getElementById(id);
- const currencyStyle=document.createElement('style');currencyStyle.textContent=currencyInputStyles+' .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]){display:block;margin:6px 0}';shadow.append(currencyStyle);
+ const currencyStyle=document.createElement('style');currencyStyle.textContent=currencyInputStyles+' .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]),#market-session-status:not([hidden]),#market-search-status:not([hidden]){display:block;margin:6px 0}';shadow.append(currencyStyle);
  const scheduleEditor=mountMarketScheduleEditor({document,parent:$('moreRules').parentElement});
  const ratingEditor=mountMarketRatingEditor({document,$,onChange:()=>{readInputs();renderDraft();}});
  $('taskPreview').nextElementSibling.textContent='保存不会买卖；点击启动并确认后执行。';
@@ -28,6 +28,7 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
  const runtimeOutput=document.createElement('output');runtimeOutput.id='market-runtime-status';runtimeOutput.className='hint';runtimeOutput.setAttribute('role','status');runtimeOutput.hidden=true;coordinationStatus.after(runtimeOutput);let runtimeStatus=runtime?.inspect(),pendingStart=null;
  const recoveryBar=document.createElement('div');recoveryBar.className='actions';runtimeOutput.after(recoveryBar);
  const sessionOutput=document.createElement('output');sessionOutput.id='market-session-status';sessionOutput.className='hint';sessionOutput.setAttribute('role','status');sessionOutput.hidden=true;runtimeOutput.after(sessionOutput);
+ const searchOutput=document.createElement('output');searchOutput.id='market-search-status';searchOutput.className='hint';searchOutput.setAttribute('role','status');searchOutput.hidden=true;sessionOutput.after(searchOutput);
  const recoverButton=document.createElement('button'),releaseButton=document.createElement('button');
  recoverButton.id='market-recover';releaseButton.id='market-release';recoverButton.type=releaseButton.type='button';
  recoverButton.textContent='核对交易回执';releaseButton.textContent='解除全局暂停';recoveryBar.append(recoverButton,releaseButton);let pendingRelease=false;
@@ -53,8 +54,10 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
   recoveryBar.hidden=!runtimeStatus?.available;recoverButton.disabled=releaseButton.disabled=Boolean(runtimeStatus?.busy);
   const traffic=[coordination?.traffic,runtimeStatus?.traffic].filter(Boolean).sort((a,b)=>b.ledger.revision-a.ledger.revision)[0];
   releaseButton.hidden=!(coordination?.ledger.stopped||traffic?.ledger.stopped);
-  shadow.querySelector('.content > p.hint').textContent=runtimeStatus?.available?'保存不启动；每个任务需单独确认启动。':'任务管理已接入；自动买卖尚未开放。';
+  shadow.querySelector('.content > p.hint').textContent=runtimeStatus?.available?'Start each task explicitly. Tasks continue when this panel is closed; refreshing or closing the Web App ends the run.':'任务管理已接入；自动买卖尚未开放。';
   runtimeOutput.hidden=!runtimeStatus?.available;
+  const search=runtimeStatus?.lastSearch;searchOutput.hidden=!search;
+  searchOutput.textContent=search?`Last search · EA ${search.definitionId??'?'} · Buy limit ${search.searchCeiling?.toLocaleString()??'?'} · ${!search.sent?'Not sent':!search.confirmed?'Response unconfirmed':`Returned ${search.responseCount??'?'} · Eligible ${search.acceptedCount??'?'}`}`:'';
   const health=runtimeStatus?.sessionHealth;
   sessionOutput.hidden=!health||(!runtimeStatus.busy&&health.lastOnlineAt===null&&health.state!=='failed');
   sessionOutput.textContent=health?`${health.state==='checking'?'Checking EA session':health.state==='failed'?'Session check failed; tasks paused':runtimeStatus.busy?'Session maintenance active (every 3 minutes when idle)':'Session maintenance stopped'}${health.lastOnlineAt!==null?' · Last online '+new Date(health.lastOnlineAt).toLocaleTimeString():''}`:'';
@@ -200,5 +203,7 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
  for(const dialog of shadow.querySelectorAll('dialog'))dialog.addEventListener('close',cancelQuery);
  legacyDetails.addEventListener('toggle',()=>legacy.setActive(active&&legacyDetails.open));
  runtime?.subscribe(status=>{runtimeStatus=status;if(active&&snapshot)render(false);});
- return {setActive(value){active=value;epoch++;busy=false;closeDialogs();legacy.setActive(value&&legacyDetails.open);tab.textContent='市场交易';if(value)void reload();else{runtime?.pauseAll();snapshot=null;catalog=null;inventory=[];coordination=null;coordinationStatus.hidden=true;} }};
+ // Visibility never revokes a page-lifetime trading approval. Explicit pause,
+ // settings changes, account guards and page teardown still do.
+ return {setActive(value){active=value;epoch++;busy=false;closeDialogs();pendingStart=null;pendingRelease=false;pendingDelete=null;legacy.setActive(value&&legacyDetails.open);tab.textContent='市场交易';if(value)void reload();else{snapshot=null;catalog=null;inventory=[];coordination=null;coordinationStatus.hidden=true;} }};
 }

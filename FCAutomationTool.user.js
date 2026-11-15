@@ -29450,7 +29450,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     shadow.innerHTML = marketTaskMarkup;
     const $ = (id15) => shadow.getElementById(id15);
     const currencyStyle = document.createElement("style");
-    currencyStyle.textContent = currencyInputStyles + " .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]){display:block;margin:6px 0}";
+    currencyStyle.textContent = currencyInputStyles + " .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]),#market-session-status:not([hidden]),#market-search-status:not([hidden]){display:block;margin:6px 0}";
     shadow.append(currencyStyle);
     const scheduleEditor = mountMarketScheduleEditor({ document, parent: $("moreRules").parentElement });
     const ratingEditor = mountMarketRatingEditor({ document, $, onChange: () => {
@@ -29486,6 +29486,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     sessionOutput.setAttribute("role", "status");
     sessionOutput.hidden = true;
     runtimeOutput.after(sessionOutput);
+    const searchOutput = document.createElement("output");
+    searchOutput.id = "market-search-status";
+    searchOutput.className = "hint";
+    searchOutput.setAttribute("role", "status");
+    searchOutput.hidden = true;
+    sessionOutput.after(searchOutput);
     const recoverButton = document.createElement("button"), releaseButton = document.createElement("button");
     recoverButton.id = "market-recover";
     releaseButton.id = "market-release";
@@ -29564,8 +29570,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       recoverButton.disabled = releaseButton.disabled = Boolean(runtimeStatus?.busy);
       const traffic = [coordination?.traffic, runtimeStatus?.traffic].filter(Boolean).sort((a, b) => b.ledger.revision - a.ledger.revision)[0];
       releaseButton.hidden = !(coordination?.ledger.stopped || traffic?.ledger.stopped);
-      shadow.querySelector(".content > p.hint").textContent = runtimeStatus?.available ? "\u4FDD\u5B58\u4E0D\u542F\u52A8\uFF1B\u6BCF\u4E2A\u4EFB\u52A1\u9700\u5355\u72EC\u786E\u8BA4\u542F\u52A8\u3002" : "\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002";
+      shadow.querySelector(".content > p.hint").textContent = runtimeStatus?.available ? "Start each task explicitly. Tasks continue when this panel is closed; refreshing or closing the Web App ends the run." : "\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002";
       runtimeOutput.hidden = !runtimeStatus?.available;
+      const search = runtimeStatus?.lastSearch;
+      searchOutput.hidden = !search;
+      searchOutput.textContent = search ? `Last search \xB7 EA ${search.definitionId ?? "?"} \xB7 Buy limit ${search.searchCeiling?.toLocaleString() ?? "?"} \xB7 ${!search.sent ? "Not sent" : !search.confirmed ? "Response unconfirmed" : `Returned ${search.responseCount ?? "?"} \xB7 Eligible ${search.acceptedCount ?? "?"}`}` : "";
       const health = runtimeStatus?.sessionHealth;
       sessionOutput.hidden = !health || !runtimeStatus.busy && health.lastOnlineAt === null && health.state !== "failed";
       sessionOutput.textContent = health ? `${health.state === "checking" ? "Checking EA session" : health.state === "failed" ? "Session check failed; tasks paused" : runtimeStatus.busy ? "Session maintenance active (every 3 minutes when idle)" : "Session maintenance stopped"}${health.lastOnlineAt !== null ? " \xB7 Last online " + new Date(health.lastOnlineAt).toLocaleTimeString() : ""}` : "";
@@ -30156,11 +30165,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       epoch2++;
       busy = false;
       closeDialogs();
+      pendingStart = null;
+      pendingRelease = false;
+      pendingDelete = null;
       legacy.setActive(value && legacyDetails.open);
       tab.textContent = "\u5E02\u573A\u4EA4\u6613";
       if (value) void reload();
       else {
-        runtime?.pauseAll();
         snapshot = null;
         catalog = null;
         inventory = [];
@@ -30168,6 +30179,48 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         coordinationStatus.hidden = true;
       }
     } };
+  }
+
+  // src/adapters/browser/fc27-market-background-view.js
+  function mountMarketBackgroundStatus({ document, runtime, id: id15 }) {
+    if (!runtime || !document?.body) return;
+    const host = document.createElement("aside");
+    host.id = id15;
+    host.hidden = true;
+    host.style.cssText = "position:fixed;right:12px;bottom:76px;z-index:10000;max-width:calc(100vw - 24px)";
+    const shadow = host.attachShadow({ mode: "closed" });
+    shadow.innerHTML = `<style>
+    :host([hidden]){display:none!important}*{box-sizing:border-box}
+    .bar{display:flex;align-items:center;gap:10px;max-width:100%;padding:8px 10px;border:1px solid #48606d;border-radius:8px;background:#172b36;color:#edf8fc;box-shadow:0 2px 8px #0005;font:13px/1.4 Arial,sans-serif}
+    output{min-width:0;overflow-wrap:anywhere}button{flex:none;padding:6px 9px;border:1px solid #86d7c8;border-radius:5px;background:#23483f;color:#e9fff9;cursor:pointer;font:inherit}button:disabled{opacity:.55;cursor:default}
+  </style><div class="bar"><output role="status" aria-live="polite"></output><button type="button">Pause all</button></div>`;
+    const output = shadow.querySelector("output"), pause2 = shadow.querySelector("button");
+    let status = runtime.inspect();
+    const render = () => {
+      const rows = status?.tasks ?? [];
+      const active = rows.filter((row) => ["running", "queued", "waiting"].includes(row.state));
+      const review = rows.some((row) => row.state === "review");
+      const paused = rows.some((row) => row.state === "paused");
+      host.hidden = !status?.busy && !active.length && !review && !paused && !status?.reason;
+      pause2.disabled = !status?.busy && !active.length;
+      const scheduled = active.length && active.every((row) => row.reason === "MARKET_SCHEDULE_WAIT");
+      output.textContent = `FCAT \xB7 ${review ? "Trading needs review" : active.length ? `Trading ${scheduled ? "scheduled" : "active"} \xB7 ${active.length}` : status?.busy ? status.phase === "initialize" ? "Starting trading" : "Finishing current operation" : "Trading paused"}`;
+      host.title = "Tasks continue across FCAT and EA pages. Refreshing or closing the Web App ends this run. Open Market trading for details.";
+      if (status?.reason) host.title += ` (${status.reason})`;
+    };
+    pause2.addEventListener("click", (event) => {
+      if (event.isTrusted && !pause2.disabled) runtime.pauseAll();
+    });
+    document.body.append(host);
+    const unsubscribe = runtime.subscribe((value) => {
+      status = value;
+      render();
+    });
+    render();
+    return () => {
+      unsubscribe?.();
+      host.remove();
+    };
   }
 
   // src/adapters/browser/fc27-acceptance-panel.js
@@ -30237,6 +30290,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         void planningSettings.refresh();
       }
     });
+    mountMarketBackgroundStatus({ document, runtime: tradingTasks2?.runtime, id: `${hostId}-market-status` });
     const node = (id15) => shadow.getElementById(id15);
     const renderPuzzleObjective = () => {
       node("puzzle-objective-note").textContent = node("puzzle-objective").value === "additional-coins" ? "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\uFF1A\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8981\u4FDD\u7559\u8D35\u5E93\u5B58\uFF0C\u8BF7\u6539\u9009\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF1A\u540C\u65F6\u6BD4\u8F83\u5E93\u5B58\u4F30\u503C\u4E0E\u5F85\u8D2D\u5361\u4EF7\u683C\uFF0C\u53EF\u80FD\u591A\u4E70\u4FBF\u5B9C\u5361\u4EE5\u4FDD\u7559\u8D35\u5E93\u5B58\uFF1B\u4ECD\u9075\u5B88\u539F\u91C7\u8D2D\u9650\u4EF7\u548C\u4FDD\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002";
@@ -30543,6 +30597,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     renderTargets();
     update();
     const open = (container) => {
+      if (!container?.append && !host.isConnected) document.body.append(host);
       if (container?.append) {
         container.append(host);
         host.dataset.navigationPage = "true";
@@ -38395,7 +38450,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/trading/market-task-runtime.js
   var same34 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function createMarketTaskRuntime({ context, createScheduler, enabled = false, modes: modes2 = ["fixed", "sell"] }) {
-    let scheduler = null, binding = null, initializing = false, generation = 0, disposed = false, unsubscribe = null;
+    let scheduler = null, binding = null, initializing = false, generation = 0, disposed = false, unsubscribe = null, initializationFailure = null;
     const listeners = /* @__PURE__ */ new Set();
     const inspect = () => scheduler?.inspect() ?? {
       available: enabled && !disposed,
@@ -38404,7 +38459,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       busy: initializing,
       phase: initializing ? "initialize" : "idle",
       taskId: null,
-      reason: null,
+      reason: initializationFailure,
       evidence: [],
       errors: [],
       tasks: []
@@ -38431,6 +38486,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       binding = captured;
       const ticket = generation;
       initializing = true;
+      initializationFailure = null;
       publish();
       const assertCurrent = () => {
         if (disposed || !same34(captured, context())) throw Error("TASKS_CONTEXT_CHANGED");
@@ -38444,6 +38500,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         unsubscribe = scheduler.subscribe(publish);
         return scheduler;
       } catch (error2) {
+        initializationFailure = marketTaskFailureReason(error2);
         created?.dispose();
         throw error2;
       } finally {
@@ -38481,6 +38538,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         publish();
       },
       dispose() {
+        if (disposed) return;
         disposed = true;
         invalidate();
         scheduler?.dispose();
@@ -38537,7 +38595,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let policyRead = null, policyAt = 0;
     let tasks = /* @__PURE__ */ new Map(), phase = "idle", currentTask = null, lastReason = null, errorCounts = /* @__PURE__ */ new Map();
     const listeners = /* @__PURE__ */ new Set();
-    let traffic = null;
+    let traffic = null, lastSearch = null;
     let sessionHealth = { state: "idle", lastOnlineAt: null };
     const inspect = () => ({
       available: enabled && Boolean(provider),
@@ -38548,6 +38606,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       taskId: currentTask,
       reason: lastReason,
       traffic,
+      lastSearch: lastSearch ? { ...lastSearch } : null,
       sessionHealth: { ...sessionHealth },
       evidence: structuredClone(evidence),
       errors: [...errorCounts].map(([code2, count3]) => ({ code: code2, count: count3 })),
@@ -38581,7 +38640,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } catch {
       }
     };
-    const diagnostic = (state, reason = null, code2 = null) => {
+    const diagnostic = (state, reason = null, code2 = null, details = {}) => {
       const occupancy = marketOccupancy(state);
       evidence = [.../* @__PURE__ */ new Set([
         ...state.intents.map((i) => i.taskId),
@@ -38613,7 +38672,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           ownedCount: occupancy.count,
           spent: occupancy.spent,
           reservedCoins: occupancy.reservedCoins,
-          ...scopeFields()
+          ...scopeFields(),
+          ...details
         })).catch(() => {
         });
       } catch {
@@ -38788,6 +38848,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       evidence = [];
       policyRead = null;
       sessionHealth = { state: "idle", lastOnlineAt: null };
+      lastSearch = null;
       const startedAt = now();
       tasks = new Map(taskIds.map((taskId) => [taskId, { id: taskId, state: "queued", reason: null, nextAt: 0, startedAt }]));
       publish();
@@ -39054,8 +39115,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                         clockBoundary(tasks.get(selected));
                         dispatched = true;
                       };
+                      const beforeRequest = async () => {
+                        current2();
+                        if (!allowed(selected)) throw Error("MARKET_USER_STOP");
+                        const row = tasks.get(selected);
+                        if (row.clock?.lease?.token !== row.clockToken) throw Error("MARKET_CLOCK_INVALID");
+                        if (row.clock.lease.until <= now()) {
+                          await turn.checkpoint((state) => reserveMarketClock(
+                            state,
+                            selected,
+                            row.clockToken,
+                            now(),
+                            fresh.settings.runMinutes === null ? null : fresh.settings.runMinutes * 6e4
+                          ));
+                          row.clock = turn.inspect().clocks.find((c) => c.taskId === selected);
+                        }
+                        current2();
+                        if (!allowed(selected)) throw Error("MARKET_USER_STOP");
+                        clockBoundary(row);
+                      };
                       try {
-                        response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch });
+                        response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest });
                       } catch (error2) {
                         boundaryFailure = safeReason9(error2);
                         trafficRetryAt = error2.retryAt;
@@ -39081,8 +39161,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                       if (!halted && (response?.status === "unknown" || action.kind === "search" && response?.sent !== true && allowed(selected) && !["MARKET_SCHEDULE_WINDOW_CLOSED", "MARKET_TRAFFIC_WAIT"].includes(boundaryFailure))) {
                         stateOf(selected, action.kind === "search" ? "paused" : "review", "MARKET_RESPONSE_UNCONFIRMED");
                       }
-                      diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason);
-                      if (boundaryFailure !== "MARKET_TRAFFIC_WAIT" && typeof provider.accept === "function") await provider.accept({ action, response, ledger: turn.inspect() });
+                      const accepted = boundaryFailure !== "MARKET_TRAFFIC_WAIT" && typeof provider.accept === "function" ? await provider.accept({ action, response, ledger: turn.inspect() }) : null;
+                      let searchDetails = {};
+                      if (action.kind === "search") {
+                        const count3 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 21 ? value : null;
+                        const returned = count3(response?.responseCount), eligible = count3(accepted?.acceptedCount);
+                        searchDetails = {
+                          definitionId: action.definitionId,
+                          searchCeiling: action.maxBuy,
+                          rating: action.rating,
+                          ...returned !== null ? { responseCount: returned } : {},
+                          ...eligible !== null ? { acceptedCount: eligible } : {}
+                        };
+                        lastSearch = {
+                          definitionId: action.definitionId,
+                          searchCeiling: action.maxBuy,
+                          responseCount: returned,
+                          acceptedCount: eligible,
+                          sent: dispatched || response?.sent === true,
+                          confirmed: response?.status === "confirmed",
+                          at: now()
+                        };
+                      }
+                      diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason, codeOf(response), searchDetails);
                       current2();
                       if (allowed(selected) && boundaryFailure !== "MARKET_TRAFFIC_WAIT") stateOf(selected, "queued");
                     });
@@ -39752,12 +39853,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         bound(action, task, settings);
         return result;
       },
-      async send({ action, requestId, beforeDispatch }) {
+      async send({ action, requestId, beforeDispatch, beforeRequest }) {
         const saved = bound(action);
-        return native.send({ ...saved, action, requestId, beforeDispatch: () => {
-          bound(action);
-          beforeDispatch();
-        } });
+        return native.send({
+          ...saved,
+          action,
+          requestId,
+          beforeRequest: async () => {
+            bound(action);
+            await beforeRequest?.();
+            bound(action);
+          },
+          beforeDispatch: () => {
+            bound(action);
+            beforeDispatch();
+          }
+        });
       },
       async accept({ action, response, ledger }) {
         check();
@@ -39785,6 +39896,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               expiresAt: action.expiresAt
             }));
           } else c.offers = [];
+          return { acceptedCount: c.offers.length };
         }
       },
       reconcile: (intent) => {
@@ -39828,8 +39940,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const methods = Object.fromEntries(["searchTransferMarket", "bid", "move", "list"].map((name2) => [name2, (...args) => {
       const permit = boundary;
       if (!permit) throw Error("MARKET_NOT_SENT");
-      const invoke = (mark = () => {
+      const invoke = async (mark = () => {
       }) => {
+        try {
+          await permit.beforeRequest?.();
+        } catch (error2) {
+          permit.onBlocked?.(error2);
+          throw error2;
+        }
+        if (boundary !== permit) throw Error("MARKET_NOT_SENT");
         permit.beforeDispatch(args[0]);
         mark();
         const result = service[name2](...args);
@@ -39839,9 +39958,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         };
         if (typeof result?.then === "function") return result.then(receive);
         if (typeof result?.observe !== "function") return receive(result);
-        return wrap(result, { observe(owner, callback) {
+        return observeFc27TrafficResult(wrap(result, { observe(owner, callback) {
           return result.observe(owner, (sender, value) => callback(sender, receive(value)));
-        } });
+        } }));
       };
       if (!fc27MarketTraffic(requestRoot)) return invoke();
       return runFc27MarketRequest(
@@ -40119,12 +40238,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         await guards();
         return cap;
       },
-      async send({ action, task, beforeDispatch }) {
+      async send({ action, task, beforeDispatch, beforeRequest }) {
         await pace();
         await guards();
         const { adapter, dispatch } = forTask(task.id);
         let dispatched = false, reply = null, blocked12 = null;
-        const options = { beforeDispatch: (item2) => {
+        const options = { beforeRequest, beforeDispatch: (item2) => {
           assert();
           if (action.kind === "buy") {
             if (task.mode === "filter") {
@@ -40162,6 +40281,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             sent: dispatched,
             status: ok ? "confirmed" : "unknown",
             ...errorResult(result),
+            responseCount: ok ? result.candidates.length : null,
             offers: ok ? result.candidates.filter((c) => c.item?.definitionId === action.definitionId && c.auction?.state === "active" && Number.isSafeInteger(c.auction.tradeId) && c.auction.tradeId > 0).map((c) => ({
               itemId: String(c.item.id),
               definitionId: c.item.definitionId,
@@ -50969,6 +51089,7 @@ ${detail.join(" \xB7 ")}`;
     diagnosticLog
   });
   unsafeWindow.addEventListener?.("beforeunload", () => tradingTasks.runtime.dispose(), { once: true });
+  unsafeWindow.addEventListener?.("pagehide", () => tradingTasks.runtime.dispose(), { once: true });
   var storageMaintenancePending = true;
   void compactFc27Storage({
     list: typeof GM_listValues === "function" ? GM_listValues : null,

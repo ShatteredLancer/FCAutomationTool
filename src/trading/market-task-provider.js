@@ -202,11 +202,12 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
       const result = await native.preflight({ task, settings, action, ledger }); bound(action, task, settings); return result;
     },
-    async send({ action, requestId, beforeDispatch }) {
+    async send({ action, requestId, beforeDispatch, beforeRequest }) {
       const saved = bound(action);
       // The final callback is passed through to the *native* call. Calling it
       // before an awaited pacing/permit step would restore the cancellation bug.
-      return native.send({ ...saved, action, requestId, beforeDispatch: () => { bound(action); beforeDispatch(); } });
+      return native.send({ ...saved, action, requestId, beforeRequest: async () => { bound(action); await beforeRequest?.(); bound(action); },
+        beforeDispatch: () => { bound(action); beforeDispatch(); } });
     },
     async accept({ action, response, ledger }) {
       check(); const c = cursors.get(action.taskId); if (!c) return;
@@ -229,6 +230,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
           }).sort((a, b) => a.coins - b.coins).slice(0, action.limit).map(o => ({ itemId: o.itemId, definitionId: o.definitionId,
             tradeId: o.tradeId, coins: o.coins, quotes: action.quotes, expiresAt: action.expiresAt }));
         } else c.offers = [];
+        return { acceptedCount: c.offers.length };
       }
     },
     reconcile: intent => { check(); return native.reconcile(structuredClone(intent)); },

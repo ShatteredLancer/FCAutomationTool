@@ -246,6 +246,7 @@ tradingTasks.runtime=createFc27MarketTaskExecution({root:unsafeWindow,get:GM_get
   transport:galleryTransport,taskStore:tradingTasks.service,coordinator:marketCoordinator,readCatalog:tradingTasks.readCatalog,catalog:marketTaskCatalog,
   liveEnabled:dependencies.liveEnabled,diagnosticLog});
 unsafeWindow.addEventListener?.('beforeunload',()=>tradingTasks.runtime.dispose(),{once:true});
+unsafeWindow.addEventListener?.('pagehide',()=>tradingTasks.runtime.dispose(),{once:true});
 let storageMaintenancePending = true;
 void compactFc27Storage({ list: typeof GM_listValues === 'function' ? GM_listValues : null,
   get: GM_getValue, set: GM_setValue, locks: unsafeWindow.navigator.locks,

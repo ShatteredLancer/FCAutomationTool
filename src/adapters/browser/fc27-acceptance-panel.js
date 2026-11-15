@@ -8,6 +8,7 @@ import { mountGalleryPlanningSettings } from './fc27-gallery-planning-settings.j
 import { bindCurrencyArrows } from './fc27-listing-currency.js';
 import { mountFc27TradingView } from './fc27-trading-view.js';
 import { mountFc27MarketTasks } from './fc27-market-task-view.js';
+import { mountMarketBackgroundStatus } from './fc27-market-background-view.js';
 
 export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = null, inspectPuzzle = null, prepare, execute, fillPuzzle = null, inspectRecovery, resolveRecovery, checkInstallation,
   inspectPuzzlePolicy = null, setPuzzleMaxRating = null, setPuzzlePolicy = null, galleryCatalog = null, gallerySetLoader = null, galleryPriceLoader = null, galleryAccountScope = undefined,
@@ -26,6 +27,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const trading=tradingTasks?mountFc27MarketTasks({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),...tradingTasks,legacyService:tradingDesk})
     :mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery');trading.setActive(id==='trading'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
+  mountMarketBackgroundStatus({ document, runtime: tradingTasks?.runtime, id: `${hostId}-market-status` });
   const node = id => shadow.getElementById(id);
   const renderPuzzleObjective = () => {
     node('puzzle-objective-note').textContent = node('puzzle-objective').value === 'additional-coins'
@@ -242,6 +244,7 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   for (const id of ['target', 'rating']) node(id).addEventListener('change', () => { clear(); update(); });
   document.body.append(host); host.style.display = 'none'; renderTargets(); update();
   const open = container => {
+    if (!container?.append && !host.isConnected) document.body.append(host);
     if (container?.append) {
       container.append(host); host.dataset.navigationPage = 'true';
       shadow.querySelector('summary').textContent = title;

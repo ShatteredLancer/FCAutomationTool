@@ -10,9 +10,11 @@ import { defaultTradingTaskSettings } from '../../src/trading/task-model.js';
 import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
 import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
 
-async function fixture(mode = 'sell', shared = false) {
+async function fixture(mode = 'sell', shared = false, rating = 84) {
   const f = marketNativeRuntime(), data = new Map(), context = { scope: traditionalJournalScope(readFc27Context(f.root)), season: '27', platform: 'pc' };
-  const get = async (key, fallback) => structuredClone(data.get(key) ?? fallback), set = async (key, value) => data.set(key, structuredClone(value));
+  const get = async (key, fallback) => structuredClone(data.get(key) ?? fallback), set = async (key, value) => {
+    await f.hooks.persist?.(key, value); data.set(key, structuredClone(value));
+  };
   const locks = { request: async (name, _options, callback) => callback({ name, mode: 'exclusive' }) };
   const store = createTradingTaskStore({ context: () => context, get, set, locks, now: f.now, id: () => 'sell' });
   const coordinator = createMarketCoordinator({ context: () => context, get, set, locks });
@@ -21,14 +23,15 @@ async function fixture(mode = 'sell', shared = false) {
   f.makeCard(201, 901, 'transfer');
   const snapshot = await store.saveTask({ ...await store.read(), input: { name: 'Synthetic sale', mode,
     settings: { ...defaultTradingTaskSettings(), buyRule: 'fixed', buyValue: 800, sellRule: 'fixed', sellValue: 700,
-      ratingMin: 84, ratingMax: 84, quality: 'gold', league: 10, perVersion: 1 }, players: [], excluded: [],
+      ratingMin: rating, ratingMax: rating, quality: 'gold', league: 10, perVersion: 1 }, players: [], excluded: [],
     owned: [{ itemId: '201', definitionId: 901, name: 'Synthetic', pile: 'transfer' }] } });
   const gmRequest = vi.fn(() => { throw Error('unexpected public request'); });
   const createNative = vi.fn(options => createFc27MarketTaskNative({ ...options, ...f }));
-  const runtime = createFc27MarketTaskExecution({ root: f.root, get, set, taskStore: store, coordinator, gmRequest,
-    readCatalog: () => [{ definitionId: 901, playerId: 901, name: 'Known public', rating: 84, rarity: 0, leagueId: 10 }],
+  const diagnosticLog = { record: vi.fn() };
+  const runtime = createFc27MarketTaskExecution({ root: f.root, get, set, taskStore: store, coordinator, gmRequest, diagnosticLog,
+    readCatalog: () => [{ definitionId: 901, playerId: 901, name: 'Known public', rating, rarity: 0, leagueId: 10 }],
     transport: {}, liveEnabled: true, now: f.now, createNative });
-  return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative,traffic };
+  return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative,traffic, diagnosticLog };
 }
 it.each([false,true])('composes production protections/store/provider/native through selected Transfer sale (common gate=%s)', async shared => {
   const f = await fixture('sell',shared); expect(f.createNative).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
@@ -53,6 +56,59 @@ it.each([false,true])('runs filter through the production composition and exact 
   expect(f.runtime.inspect().tasks[0].candidateScope).toMatchObject({ known: 1, matched: 1, complete: false });
   expect(f.gmRequest).not.toHaveBeenCalled();
   if(shared)expect((await f.traffic.inspect()).gate.hour).toBe(1);
+});
+it.each([false,true])('renews an unlimited task lease after native pacing crosses sixty seconds (common gate=%s)', async shared => {
+  const f = await fixture('filter', shared); f.makeCard(101, 901);
+  let delayed = false, stopped = false;
+  f.hooks.sleep = () => { if (!delayed) { delayed = true; f.advance(61000); } };
+  f.runtime.subscribe(s => { if (!stopped && s.evidence?.some(e => e.counts[0] === 1)) { stopped = true; f.runtime.pauseAll(); } });
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => c[0] === 'bid')).toEqual([['bid', 101, 600]]);
+  expect(f.runtime.inspect().tasks[0].reason).not.toBe('MARKET_TIME_LIMIT');
+  expect((await f.coordinator.inspect()).ledger.intents.filter(i => i.kind === 'buy')).toHaveLength(1);
+});
+it('keeps polling empty 88-rating searches at the approved 11250 ceiling across lease renewals', async () => {
+  const f = await fixture('filter', true, 88), original = f.snapshot.store.tasks[0], start = f.now();
+  const { name, mode, settings, players, owned, excluded } = original;
+  const snapshot = await f.store.saveTask({ ...f.snapshot, id: 'sell', input: { name, mode, settings, players, owned, excluded,
+    ratingPrices: { 88: { buy: 11250, sell: 14000 } } } });
+  let last = null, count = 0;
+  f.hooks.sleep = () => f.advance(21000);
+  f.runtime.subscribe(s => {
+    if (s.lastSearch?.confirmed && s.lastSearch.at !== last) {
+      last = s.lastSearch.at; count++;
+      if (count === 8) f.runtime.pauseAll(); else f.advance(20000);
+    }
+  });
+  await f.runtime.run({ approved: true, snapshot, taskIds: ['sell'] });
+  expect(f.now() - start).toBeGreaterThan(300000);
+  expect(f.calls.filter(c => c[0] === 'search')).toEqual(Array.from({ length: 8 }, () => ['search', 901, 11250]));
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0]))).toEqual([]);
+  expect(f.runtime.inspect()).toMatchObject({ lastSearch: { responseCount: 0, acceptedCount: 0, searchCeiling: 11250, confirmed: true } });
+  expect(f.runtime.inspect().tasks[0].reason).toBe('MARKET_USER_STOP');
+  const searches = f.diagnosticLog.record.mock.calls.map(c => c[0]).filter(e => e.phase === 'search');
+  expect(searches).toHaveLength(8);
+  expect(searches.every(e => e.definitionId === 901 && e.rating === 88 && e.searchCeiling === 11250 && e.responseCount === 0 && e.acceptedCount === 0)).toBe(true);
+  expect((await f.traffic.inspect()).gate.hour).toBe(8);
+  expect(f.gmRequest).not.toHaveBeenCalled();
+});
+it.each([['limit',false], ['limit',true], ['stop',false], ['stop',true]])('still blocks the actual send when %s intervenes during lease renewal (common gate=%s)', async (kind, shared) => {
+  const f = await fixture('filter', shared), original = f.snapshot.store.tasks[0], start = f.now();
+  const { name, mode, players, owned, excluded } = original;
+  const snapshot = kind === 'limit' ? await f.store.saveTask({ ...f.snapshot, id: 'sell', input: {
+    name, mode, players, owned, excluded, settings: { ...original.settings, runMinutes: 1 }
+  } }) : f.snapshot;
+  let delayed = false, stopped = false;
+  f.hooks.sleep = () => { if (!delayed) { delayed = true; f.advance(61000); } };
+  f.hooks.persist = (_key, value) => {
+    if (kind === 'stop' && !stopped && value.ledger?.clocks?.some(c => c.lease?.at > start)) {
+      stopped = true; f.runtime.pauseAll();
+    }
+  };
+  await f.runtime.run({ approved: true, snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['search','bid','move','list'].includes(c[0]))).toEqual([]);
+  expect(f.runtime.inspect().tasks[0].reason).toBe(kind === 'limit' ? 'MARKET_TIME_LIMIT' : 'MARKET_USER_STOP');
+  if (shared) expect((await f.traffic.inspect()).gate.hour).toBe(0);
 });
 it('a production preflight 401 propagates to other FCAT modules without sending a payment',async()=>{
  const f=await fixture('filter',true);f.hooks.readStatus=401;

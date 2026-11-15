@@ -13,14 +13,18 @@ export function marketTaskNativeRuntime(root, requestRoot = root) {
   const methods = Object.fromEntries(['searchTransferMarket', 'bid', 'move', 'list'].map(name => [name, (...args) => {
     const permit = boundary;
     if (!permit) throw Error('MARKET_NOT_SENT');
-    const invoke=(mark=()=>{})=>{permit.beforeDispatch(args[0]);mark();
+    const invoke=async(mark=()=>{})=>{
+    try { await permit.beforeRequest?.(); }
+    catch(error) { permit.onBlocked?.(error); throw error; }
+    if(boundary!==permit)throw Error('MARKET_NOT_SENT');
+    permit.beforeDispatch(args[0]);mark();
     const result = service[name](...args);
     const receive = value => { permit.onResponse(value); return value; };
     if (typeof result?.then === 'function') return result.then(receive);
     if (typeof result?.observe !== 'function') return receive(result);
-    return wrap(result, { observe(owner, callback) {
+    return observeFc27TrafficResult(wrap(result, { observe(owner, callback) {
       return result.observe(owner, (sender, value) => callback(sender, receive(value)));
-    } });};
+    } }));};
     if(!fc27MarketTraffic(requestRoot))return invoke();
     return runFc27MarketRequest(requestRoot,name==='searchTransferMarket'?'search':name==='bid'?'buy':name,()=>{if(boundary!==permit)throw Error('MARKET_NOT_SENT');},
       mark=>observeFc27TrafficResult(invoke(mark)),{wait:false,exactDispatch:true,rawErrors:true}).catch(error=>{permit.onBlocked?.(error);throw error;});

@@ -34,12 +34,12 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   let policyRead = null, policyAt = 0;
   let tasks = new Map(), phase = 'idle', currentTask = null, lastReason = null, errorCounts = new Map();
   const listeners = new Set();
-  let traffic=null;
+  let traffic=null, lastSearch=null;
   // One maintenance check for the approved account owner, never one per task.
   // Successful native reads postpone it; this is not a promise of EA renewal.
   let sessionHealth = { state: 'idle', lastOnlineAt: null };
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
-    reason: lastReason, traffic, sessionHealth: { ...sessionHealth }, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
+    reason: lastReason, traffic, lastSearch: lastSearch ? { ...lastSearch } : null, sessionHealth: { ...sessionHealth }, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
     tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
       startedAt: row.startedAt, elapsedMs: elapsed(row), candidateScope: provider?.describe?.(row.id) ?? null, schedule: row.schedule ?? null })) });
   const publish = () => { for (const listener of [onStatus, ...listeners]) { try { listener(inspect()); } catch { /* Presentation is not authorization. */ } } };
@@ -51,7 +51,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     try { Promise.resolve(onDiagnostic({ area: 'trading', event: 'task-scheduler', phase, status: 'blocked', reason, ...scopeFields() })).catch(() => {}); }
     catch { /* A logging failure cannot change task authorization or receipts. */ }
   };
-  const diagnostic = (state, reason = null, code = null) => {
+  const diagnostic = (state, reason = null, code = null, details = {}) => {
     const occupancy = marketOccupancy(state);
     evidence = [...new Set([...state.intents.map(i => i.taskId), ...state.holdings.map(h => h.taskId),
       ...(state.handoffs ?? []).flatMap(h => [h.fromTaskId, h.toTaskId])])].map(taskId => {
@@ -65,7 +65,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       status: reason ? 'blocked' : 'observed', reason, errorCode: code,
       pendingWriteCount: state.intents.filter(i => i.phase === 'pending').length,
       requestedCount: tasks.size, ownedCount: occupancy.count, spent: occupancy.spent,
-      reservedCoins: occupancy.reservedCoins, ...scopeFields() })).catch(() => {}); } catch { /* No evidence objects/IDs. */ }
+      reservedCoins: occupancy.reservedCoins, ...scopeFields(), ...details })).catch(() => {}); } catch { /* No evidence objects/IDs. */ }
   };
   let wallSample=null,monoSample=null;
   const current = () => {
@@ -205,6 +205,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     snapshot = { context: structuredClone(requested.context), store }; runContext = snapshot.context; current();
     wallSample=monoSample=null;busy = true; executing = true; lastReason = null; errorCounts = new Map(); evidence = []; policyRead = null;
     sessionHealth = { state: 'idle', lastOnlineAt: null };
+    lastSearch = null;
     const startedAt = now();
     tasks = new Map(taskIds.map(taskId => [taskId, { id: taskId, state: 'queued', reason: null, nextAt: 0, startedAt }])); publish();
     try {
@@ -395,7 +396,24 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   clockBoundary(tasks.get(selected));
                   dispatched = true;
                 };
-                try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch }); }
+                const beforeRequest = async () => {
+                  current();
+                  if (!allowed(selected)) throw Error('MARKET_USER_STOP');
+                  const row = tasks.get(selected);
+                  if (row.clock?.lease?.token !== row.clockToken) throw Error('MARKET_CLOCK_INVALID');
+                  // The 60-second durable lease is accounting, not a user limit.
+                  // Renew under the existing owner/task/native locks after all
+                  // pacing awaits, without restarting or resending this action.
+                  if (row.clock.lease.until <= now()) {
+                    await turn.checkpoint(state => reserveMarketClock(state, selected, row.clockToken, now(),
+                      fresh.settings.runMinutes === null ? null : fresh.settings.runMinutes * 60000));
+                    row.clock = turn.inspect().clocks.find(c => c.taskId === selected);
+                  }
+                  current();
+                  if (!allowed(selected)) throw Error('MARKET_USER_STOP');
+                  clockBoundary(row);
+                };
+                try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest }); }
                 catch (error) { boundaryFailure = safeReason(error);trafficRetryAt=error.retryAt;response = { status: 'unknown', receipt: null, code: codeOf(error) }; }
                 if (guarded && !dispatched) {
                   response = { ...response, sent: false, status: 'rejected', receipt: null };
@@ -415,9 +433,21 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true && allowed(selected) && !['MARKET_SCHEDULE_WINDOW_CLOSED','MARKET_TRAFFIC_WAIT'].includes(boundaryFailure))) {
                   stateOf(selected, action.kind === 'search' ? 'paused' : 'review', 'MARKET_RESPONSE_UNCONFIRMED');
                 }
-                diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason);
                 // Optional adapter-local cursor update, never a second request.
-                if (boundaryFailure!=='MARKET_TRAFFIC_WAIT'&&typeof provider.accept === 'function') await provider.accept({ action, response, ledger: turn.inspect() });
+                const accepted = boundaryFailure!=='MARKET_TRAFFIC_WAIT'&&typeof provider.accept === 'function'
+                  ? await provider.accept({ action, response, ledger: turn.inspect() }) : null;
+                let searchDetails = {};
+                if (action.kind === 'search') {
+                  const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 21 ? value : null;
+                  const returned = count(response?.responseCount), eligible = count(accepted?.acceptedCount);
+                  searchDetails = { definitionId: action.definitionId, searchCeiling: action.maxBuy, rating: action.rating,
+                    ...(returned !== null ? { responseCount: returned } : {}),
+                    ...(eligible !== null ? { acceptedCount: eligible } : {}) };
+                  lastSearch = { definitionId: action.definitionId, searchCeiling: action.maxBuy,
+                    responseCount: returned, acceptedCount: eligible, sent: dispatched || response?.sent === true,
+                    confirmed: response?.status === 'confirmed', at: now() };
+                }
+                diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason, codeOf(response), searchDetails);
                 current();
                 if (allowed(selected)&&boundaryFailure!=='MARKET_TRAFFIC_WAIT') stateOf(selected, 'queued');
               }); } catch (error) {

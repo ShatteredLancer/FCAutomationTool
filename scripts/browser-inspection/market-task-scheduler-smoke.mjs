@@ -43,21 +43,22 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       globalThis.marketSchedulerUI = state;
       const provider = {
         maintainSession: async ({ beforeDispatch }) => { beforeDispatch(); state.healthChecks=(state.healthChecks??0)+1; return { status: 'online' }; },
-        prepare: async ({ task }) => state.released ? { ...(queues.get(task.id)[0] ?? { kind: 'done' }), taskId: task.id, expiresAt: Date.now() + 60000 }
+        prepare: async ({ task }) => state.released ? { definitionId: 1001, maxBuy: 800, ...(queues.get(task.id)[0] ?? { kind: 'done' }), taskId: task.id, expiresAt: Date.now() + 60000 }
           : { kind: 'wait', until: Date.now() + 500 },
         preflight: async () => ({ ready: true, balance: 10000, freeSlots: 10 }),
         send: async ({ action }) => {
           calls.push({ taskId: action.taskId, kind: action.kind });
-          if (action.kind === 'search') return { status: 'confirmed', sent: true };
+          if (action.kind === 'search') return { status: 'confirmed', sent: true, responseCount: 0 };
           state.pendingBuy = true; await new Promise(resolve => { state.releaseBuy = resolve; });
           return { status: 'confirmed', receipt: { itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId, coins: action.coins } };
         },
-        accept: async ({ action }) => { queues.get(action.taskId).shift(); },
+        accept: async ({ action }) => { queues.get(action.taskId).shift(); return { acceptedCount: 0 }; },
         reconcile: async () => ({ status: 'unknown', receipt: null }), verifySession: async () => ({ ready: true }),
         inspectHolding: async h => ({ eligible: true, itemId: h.itemId, definitionId: h.definitionId, pile: 'unassigned' }),
       };
       const runtime = api.createMarketTaskRuntime({ context: service.context, enabled: true, createScheduler: async () => {
         state.factoryCalls = (state.factoryCalls ?? 0) + 1;
+        if (state.factoryCalls === 1) await new Promise(resolve => { state.releaseFactory = resolve; });
         return api.createMarketTaskScheduler({ taskStore: service, coordinator, provider, enabled: true, id: () => `request-${++requestSerial}`, random: () => 0 });
       } });
       state.runtime = runtime;
@@ -66,6 +67,8 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       state.panel.open();
     });
     const host = page.locator('#scheduler-test'), view = host.locator('.market-task-manager');
+    const background = page.locator('#scheduler-test-market-status');
+    assert.equal(await background.isVisible(), false);
     await host.locator('#tab-trading').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
     assert.match(await view.locator('#market-coordination-status').innerText(), /搜索 1h 0/);
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), 0);
@@ -75,20 +78,51 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       await view.locator(`[data-action=start][data-id="${taskId}"]`).click();
       assert.match(await view.locator('#confirmBody').innerText(), /按已保存/); await view.locator('#confirmYes').click();
     };
-    await start('task-1'); await view.locator('[data-action=pause][data-id="task-1"]').waitFor();
+    await start('task-1');
+    await page.waitForFunction(() => !!globalThis.marketSchedulerUI.releaseFactory);
+    assert.match(await background.locator('output').innerText(), /Starting trading/);
+    // An approved task belongs to the page, not the currently visible FCAT tab.
+    await host.locator('#tab-sbc').click();
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.close());
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), true);
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.element.remove());
+    assert.equal(await background.isVisible(), true);
+    await page.evaluate(() => globalThis.marketSchedulerUI.releaseFactory());
+    await page.waitForFunction(() => globalThis.marketSchedulerUI.runtime.inspect().tasks.some(row => row.state === 'waiting'));
+    assert.match(await background.locator('output').innerText(), /Trading active/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await background.evaluate(node => { const r=node.getBoundingClientRect(); return r.width>0 && r.left>=0 && r.right<=globalThis.innerWidth && node.scrollWidth<=r.width+1; }), true);
+    await page.screenshot({ path: path.join(directory, 'market-background-mobile.png') });
+    await page.setViewportSize({ width: 1366, height: 1000 });
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.open());
+    await host.locator('#tab-trading').click();
+    await view.locator('[data-action=pause][data-id="task-1"]').waitFor();
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.factoryCalls), 1);
     await start('task-2'); await view.locator('[data-action=pause][data-id="task-2"]').waitFor();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.healthChecks), 1);
     assert.match(await view.locator('#market-session-status').innerText(), /Session maintenance active.*Last online/);
     await view.locator('[data-action=pause][data-id="task-1"]').click();
     await page.waitForFunction(() => globalThis.marketSchedulerUI.runtime.inspect().tasks.find(t => t.id === 'task-1')?.state === 'paused');
+    await host.locator('#tab-sbc').click();
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.close());
     await page.evaluate(() => { globalThis.marketSchedulerUI.released = true; });
     await page.waitForFunction(() => !globalThis.marketSchedulerUI.runtime.inspect().busy);
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.open());
+    await host.locator('#tab-trading').click();
+    await view.locator('#toast').getByText(/任务已加载/).waitFor();
     assert.match(await view.locator('#market-session-status').innerText(), /Session maintenance stopped/);
+    assert.match(await view.locator('#market-search-status').innerText(), /EA 1001.*Buy limit 800.*Returned 0.*Eligible 0/);
     assert.deepEqual(await page.evaluate(() => globalThis.marketSchedulerUI.calls), [{ taskId: 'task-2', kind: 'search' }]);
     await start('task-1'); await page.waitForFunction(() => globalThis.marketSchedulerUI.pendingBuy);
-    await view.locator('[data-action=stop][data-id="task-1"]').click();
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.close());
+    // A real trusted click outside the closed panel revokes all future sends.
+    await background.getByRole('button', { name: 'Pause all' }).click();
     await page.evaluate(() => globalThis.marketSchedulerUI.releaseBuy());
     await page.waitForFunction(() => !globalThis.marketSchedulerUI.runtime.inspect().busy);
+    assert.match(await background.locator('output').innerText(), /Trading paused/);
+    await page.evaluate(() => globalThis.marketSchedulerUI.panel.open());
+    await view.locator('#toast').getByText(/任务已加载/).waitFor();
+    await view.locator('[data-action=stop][data-id="task-1"]').click();
     await view.locator('[data-action=detail][data-id="task-1"]').locator('..').locator('..').getByText('1 / 0 / 0', { exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => globalThis.marketSchedulerUI.calls.map(c => c.kind)), ['search', 'search', 'buy']);
     await view.locator('#reloadTasks').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
@@ -139,6 +173,6 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), false);
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);
-    console.log('Market scheduler Chrome passed: explicit UI approvals, enqueue second task, independent pause, shared cooldown, stop during simulated buy, exact receipt retained, explicit holding handoff without EA writes, live counts/archive, desktop/390px; no real requests.');
+    console.log('Market scheduler Chrome passed: tab switch/closed/detached panel retains one runtime, empty search completes while hidden, persistent Pause all settles in-flight receipt without next move, explicit approvals/enqueue/handoff, desktop/390px; no real requests.');
   } finally { await page.close(); }
 }
