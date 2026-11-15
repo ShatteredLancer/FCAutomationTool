@@ -1,5 +1,6 @@
 // Local wall times are resolved in the saved IANA zone. Missing/repeated DST
 // times fail explicitly; no timer or execution authority lives in this module.
+import { marketTaskAutoLists } from './market-task-policy.js';
 const fail = (reason = 'INVALID') => { throw Error(`MARKET_SCHEDULE_${reason}`); };
 const DAY = 86400000;
 const stamp = n => Number.isSafeInteger(n) && n >= 0;
@@ -70,6 +71,7 @@ export function advanceMarketSchedule(state, task, now) {
  return row;
 }
 export function marketScheduleGate(task,row,kind,holding,now){
+ if(kind==='list'&&!marketTaskAutoLists(task))return false;
  if(!task.schedule)return true;if(!row)return false;
  if(['search','buy'].includes(kind))return !row.buyClosed&&now>=row.startAt&&(row.endAt===null||now<row.endAt);
  if(kind==='claim')return now>=row.sellAt;
@@ -81,8 +83,8 @@ export function marketScheduleGate(task,row,kind,holding,now){
 export function marketScheduleWake(task,row,holdings,now,canRelist=()=>true){
  if(!task.schedule)return now;
  const held=holdings.filter(h=>h.taskId===task.id&&h.phase!=='sold');
- if(held.some(h=>['held','listed'].includes(h.phase)||h.phase==='unsold'&&canRelist(h)))return now;
- const times=held.filter(h=>h.phase==='transfer').map(h=>h.sellAt??row.sellAt);
+ if(held.some(h=>['held','listed'].includes(h.phase)||marketTaskAutoLists(task)&&h.phase==='unsold'&&canRelist(h)))return now;
+ const times=marketTaskAutoLists(task)?held.filter(h=>h.phase==='transfer').map(h=>h.sellAt??row.sellAt):[];
  if(task.mode==='sell'){
   if(task.owned.some(p=>!holdings.some(h=>h.itemId===p.itemId)))times.push(row.sellAt);
  }else if(!row.buyClosed)times.push(row.startAt);

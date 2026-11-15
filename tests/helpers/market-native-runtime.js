@@ -4,7 +4,7 @@ import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.
 export function marketNativeRuntime() {
   const { root } = executionRuntime(), calls = [], club = [], transfer = [], unassigned = [], market = [];
   let time = 1000000, coins = 10000;
-  const hooks = {}, observable = value => ({ observe(_owner, callback) { callback(this, value); }, unobserve() {} });
+  const dirty = new Set(), hooks = {}, observable = value => ({ observe(_owner, callback) { callback(this, value); }, unobserve() {} });
   Object.assign(root.ItemPile, { PURCHASED: 6, TRANSFER: 5, CLUB: 7 });
   root.MAX_NEW_ITEMS = 100; root.GameCurrency = { COINS: 'COINS' }; root.TradeAccessLevel = { ALLOWED: 1 };
   root.SearchType = { PLAYER: 'player' }; root.SearchCategory = { ANY: 'any' };
@@ -45,14 +45,15 @@ export function marketNativeRuntime() {
         data: { items: market.filter(c => c.definitionId === criteria.defId[0] && c.auction.buyNowPrice <= criteria.maxBuy) } });
     }
     clearTransferMarketCache() {}
-    requestUnassignedItems() { calls.push(['read', 'unassigned']); return observable({ success: true, status: 200, response: { items: unassigned } }); }
-    requestTransferItems() { calls.push(['read', 'transfer']); return observable({ success: true, status: hooks.readStatus ?? 200 }); }
+    requestUnassignedItems() { calls.push(['read', 'unassigned']); dirty.delete(6); return observable({ success: true, status: 200, response: { items: unassigned } }); }
+    requestTransferItems() { calls.push(['read', 'transfer']); dirty.delete(5); return observable({ success: true, status: hooks.readStatus ?? 200 }); }
     requestMarketData() { return observable({ success: true, status: 200 }); }
     refreshAuctions(items) { calls.push(['read', 'auctions']); hooks.auctions?.(items); return observable({ success: true, status: 200 }); }
   }
   root.services.Item = new ItemService();
   Object.assign(root.repositories.Item, { getUnassignedItems: () => unassigned, getTransferItems: () => transfer,
-    getPileSize: () => 100, numItemsInCache: pile => pile === 5 ? transfer.length : unassigned.length, setDirty() {} });
+    getPileSize: () => 100, numItemsInCache: pile => pile === 5 ? transfer.length : unassigned.length,
+    setDirty(pile) { dirty.add(pile); }, isDirty: pile => dirty.has(pile) });
   const digest = root.crypto.subtle.digest;
   const hashes = new Map(FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [String(ItemService.prototype[name]).replace(/\r\n/g, '\n'), hash]));
   root.crypto.subtle.digest = async (algorithm, bytes) => {

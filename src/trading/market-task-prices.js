@@ -1,6 +1,7 @@
 import { purchasePriceCap, validPublicPrice } from '../gallery/public-price-policy.js';
 import { roundGalleryListingPrice } from '../gallery/listing-candidates.js';
 import { marketRatingRow, completeMarketRatingRow } from './market-rating-prices.js';
+import { marketTaskAutoLists } from './market-task-policy.js';
 
 const fail = reason => { throw Error(`MARKET_${reason}`); };
 
@@ -30,8 +31,9 @@ export function marketTaskPrice({ side, task, player = null, quotes, source, def
   context, now, priceTiers, limits = null, rating = null }) {
   if (!['buy', 'sell'].includes(side)) fail('PRICE_INVALID');
   const buy = side === 'buy', settings = task.settings;
+  if (!buy && !marketTaskAutoLists(task)) fail('HOLD_ONLY');
   const ratingRow=marketRatingRow(task,rating);
-  if(task.ratingPrices&&!completeMarketRatingRow(ratingRow))fail('RATING_PRICE_UNAVAILABLE');
+  if(task.ratingPrices&&!completeMarketRatingRow(ratingRow,task))fail('RATING_PRICE_UNAVAILABLE');
   const override = buy && player?.cap != null ? player.cap : null;
   const fixed = Boolean(ratingRow) || override !== null || (buy ? settings.buyRule : settings.sellRule) === 'fixed';
   const reference = fixed ? null : marketTaskReference({ quotes, source, definitionId, context, now });

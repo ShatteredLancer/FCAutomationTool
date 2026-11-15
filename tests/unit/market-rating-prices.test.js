@@ -5,6 +5,13 @@ import { taskCandidateAllowed } from '../../src/trading/task-catalog.js';
 const rows = () => ({83:{buy:800,sell:1000},84:{buy:1100,sell:1400},85:{buy:null,sell:null}});
 const input = () => ({name:'Rating rules',mode:'filter',settings:{...defaultTradingTaskSettings(),ratingMin:83,ratingMax:85},players:[],owned:[],excluded:[],ratingPrices:rows()});
 const priceTiers=[{min:100000,inc:1000},{min:50000,inc:500},{min:10000,inc:250},{min:1000,inc:100},{min:0,inc:50}];
+it('only requires a buy price for hold-only rating rows and prohibits computing a sell action',()=>{
+ const t=input();t.settings.afterBuy='hold';t.ratingPrices={84:{buy:1100,sell:null}};
+ const task=normalizeTradingTaskInput(t);expect(taskCandidateAllowed({rating:84},task)).toBe(true);
+ expect(marketTaskPrice({task,priceTiers,side:'buy',rating:84}).price).toBe(1100);
+ expect(()=>marketTaskPrice({task,priceTiers,side:'sell',rating:84})).toThrow('MARKET_HOLD_ONLY');
+ expect(()=>normalizeTradingTaskInput({...t,settings:{...t.settings,afterBuy:'list'}})).toThrow('TASKS_RATING_PRICES_INVALID');
+});
 it('keeps legacy shape and independent mixed rules; inactive rows persist but do not become candidates',()=>{
  const legacy=input();delete legacy.ratingPrices;expect(normalizeTradingTaskInput(legacy)).not.toHaveProperty('ratingPrices');
  const t=input();t.settings.ratingMin=84;const task=normalizeTradingTaskInput(t);

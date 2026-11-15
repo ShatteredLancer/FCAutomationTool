@@ -170,6 +170,29 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await view.locator('#confirmYes').click(); await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
     assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.stopped), null);
+    // Reproduce both stopped rows plus a retained global pause. Restart stays
+    // explicit; clearing the pause and editing do not send or erase history.
+    await view.locator('#taskFilter').selectOption('active');
+    await page.evaluate(async () => {
+      const s = globalThis.marketSchedulerUI;
+      await s.service.action({ ...await s.service.read(), id: 'task-2', action: 'stop' });
+      await s.coordinator.withOwner(o => o.control(t => t.checkpoint(l => { l.stopped = 'manual'; })));
+    });
+    await view.locator('#reloadTasks').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
+    assert.equal(await view.locator('[data-action=start][data-id="task-2"]').innerText(), 'Restart');
+    assert.equal(await view.locator('[data-action=edit][data-id="task-2"]').isVisible(), true);
+    await view.locator('[data-action=start][data-id="task-2"]').click();
+    assert.match(await view.locator('#confirmBody').innerText(), /Holdings, spending, elapsed time and receipts are retained/);
+    await view.locator('#confirmYes').click();
+    await view.locator('#toast').getByText(/全局已暂停/).waitFor();
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.service.read()).store.tasks.find(t => t.id === 'task-2').state), 'stopped');
+    await view.locator('#market-release').click(); await view.locator('#confirmYes').click();
+    await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
+    await start('task-2');
+    await page.waitForFunction(async () => (await globalThis.marketSchedulerUI.service.read()).store.tasks.find(t => t.id === 'task-2').state === 'paused' && !globalThis.marketSchedulerUI.runtime.inspect().busy);
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.holdings[0].cost), 800);
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), false);
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);

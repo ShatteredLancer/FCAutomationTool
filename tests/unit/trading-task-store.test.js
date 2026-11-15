@@ -8,6 +8,14 @@ function fixture(){let account={...context},serial=0;const data=new Map([['legac
  const contextFn=()=>({...account});const store=createTradingTaskStore({context:contextFn,get:async(k,f)=>structuredClone(data.get(k)??f),set,locks:{request:async(_k,_o,fn)=>fn()},id:()=>`task-${++serial}`,now:()=>100});
  return {store,data,set,switchAccount:v=>{account={...context,...v}}};}
 describe('market task configuration and isolated persistence',()=>{
+ it('defaults old tasks to auto list and preserves hold-only rules across save, read and copy',async()=>{
+  const f=fixture(),legacy=input();delete legacy.settings.afterBuy;
+  let s=await f.store.saveTask({...await f.store.read(),input:legacy});expect(s.store.tasks[0].settings.afterBuy).toBe('list');
+  s=await f.store.saveTask({...s,id:'task-1',input:input({settings:{...defaultTradingTaskSettings(),afterBuy:'hold'},ratingPrices:{84:{buy:1100,sell:null}}})});
+  s=await f.store.action({...s,id:'task-1',action:'copy'});
+  expect((await f.store.read()).store.tasks.every(t=>t.settings.afterBuy==='hold'&&t.ratingPrices[84].sell===null)).toBe(true);
+  expect(()=>f.store.saveTask({...s,id:'task-1',input:input({settings:{...defaultTradingTaskSettings(),afterBuy:'unexpected'}})})).toThrow();
+ });
  it('roundtrips and copies per-rating rules, and explicitly removes them when switched off',async()=>{
   const f=fixture(),ratingPrices={84:{buy:1100,sell:1400}};
   let s=await f.store.saveTask({...await f.store.read(),input:input({ratingPrices})});

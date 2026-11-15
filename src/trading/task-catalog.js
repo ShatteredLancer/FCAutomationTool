@@ -6,7 +6,7 @@ export function taskMatches(card,settings){return Number.isSafeInteger(card.rati
  &&(settings.quality==='all'||card.quality===settings.quality)
  &&[['league','leagueId'],['nation','nationId'],['club','teamId'],['position','preferredPosition']].every(([key,field])=>settings[key]===null||card[field]===settings[key]);}
 export const taskExclusion=(card,excluded)=>excluded.find(e=>e.type==='version'?e.id===card.definitionId:card.playerId!=null&&e.id===card.playerId);
-export const taskCandidateAllowed=(card,task)=>taskMatches(card,task.settings)&&(!task.ratingPrices||completeMarketRatingRow(marketRatingRow(task,card.rating)))&&!taskExclusion(card,task.excluded)
+export const taskCandidateAllowed=(card,task)=>taskMatches(card,task.settings)&&(!task.ratingPrices||completeMarketRatingRow(marketRatingRow(task,card.rating),task))&&!taskExclusion(card,task.excluded)
  &&(!task.excluded.some(e=>e.type==='player')||Number.isSafeInteger(card.playerId)&&card.playerId>0);
 export async function readTaskCatalogPage({rows,settings=null,query='',cursor=0,isCurrent=()=>true,yieldControl=yieldTaskCatalog}){
  const search=query.trim().toLocaleLowerCase(),page=[];let next=cursor,scanned=0;

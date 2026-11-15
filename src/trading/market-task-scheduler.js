@@ -17,12 +17,15 @@ const defaultWait = (ms, signal) => new Promise(resolve => {
 });
 const codeOf = result => Number.isSafeInteger(result?.code) && result.code >= 100 && result.code <= 99999 ? result.code : null;
 const stopReason = result => result?.category === 'captcha' ? 'captcha'
+  : result?.category === 'throttle' ? 'throttle'
+  : result?.category === 'purchase-denied' ? 'manual'
+  : ['offer-rejected','insufficient-funds','destination-full'].includes(result?.category) ? null
   : codeOf(result) === 401 ? 'authentication'
     : [403, 427, 429, 512, 521, 426, 459].includes(codeOf(result)) || result?.category === 'market-unavailable' ? 'throttle' : null;
 
 // P2 executor contract. No default/real EA provider is installed. prepare may
 // read public quotes outside native locks; preflight/send/reconcile must use
-// the audited P3 adapter. One turn sends at most ONE request. Persisting task
+// the audited P3 adapter. A turn may chain one search hit to one buy. Persisting task
 // state never grants a permit; only this live, explicitly approved run does.
 export function createMarketTaskScheduler({ taskStore, coordinator, provider = null, enabled = false,
   now = () => Date.now(), random = Math.random, id = () => globalThis.crypto.randomUUID(),
@@ -35,6 +38,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   let tasks = new Map(), phase = 'idle', currentTask = null, lastReason = null, errorCounts = new Map();
   const listeners = new Set();
   let traffic=null, lastSearch=null;
+  let activeSession = null, reopening = false;
   // One maintenance check for the approved account owner, never one per task.
   // Successful native reads postpone it; this is not a promise of EA renewal.
   let sessionHealth = { state: 'idle', lastOnlineAt: null };
@@ -161,8 +165,11 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     if (reason) {
       await turn.checkpoint(state => { state.stopped = reason; });
       await provider.stopTraffic?.(reason);
+      // Keep the visible shared-pause controls current even when this was the
+      // last actionable task and there will be no next scheduler iteration.
+      if (provider.traffic) { try { traffic = await provider.traffic(); } catch { /* Durable pause remains authoritative. */ } }
       lastReason = reason === 'authentication' ? 'MARKET_AUTHENTICATION' : reason === 'captcha' ? 'MARKET_CAPTCHA'
-        : reason === 'manual' ? 'MARKET_ERROR_LIMIT' : 'MARKET_THROTTLED';
+        : reason === 'manual' ? result?.category === 'purchase-denied' ? 'MARKET_PURCHASE_DENIED' : 'MARKET_ERROR_LIMIT' : 'MARKET_THROTTLED';
       for (const row of tasks.values()) if (actionable(row)) Object.assign(row, { state: 'paused', reason: lastReason });
       diagnostic(turn.inspect(), lastReason, code); publish();
     }
@@ -210,6 +217,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     tasks = new Map(taskIds.map(taskId => [taskId, { id: taskId, state: 'queued', reason: null, nextAt: 0, startedAt }])); publish();
     try {
       const result = await coordinator.withOwner(async session => {
+        activeSession = session;
         try {
         while (!disposed && [...tasks.values()].some(actionable)) {
           current();
@@ -321,11 +329,13 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           try {
             const round = await session.turn([selected], async turn => {
               if (turn.recoveryOnly) { stateOf(selected, 'review', 'MARKET_RECOVERY_REQUIRED'); return; }
+              const executionScope = Object.freeze({});
               try { await bound(selected, async ({ task: fresh, settings }) => {
+                for (let hitStep=0; hitStep<2; hitStep++) {
                 if (!allowed(selected) || !validAt(action)) return;
                 if(!marketScheduleGate(fresh,tasks.get(selected).schedule,action.kind,action,now())) {stateOf(selected,'queued');return;}
                 phase = 'preflight'; publish();
-                const preflight = await provider.preflight({ task: fresh, settings, action: structuredClone(action), ledger: turn.inspect() }); current();
+                const preflight = await provider.preflight({ task: fresh, settings, action: structuredClone(action), ledger: turn.inspect(), executionScope }); current();
                 if (!allowed(selected)) return;
                 if (await applyError(turn, preflight)) return;
                 if (preflight?.ready !== true) { stateOf(selected, 'paused', 'MARKET_PREFLIGHT_BLOCKED'); return; }
@@ -366,15 +376,22 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   && !fresh.ratingPrices && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
                 if(fresh.ratingPrices&&['search','buy','list'].includes(action.kind)&&!(action.previousTradeId&&fresh.settings.relist==='original')){
                   const prices=marketRatingRow(fresh,action.rating);
-                  if(!completeMarketRatingRow(prices)||action.kind==='search'&&action.maxBuy>prices.buy||action.kind==='buy'&&command.coins>prices.buy||action.kind==='list'&&command.coins!==prices.sell)throw Error('MARKET_RATING_PRICE_UNAVAILABLE');
+                  if(!completeMarketRatingRow(prices,fresh)||action.kind==='search'&&action.maxBuy>prices.buy||action.kind==='buy'&&command.coins>prices.buy||action.kind==='list'&&command.coins!==prices.sell)throw Error('MARKET_RATING_PRICE_UNAVAILABLE');
                 }
                 phase = action.kind; publish();
                 if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
-                else await turn.checkpoint(state => reserveMarketWrite(state, command, {
+                else {
+                  const funds = {
                   balance: preflight.balance, freeSlots: preflight.freeSlots, reserve: settings.reserve,
                   totalCap: settings.totalCap, taskCap: fresh.settings.taskCap, spendCap: fresh.settings.spendCap,
                   perVersion: fresh.mode === 'fixed' ? fresh.players.find(p => p.definitionId === command.definitionId)?.qty ?? null : fresh.settings.perVersion,
-                }));
+                  };
+                  // A predictable limit is not a failed durable checkpoint.
+                  // Validate on a copy before persisting; the same guard runs
+                  // again inside the checkpoint under these unchanged locks.
+                  if (command.kind === 'buy') reserveMarketWrite(turn.inspect(), command, funds);
+                  await turn.checkpoint(state => reserveMarketWrite(state, command, funds));
+                }
                 // This is the final synchronous boundary before invoking send.
                 // Cancelling during GM persistence is a definite no-send.
                 if (!allowed(selected) || !validAt(action)) {
@@ -413,11 +430,12 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   if (!allowed(selected)) throw Error('MARKET_USER_STOP');
                   clockBoundary(row);
                 };
-                try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest }); }
+                try { response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest, executionScope }); }
                 catch (error) { boundaryFailure = safeReason(error);trafficRetryAt=error.retryAt;response = { status: 'unknown', receipt: null, code: codeOf(error) }; }
                 if (guarded && !dispatched) {
                   response = { ...response, sent: false, status: 'rejected', receipt: null };
-                  if (allowed(selected)) stateOf(selected, boundaryFailure==='MARKET_TRAFFIC_WAIT'?'waiting':boundaryFailure==='MARKET_SCHEDULE_WINDOW_CLOSED'?'queued':'paused', boundaryFailure ?? 'MARKET_NOT_SENT',boundaryFailure==='MARKET_TRAFFIC_WAIT'?Math.max(now()+1000,trafficRetryAt??0):0);
+                  if(boundaryFailure==='MARKET_SEARCH_HIT_CHANGED'){provider.discardOffers?.(selected);}
+                  if (allowed(selected)) stateOf(selected, boundaryFailure==='MARKET_SEARCH_HIT_CHANGED'?'queued':boundaryFailure==='MARKET_TRAFFIC_WAIT'?'waiting':boundaryFailure==='MARKET_SCHEDULE_WINDOW_CLOSED'?'queued':'paused', boundaryFailure ?? 'MARKET_NOT_SENT',boundaryFailure==='MARKET_TRAFFIC_WAIT'?Math.max(now()+1000,trafficRetryAt??0):0);
                 }
                 current();
                 if (action.kind === 'search') {
@@ -430,6 +448,9 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 }
                 if(task.schedule&&action.kind==='move'&&response?.status==='confirmed'&&preflight.freeSlots===1)await closeBuy(turn,selected);
                 const halted = await applyError(turn, response);
+                if (!halted && ['insufficient-funds','destination-full'].includes(response?.category)) {
+                  stateOf(selected, 'paused', response.category === 'insufficient-funds' ? 'MARKET_INSUFFICIENT_FUNDS' : 'MARKET_DESTINATION_FULL');
+                }
                 if (!halted && (response?.status === 'unknown' || action.kind === 'search' && response?.sent !== true && allowed(selected) && !['MARKET_SCHEDULE_WINDOW_CLOSED','MARKET_TRAFFIC_WAIT'].includes(boundaryFailure))) {
                   stateOf(selected, action.kind === 'search' ? 'paused' : 'review', 'MARKET_RESPONSE_UNCONFIRMED');
                 }
@@ -450,8 +471,19 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason, codeOf(response), searchDetails);
                 current();
                 if (allowed(selected)&&boundaryFailure!=='MARKET_TRAFFIC_WAIT') stateOf(selected, 'queued');
+                if (hitStep !== 0 || action.kind !== 'search' || response?.status !== 'confirmed'
+                  || !allowed(selected) || !accepted?.acceptedCount || !provider.nextPurchase) break;
+                const hit = provider.nextPurchase({task:fresh,settings,ledger:turn.inspect()});
+                if (!hit || hit.kind !== 'buy' || !validAt(hit)) break;
+                action=structuredClone(hit);
+                }
               }); } catch (error) {
+                if(error.message==='MARKET_SEARCH_HIT_CHANGED'){provider.discardOffers?.(selected);stateOf(selected,'queued');return;}
                 if (await applyError(turn, error)) return;
+                if (allowed(selected) && action.kind === 'buy' && provider.finishPurchaseBatch?.({ task, ledger: turn.inspect(), reason: error.message })) {
+                  if (error.message === 'MARKET_TRANSFER_FULL' && task.schedule) await closeBuy(turn, selected);
+                  stateOf(selected, 'queued'); return;
+                }
                 if(error.message==='MARKET_SCHEDULE_WINDOW_CLOSED'){stateOf(selected,'queued');return;}
                 if(error.message==='MARKET_TRANSFER_FULL'&&task.schedule){await closeBuy(turn,selected);stateOf(selected,'waiting','MARKET_TRANSFER_FULL',now()+1000);return;}
                 if (['TASKS_AUTHORIZATION_CHANGED', 'TASKS_NOT_FOUND'].includes(error.message)) stateOf(selected, 'paused', error.message);
@@ -462,7 +494,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           } catch (error) { stateOf(selected, 'paused', safeReason(error)); throw error; }
         }
         return inspect();
-        } finally { await syncClocks(session, true); }
+        } finally { try { await syncClocks(session, true); } finally { activeSession = null; } }
       });
       if (result?.status === 'busy') { lastReason = 'MARKET_BUSY'; pauseAll(); }
     } catch (error) {
@@ -474,6 +506,59 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       busy = false; executing = false; phase = 'idle'; currentTask = null; wake?.abort(); publish();
     }
     return inspect();
+  }
+
+  // Restart prepares the same task for a separate explicitly approved run or
+  // enqueue. It never resets spending, elapsed time, schedules or receipts.
+  async function reopen({ approved = false, snapshot: requested, taskId } = {}) {
+    ensureProvider();
+    if (approved !== true) throw Error('MARKET_APPROVAL_REQUIRED');
+    if (reopening || busy && !activeSession) throw Error('MARKET_BUSY');
+    if (actionable(tasks.get(taskId) ?? {})) throw Error('MARKET_TASK_SELECTION_INVALID');
+    if (!same(requested?.context, taskStore.context())) throw Error('TASKS_CONTEXT_CHANGED');
+    const session = activeSession, ticket = controlGeneration;
+    if (!session) { runContext = structuredClone(requested.context); busy = true; phase = 'restart-check'; }
+    reopening = true; publish();
+    const check = () => {
+      current();
+      if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
+    };
+    const prepare = owner => owner.control(async turn => {
+      check();
+      if (turn.inspect().intents.some(i => i.phase === 'pending')) throw Error('MARKET_RECOVERY_REQUIRED');
+      if (turn.inspect().stopped) throw Error('MARKET_STOPPED');
+      const shared = await provider.traffic?.(); check();
+      if (shared?.ledger.stopped) throw Error('MARKET_TRAFFIC_STOPPED');
+      const result = await taskStore.reopen({ ...requested, taskId }, async task => {
+        check();
+        const clock = turn.inspect().clocks?.find(c => c.taskId === taskId);
+        if (task.state !== 'stopped' && !task.stopRequested && !clock?.stopped) throw Error('MARKET_TASK_SELECTION_INVALID');
+        if (task.settings.runMinutes !== null && (clock?.elapsedMs ?? 0) >= task.settings.runMinutes * 60000) throw Error('MARKET_RESTART_TIME_LIMIT');
+        if (clock?.lease && clock.lease.until > now()) throw Error('MARKET_BUSY');
+        if (clock?.stopped) await turn.checkpoint(state => {
+          check(); const saved = state.clocks.find(c => c.taskId === taskId);
+          saved.stopped = false; saved.lease = null; // An abandoned lease remains charged.
+        });
+        check();
+      });
+      check(); tasks.delete(taskId);
+      return { ...result, coordination: { context: structuredClone(runContext), ledger: turn.inspect(), traffic: shared ?? null } };
+    });
+    const reportRestart = reason => {
+      try { Promise.resolve(onDiagnostic({ area: 'trading', event: 'task-scheduler', phase: 'restart-check',
+        status: reason ? 'blocked' : 'observed', ...(reason ? { reason } : {}), requestedCount: 1 })).catch(() => {}); }
+      catch { /* Logging never grants or revokes a restart. */ }
+    };
+    try {
+      const result = session ? await prepare(session) : await coordinator.withOwner(prepare);
+      if (result?.status === 'busy') throw Error('MARKET_BUSY');
+      check(); reportRestart(null); return result;
+    } catch (error) { reportRestart(safeReason(error)); throw error; }
+    finally {
+      reopening = false;
+      if (!session) { busy = false; phase = 'idle'; }
+      publish();
+    }
   }
 
   // Explicit read-only recovery. Never turns a recovery click into a new send,
@@ -523,6 +608,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
         await provider.clearTraffic?.();
         traffic=await provider.traffic?.()??null;
         await turn.checkpoint(state => { state.stopped = null; });
+        lastReason = null;
         return turn.inspect();
       }));
     } finally { busy = false; phase = 'idle'; publish(); }
@@ -563,7 +649,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       })));
     } finally { busy = false; phase = 'idle'; publish(); }
   }
-  return Object.freeze({ run, enqueue, recover, acknowledgeStop, handoff, inspect, pause, stop, pauseAll,
+  return Object.freeze({ run, enqueue, reopen, recover, acknowledgeStop, handoff, inspect, pause, stop, pauseAll,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() { disposed = true; pauseAll(); } });
 }

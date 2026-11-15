@@ -16,7 +16,8 @@ async function fixture(mode = 'sell', shared = false, rating = 84) {
     await f.hooks.persist?.(key, value); data.set(key, structuredClone(value));
   };
   const locks = { request: async (name, _options, callback) => callback({ name, mode: 'exclusive' }) };
-  const store = createTradingTaskStore({ context: () => context, get, set, locks, now: f.now, id: () => 'sell' });
+  let taskSequence=0;
+  const store = createTradingTaskStore({ context: () => context, get, set, locks, now: f.now, id: () => taskSequence++===0?'sell':`task${taskSequence}` });
   const coordinator = createMarketCoordinator({ context: () => context, get, set, locks });
   const traffic=createFc27MarketTraffic({context:()=>context,get,set,locks,readSettings:async()=>(await store.read()).store.settings,now:f.now,sleep:f.sleep});
   if(shared)registerFc27MarketTraffic(f.root,traffic);
@@ -33,6 +34,223 @@ async function fixture(mode = 'sell', shared = false, rating = 84) {
     transport: {}, liveEnabled: true, now: f.now, createNative });
   return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative,traffic, diagnosticLog };
 }
+async function batchFixture(afterBuy = 'list', settings = {}) {
+  const f = await fixture('filter', true);
+  const task = f.snapshot.store.tasks[0];
+  const { name, mode, players, owned, excluded } = task;
+  let snapshot = await f.store.saveTask({ ...f.snapshot, id: task.id, input: { name, mode, players, owned, excluded,
+    settings: { ...task.settings, afterBuy, perVersion: 3, ...settings } } });
+  snapshot = await f.store.saveSettings({ ...snapshot, settings: { ...snapshot.store.settings, perSearch: 3 } });
+  f.makeCard(103, 901, 'market', 700); f.makeCard(101, 901, 'market', 500); f.makeCard(102, 901, 'market', 600);
+  let ticks = 0, overflow = null;
+  f.runtime.subscribe(s => {
+    // Presentation exceptions are intentionally isolated by the runtime. End a
+    // broken synthetic loop explicitly so the workflow assertions can fail.
+    if (++ticks === 2001) { overflow = { tasks:s.tasks, calls:f.calls.slice(-15) }; f.runtime.pauseAll(); }
+    const active = s.tasks.filter(t => ['queued','waiting','running'].includes(t.state));
+    // Do not make a sleeping task ready while another task still has a turn.
+    const at = active.length && active.every(t => t.state === 'waiting')
+      ? Math.min(...active.map(t => t.nextAt)) : null;
+    if (at > f.now()) f.advance(at - f.now());
+  });
+  return { ...f, snapshot, overflow: () => overflow };
+}
+it.each(['list', 'hold'])('finishes the search purchase batch before moving or listing (%s)', async afterBuy => {
+  const f = await batchFixture(afterBuy); let stopped = false;
+  f.hooks.persist = (_key, value) => {
+    if (!stopped && value.ledger?.holdings.filter(h => h.phase === (afterBuy === 'list' ? 'listed' : 'transfer')).length === 3) {
+      stopped = true; f.runtime.pauseAll();
+    }
+  };
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  const operations = f.calls.filter(c => ['search','bid','move','list'].includes(c[0]));
+  expect(operations.slice(0,4)).toEqual([['search',901,800],['bid',101,500],['bid',102,600],['bid',103,700]]);
+  expect(operations.filter(c => c[0] === 'search')).toHaveLength(1);
+  expect(operations.filter(c => c[0] === 'move')).toHaveLength(3);
+  expect(operations.filter(c => c[0] === 'list')).toHaveLength(afterBuy === 'list' ? 3 : 0);
+  expect((await f.coordinator.inspect()).ledger.holdings.map(h => h.cost)).toEqual([500,600,700]);
+});
+it('reserves Transfer capacity before sending another batch payment', async () => {
+  const f = await batchFixture('hold'); f.root.repositories.Item.getPileSize = () => 2;
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0])).map(c => c.slice(0,2))).toEqual([['bid',101],['move',101]]);
+  expect(f.runtime.inspect().tasks[0].reason).toBe('MARKET_TRANSFER_FULL');
+  expect((await f.coordinator.inspect()).ledger.holdings[0].phase).toBe('transfer');
+});
+it.each(['spendCap','taskCap','unassigned'])('drains confirmed batch purchases before pausing for %s', async limit => {
+  const f = await batchFixture('list', limit === 'unassigned' ? {} : { [limit]: 1000 });
+  if (limit === 'unassigned') f.root.MAX_NEW_ITEMS = 1;
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0])).map(c => c.slice(0,2))).toEqual([['bid',101],['move',101],['list',101]]);
+  expect(f.runtime.inspect().tasks[0].reason).toBe(limit === 'spendCap' ? 'MARKET_SPEND_CAP' : limit === 'taskCap' ? 'MARKET_HOLDING_CAP' : 'MARKET_FUNDS_OR_CAPACITY');
+  expect((await f.coordinator.inspect()).ledger.intents.every(i => i.phase === 'confirmed')).toBe(true);
+});
+it('continues the remaining batch after an explicit lost auction without rebidding or replacing it', async () => {
+  const f = await batchFixture('hold'); let failed = false, stopped = false;
+  f.hooks.persist = (_key, value) => {
+    if (!failed && value.ledger?.holdings.length === 1) {
+      failed = true; f.hooks.bid = () => { f.hooks.bid = null; return { success: false, status: 403, error: { code: 461 } }; };
+    }
+    if (!stopped && value.ledger?.holdings.filter(h => h.phase === 'transfer').length === 2) { stopped = true; f.runtime.pauseAll(); }
+  };
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['search','bid','move'].includes(c[0])).map(c => c.slice(0,2))).toEqual([
+    ['search',901],['bid',101],['bid',102],['bid',103],['move',101],['move',103]]);
+  const ledger = (await f.coordinator.inspect()).ledger;
+  expect(ledger.intents.filter(i => i.kind === 'buy').map(i => i.phase)).toEqual(['confirmed','rejected','confirmed']);
+});
+it.each(['unknown','authentication','denied','throttle'])('does not drain or continue when the second batch purchase is %s', async failure => {
+  const f = await batchFixture(); let armed = false;
+  f.hooks.persist = (_key, value) => {
+    if (!armed && value.ledger?.holdings.length === 1) {
+      armed = true; f.hooks.bid = () => failure === 'unknown' ? { success: false, status: 500, data: { itemIds: [102] } }
+        : { success: false, status: { authentication:401, denied:403, throttle:429 }[failure] };
+    }
+  };
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0])).map(c => c.slice(0,2))).toEqual([['bid',101],['bid',102]]);
+  const ledger = (await f.coordinator.inspect()).ledger;
+  expect(ledger.holdings[0].phase).toBe('held');
+  expect(ledger.intents.filter(i => i.kind === 'buy')[1].phase).toBe(failure === 'unknown' ? 'pending' : 'rejected');
+});
+it('pauses between batch buys and resumes by moving existing holdings before a new search', async () => {
+  const f = await batchFixture('hold'); let paused = false, finished = false;
+  f.hooks.persist = (_key, value) => {
+    if (!paused && value.ledger?.holdings.length === 1) { paused = true; f.runtime.pauseAll(); }
+  };
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0])).map(c => c[0])).toEqual(['bid']);
+  const before = f.calls.length;
+  f.hooks.persist = (_key, value) => {
+    if (!finished && value.ledger?.holdings.filter(h => h.phase === 'transfer').length === 3) { finished = true; f.runtime.pauseAll(); }
+  };
+  await f.runtime.run({ approved: true, snapshot: await f.store.read(), taskIds: ['sell'] });
+  expect(f.calls.slice(before).filter(c => ['search','bid','move','list'].includes(c[0]))[0]).toEqual(['move',101,5]);
+  expect(f.calls.filter(c => c[0] === 'bid').map(c => c[1])).toEqual([101,102,103]);
+});
+it.each(['version','expired'])('finishes confirmed cards when remaining batch candidates hit %s', async limit => {
+  const f = await batchFixture('hold', limit === 'version' ? {perVersion:1} : {}); let changed = false, stopped = false;
+  f.hooks.persist = (_key, value) => {
+    if (!changed && value.ledger?.holdings.length === 1) { changed = true; if (limit === 'expired') f.advance(301000); }
+    if (!stopped && value.ledger?.holdings[0]?.phase === 'transfer') { stopped = true; f.runtime.pauseAll(); }
+  };
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  expect(f.calls.filter(c => ['bid','move','list'].includes(c[0])).map(c => c.slice(0,2))).toEqual([['bid',101],['move',101]]);
+});
+it('gives another task turns during a search batch without mixing holdings or exceeding shared capacity', async () => {
+  const f = await batchFixture('hold'); f.makeCard(104,902); f.root.repositories.Item.getPileSize = () => 5;
+  const settings = f.snapshot.store.tasks[0].settings;
+  const snapshot = await f.store.saveTask({ ...f.snapshot, input: { name:'Other',mode:'fixed',settings,
+    players:[{definitionId:902,name:'Other card',rating:84,cap:null,qty:1}],owned:[],excluded:[] } });
+  let stopped = false;
+  f.hooks.persist = (_key,value) => {
+    if (!stopped && value.ledger?.holdings.filter(h=>h.phase==='transfer').length===4) { stopped=true; f.runtime.pauseAll(); }
+  };
+  await f.runtime.run({approved:true,snapshot,taskIds:['sell','task2']});
+  expect(f.overflow()).toBeNull();
+  const writes=f.calls.filter(c=>['bid','move','list'].includes(c[0]));
+  expect(writes.filter(c=>c[0]==='bid').map(c=>c[1]).sort()).toEqual([101,102,103,104]);
+  expect(writes.findIndex(c=>c[0]==='bid'&&c[1]===104)).toBeLessThan(writes.findIndex(c=>c[0]==='move'&&c[1]===103));
+  expect(writes.filter(c=>c[0]==='list')).toEqual([]);
+  const ledger=(await f.coordinator.inspect()).ledger;
+  expect(ledger.holdings.filter(h=>h.taskId==='sell').map(h=>h.itemId)).toEqual(['101','102','103']);
+  expect(ledger.holdings.filter(h=>h.taskId==='task2').map(h=>h.itemId)).toEqual(['104']);
+});
+it.each([false,true])('holds a native purchase on Transfer List, then lists that same item after editing (shared=%s)',async shared=>{
+ const f=await fixture('filter',shared);f.makeCard(101,901);
+ const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];
+ let snapshot=await f.store.saveTask({...f.snapshot,id:'sell',input:{name,mode,players,owned,excluded,
+   settings:{...settings,afterBuy:'hold'},ratingPrices:{84:{buy:800,sell:null}}}});
+ let stopped=false;
+ f.hooks.persist=(_key,value)=>{if(!stopped&&value.ledger?.holdings.some(h=>h.itemId==='101'&&h.phase==='transfer')){stopped=true;f.runtime.pauseAll();}};
+ await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
+ expect(f.calls.filter(c=>['bid','move','list'].includes(c[0])).map(c=>c[0])).toEqual(['bid','move']);
+ expect((await f.coordinator.inspect()).ledger.holdings).toMatchObject([{itemId:'101',phase:'transfer',cost:600}]);
+ f.hooks.persist=()=>{};
+ snapshot=await f.store.saveTask({...await f.store.read(),id:'sell',input:{name,mode,players,owned,excluded,
+   settings:{...settings,afterBuy:'list'},ratingPrices:{84:{buy:800,sell:1400}}}});
+ let listed=false;f.runtime.subscribe(s=>{if(!listed&&s.evidence?.some(e=>e.counts[1]===1)){listed=true;f.runtime.pauseAll();}});
+ await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
+ expect(f.calls.filter(c=>['bid','move','list'].includes(c[0])).map(c=>c[0])).toEqual(['bid','move','list']);
+ expect(f.calls.filter(c=>c[0]==='list')[0]).toEqual(['list',101,1400,1400,3600]);
+ expect(f.gmRequest).not.toHaveBeenCalled();
+});
+it.each(['full','budget'])('stops immediate hold-only buying at %s without listing or another payment',async limit=>{
+ const f=await fixture('filter');f.makeCard(101,901);f.makeCard(102,901);
+ if(limit==='full')f.root.repositories.Item.getPileSize=()=>2;
+ const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];
+ const snapshot=await f.store.saveTask({...f.snapshot,id:'sell',input:{name,mode,players,owned,excluded,
+   settings:{...settings,afterBuy:'hold',perVersion:null,spendCap:limit==='budget'?600:null}}});
+ await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
+ expect(f.calls.filter(c=>['bid','move','list'].includes(c[0])).map(c=>c[0])).toEqual(['bid','move']);
+ expect(f.runtime.inspect().tasks[0]).toMatchObject({state:'paused',reason:limit==='full'?'MARKET_TRANSFER_FULL':'MARKET_SPEND_CAP'});
+ expect((await f.coordinator.inspect()).ledger.holdings[0]).toMatchObject({phase:'transfer',cost:600});
+});
+it.each([false,true])('buys the first search hit in the same turn with no intervening inventory read or pacing (shared=%s)', async shared => {
+  const f=await fixture('filter',shared); const card=f.makeCard(101,901);
+  let hitAt,hitIndex,dispatchAt,between,stopped=false;
+  f.hooks.search=()=>{hitAt=f.now();hitIndex=f.calls.length;return {success:true,status:200,data:{items:[card]}};};
+  f.hooks.bid=()=>{dispatchAt=f.now();between=f.calls.slice(hitIndex,-1);return {success:false,status:403};};
+  f.runtime.subscribe(s=>{if(!stopped&&s.tasks[0]?.state==='paused'){stopped=true;}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(f.calls.filter(c=>c[0]==='bid')).toHaveLength(1);
+  expect(between).toEqual([]);expect(dispatchAt-hitAt).toBe(0);
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('rejected');
+});
+it.each(['stop','dirty','inventory','expired','storage-failure'])('blocks a hit changed at the durable buy intent: %s', async change => {
+  const f=await fixture('filter',true);f.makeCard(101,901);let changed=false,stopped=false;
+  f.hooks.persist=(_key,value)=>{
+    if(changed||!value.ledger?.intents?.some(i=>i.kind==='buy'&&i.phase==='pending'))return;
+    changed=true;
+    if(change==='stop')f.runtime.pauseAll();
+    if(change==='dirty')f.root.repositories.Item.setDirty(6);
+    if(change==='inventory')f.makeCard(301,902,'unassigned');
+    if(change==='expired')f.advance(16000);
+    if(change==='storage-failure')throw Error('synthetic persistence failure');
+  };
+  f.runtime.subscribe(s=>{
+    if(changed&&!stopped&&s.phase==='prepare'){stopped=true;f.runtime.pauseAll();}
+  });
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(changed).toBe(true);expect(f.calls.filter(c=>c[0]==='bid')).toEqual([]);
+  const intents=(await f.coordinator.inspect()).ledger.intents;
+  if(change!=='storage-failure')expect(intents.map(i=>i.phase)).toEqual(['rejected']);
+});
+it('does not let a search hit bypass a preceding shared write cooldown',async()=>{
+  const f=await fixture('filter',true);f.makeCard(101,901);let armed=false,stopped=false;
+  f.hooks.persist=async(key,value)=>{
+    if(!armed&&key.endsWith(':traffic')&&value.writes.buy===0&&value.ledger.searches.some(s=>s.status==='sent')){
+      armed=true;value.nextWriteAt=f.now()+3000;
+    }
+  };
+  f.runtime.subscribe(s=>{if(!stopped&&s.tasks.some(t=>t.reason==='MARKET_TRAFFIC_WAIT')){stopped=true;f.runtime.pauseAll();}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(armed).toBe(true);expect(f.calls.some(c=>c[0]==='bid')).toBe(false);
+});
+it('finishes each first hit before switching tasks and preserves per-task holdings',async()=>{
+  const f=await fixture('filter',true);f.makeCard(101,901);f.makeCard(102,902);
+  const settings=f.snapshot.store.tasks[0].settings;
+  const snapshot=await f.store.saveTask({...await f.store.read(),input:{name:'Second',mode:'fixed',settings,
+    players:[{definitionId:902,name:'B',rating:84,cap:null,qty:1}],owned:[],excluded:[]}});
+  let stopped=false;
+  f.runtime.subscribe(s=>{
+    if(!stopped&&s.evidence?.reduce((sum,e)=>sum+e.counts[0],0)===2){stopped=true;f.runtime.pauseAll();}
+    const at=s.tasks.find(t=>t.state==='waiting'&&t.nextAt>f.now())?.nextAt;if(at)f.advance(at-f.now());
+  });
+  await f.runtime.run({approved:true,snapshot,taskIds:['sell','task2']});
+  expect(f.calls.filter(c=>['search','bid'].includes(c[0])).map(c=>c.slice(0,2))).toEqual([
+    ['search',901],['bid',101],['search',902],['bid',102]]);
+  expect((await f.coordinator.inspect()).ledger.holdings.map(h=>[h.taskId,h.itemId])).toEqual([['sell','101'],['task2','102']]);
+});
+it('preserves an ambiguous buy receipt and never retries the same offer',async()=>{
+  const f=await fixture('filter',true);f.makeCard(101,901);
+  f.hooks.bid=()=>({success:false,status:403,error:{code:461},data:{itemIds:[101]}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+  await f.runtime.recover();
+  expect(f.calls.filter(c=>c[0]==='bid')).toHaveLength(1);
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+});
 it.each([false,true])('composes production protections/store/provider/native through selected Transfer sale (common gate=%s)', async shared => {
   const f = await fixture('sell',shared); expect(f.createNative).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
   f.runtime.subscribe(s => { if (s.evidence?.some(e => e.counts[1] === 1) && s.tasks.some(t => ['queued', 'running'].includes(t.state))) f.runtime.pauseAll(); });
@@ -56,6 +274,42 @@ it.each([false,true])('runs filter through the production composition and exact 
   expect(f.runtime.inspect().tasks[0].candidateScope).toMatchObject({ known: 1, matched: 1, complete: false });
   expect(f.gmRequest).not.toHaveBeenCalled();
   if(shared)expect((await f.traffic.inspect()).gate.hour).toBe(1);
+});
+
+it('retains distinct HTTP and EA rejection codes and buys a new offer without rebidding the lost auction', async () => {
+  const f = await fixture('filter', true); f.makeCard(101, 901);
+  const next = f.makeCard(102, 901); let searches = 0;
+  f.hooks.search = () => ({success:true,status:200,data:{items:++searches === 1 ? [f.market[0]] : [next]}});
+  f.root.UtasErrorCode = { PERMISSION_DENIED: 461 };
+  f.hooks.bid = () => { f.hooks.bid = null; f.advance(20000); return { success: false, status: 403, error: { code: 461, message: 'private-server-detail' }, data: { itemIds: [] } }; };
+  let finished=false;
+  f.runtime.subscribe(s => {
+    if (!finished && s.evidence?.some(e => e.counts[0] === 1)) { finished=true; f.runtime.pauseAll(); }
+    const at=s.tasks.find(t=>t.state==='waiting'&&t.nextAt>f.now())?.nextAt; if(at)f.advance(at-f.now());
+  });
+  await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
+  const events = f.diagnosticLog.record.mock.calls.map(([event]) => event).filter(e => e.event === 'task-native');
+  expect(events).toEqual(expect.arrayContaining([
+    expect.objectContaining({ phase: 'buy', transportPhase: 'before-dispatch', definitionId: 901, actualPrice: 600 }),
+    expect.objectContaining({ phase: 'buy', transportPhase: 'native-response', httpStatus: 403, errorCode: 461,
+      definitionId: 901, actualPrice: 600, localReason: 'FC27_MARKET_PERMISSION_DENIED' }),
+  ]));
+  expect(JSON.stringify(events)).not.toMatch(/private-server-detail|itemId|tradeId/);
+  expect(f.calls.filter(c => c[0] === 'bid')).toEqual([['bid', 101, 600], ['bid', 102, 600]]);
+  expect(f.calls.some(c => ['move', 'list'].includes(c[0]))).toBe(false);
+  const ledger = (await f.coordinator.inspect()).ledger;
+  expect(ledger.stopped).toBeNull(); expect(ledger.intents.map(i=>i.phase)).toEqual(['rejected','confirmed']);
+  expect((await f.traffic.inspect()).ledger.stopped).toBeNull();
+});
+it.each([undefined,403,999])('pauses an unexplained 403/%s without calling it throttling', async code => {
+  const f=await fixture('filter',true);f.makeCard(101,901);
+  f.hooks.bid=()=>({success:false,status:403,error:{code}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(f.runtime.inspect().tasks[0].reason).toBe('MARKET_PURCHASE_DENIED');
+  expect(f.runtime.inspect().traffic.ledger.stopped).toBe('manual');
+  expect((await f.traffic.inspect()).ledger.stopped).toBe('manual');
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('rejected');
+  expect(f.calls.filter(c=>c[0]==='bid')).toHaveLength(1);
 });
 it.each([false,true])('renews an unlimited task lease after native pacing crosses sixty seconds (common gate=%s)', async shared => {
   const f = await fixture('filter', shared); f.makeCard(101, 901);

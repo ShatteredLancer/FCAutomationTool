@@ -6,7 +6,7 @@ function fixture() {
   let account = context, release;
   const make = () => ({ inspect: () => ({ available: true, busy: false }), subscribe: () => () => {},
     dispose: vi.fn(), pauseAll: vi.fn(), pause: vi.fn(), stop: vi.fn(),
-    run: vi.fn(), enqueue: vi.fn(), recover: vi.fn(), acknowledgeStop: vi.fn() });
+    run: vi.fn(), enqueue: vi.fn(), reopen: vi.fn(), recover: vi.fn(), acknowledgeStop: vi.fn() });
   const created = [], factory = vi.fn(async () => { await new Promise(resolve => { release = resolve; }); const result = make(); created.push(result); return result; });
   const runtime = createMarketTaskRuntime({ context: () => account, enabled: true, createScheduler: factory });
   return { runtime, factory, created, release: () => release(), account: value => { account = value; } };
@@ -41,6 +41,18 @@ it('page teardown is idempotent and a restored page cannot resume its disposed r
   expect(f.created[0].dispose).toHaveBeenCalledTimes(1);
   await expect(f.runtime.run({ approved: true })).rejects.toThrow('TASKS_EXECUTION_UNAVAILABLE');
   expect(f.created[0].run).toHaveBeenCalledTimes(1);
+});
+
+it('requires restart approval and rejects a late reopen after pause without launching', async () => {
+  const f = fixture(); await expect(f.runtime.reopen()).rejects.toThrow('APPROVAL_REQUIRED');
+  expect(f.factory).not.toHaveBeenCalled();
+  const initial = f.runtime.recover(); f.release(); await initial;
+  let finish;
+  f.created[0].reopen.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const reopening = f.runtime.reopen({ approved: true }); await Promise.resolve();
+  f.runtime.pauseAll(); finish({ store: {} });
+  await expect(reopening).rejects.toThrow('USER_STOP');
+  expect(f.created[0].run).not.toHaveBeenCalled(); expect(f.created[0].enqueue).not.toHaveBeenCalled();
 });
 
 it('publishes a bounded initialization failure even when the task panel is hidden', async () => {

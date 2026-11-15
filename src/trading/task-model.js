@@ -8,7 +8,7 @@ const one=(v,values)=>{if(!values.includes(v))throw Error('TASKS_INVALID');retur
 const optional=(v,min=0)=>v===null?null:integer(v,min);
 const list=(v,max)=>{if(!Array.isArray(v)||v.length>max)throw Error('TASKS_STORAGE_LIMIT');return v;};
 export const TASK_STORE_LIMIT=1_000_000;
-export const defaultTradingTaskSettings=()=>({buyRule:'percent',buyValue:85,sellRule:'reference',sellValue:100,duration:3600,
+export const defaultTradingTaskSettings=()=>({afterBuy:'list',buyRule:'percent',buyValue:85,sellRule:'reference',sellValue:100,duration:3600,
  taskCap:null,spendCap:null,runMinutes:null,hardCap:null,relist:'original',relistTimes:null,ratingMin:83,ratingMax:85,
  quality:'all',league:null,position:null,perVersion:null,nation:null,club:null});
 export const defaultTradingPublicSettings=()=>({source:'futbin',reserve:null,totalCap:null,gapMin:7,gapMax:15,cycleMin:10,cycleMax:15,restMin:5,restMax:8,perSearch:1,hourLimit:1000,dayLimit:5000});
@@ -18,6 +18,7 @@ export function tradingPublicSettings(input){own(input,Object.keys(defaultTradin
  for(const [a,b]of [['gapMin','gapMax'],['cycleMin','cycleMax'],['restMin','restMax']])if(s[a]>s[b])throw Error('TASKS_INVALID');return s;}
 export function normalizeTradingTaskInput(value){own(value,['name','mode','settings','players','owned','excluded','schedule','ratingPrices']);const name=text(value.name,60),mode=one(value.mode,['fixed','filter','sell']);
  own(value.settings,Object.keys(defaultTradingTaskSettings()));const s={...defaultTradingTaskSettings(),...value.settings};one(s.buyRule,['percent','fixed']);one(s.sellRule,['reference','fixed']);
+ one(s.afterBuy,['list','hold']);
  integer(s.buyValue,s.buyRule==='fixed'?150:1,s.buyRule==='fixed'?15000000:10000);integer(s.sellValue,s.sellRule==='fixed'?150:1,s.sellRule==='fixed'?15000000:10000);
  one(s.duration,[3600,10800,21600,43200,86400,259200]);one(s.relist,['original','reference','pause']);
  for(const key of ['taskCap','spendCap','hardCap'])s[key]=optional(s[key],150);if(s.hardCap!==null)integer(s.hardCap,150,15000000);for(const key of ['perVersion','runMinutes'])s[key]=optional(s[key],1);s.relistTimes=optional(s.relistTimes);

@@ -22,6 +22,18 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains separate native buy rejection codes and public price facts without private auction data', async () => {
+  const t = harness();
+  await t.log.record({ area: 'trading', event: 'task-native', phase: 'buy', transportPhase: 'native-response',
+    method: 'service.bid', status: 'rejected', httpStatus: 403, errorCode: 461,
+    localReason: 'FC27_MARKET_PERMISSION_DENIED', definitionId: 224232, actualPrice: 6500, capturedAt: 900, durationMs: 120,
+    itemId: 123, tradeId: 'private-auction', message: 'private-message', response: { token: 'private-token' } });
+  const out = await t.log.exportPayload();
+  expect(out.criticalEntries.at(-1)).toMatchObject({ httpStatus: 403, errorCode: 461, actualPrice: 6500,
+    localReason: 'FC27_MARKET_PERMISSION_DENIED', capturedAt: 900, durationMs: 120, method: 'service.bid' });
+  expect(JSON.stringify(out)).not.toMatch(/private-|itemId|tradeId|message|token/);
+});
+
 it('retains session-check failure codes without balance, authentication or task payloads', async () => {
   const t = harness();
   await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'session-check', status: 'blocked',
@@ -29,6 +41,14 @@ it('retains session-check failure codes without balance, authentication or task 
   const result = await t.log.exportPayload();
   expect(result.entries[0]).toMatchObject({ phase: 'session-check', reason: 'MARKET_SESSION_UNVERIFIED', errorCode: 500 });
   expect(JSON.stringify(result)).not.toMatch(/12345|private|currencies|token|taskId/);
+});
+
+it.each(['MARKET_RESTART_TIME_LIMIT','TASKS_STALE','TASKS_UNRESOLVED','MARKET_PURCHASE_DENIED','MARKET_INSUFFICIENT_FUNDS','MARKET_DESTINATION_FULL'])('retains the actionable trading reason %s without private task identity', async reason => {
+  const t = harness();
+  await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'restart-check', status: 'blocked', reason, taskId: 'private-task' });
+  const out = await t.log.exportPayload();
+  expect(out.criticalEntries.at(-1)).toMatchObject({ phase: 'restart-check', reason });
+  expect(JSON.stringify(out)).not.toContain('private-task');
 });
 
 it('retains only known scheduler reasons and numeric occupancy, never its private task or receipt objects', async () => {

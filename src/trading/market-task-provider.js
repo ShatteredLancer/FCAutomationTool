@@ -3,6 +3,7 @@ import { marketTaskPrice } from './market-task-prices.js';
 import { marketLastListing, marketRelistAllowed } from './market-coordination.js';
 import { taskCandidateAllowed } from './task-catalog.js';
 import { taskCandidatePage } from './market-task-catalog.js';
+import { marketTaskAutoLists } from './market-task-policy.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw Error(`MARKET_${reason}`); };
@@ -56,8 +57,33 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     if (!held || held.taskId !== task.id || held.definitionId !== action.definitionId) fail('ITEM_OCCUPIED');
     return held;
   };
+  const nextPurchase = (task, settings, ledger) => {
+    const c=cursor(task,settings), held=ledger.holdings.filter(h=>h.taskId===task.id);
+    while (c.offers.length) {
+        const offer = c.offers[0], row = (task.mode === 'filter' ? c.rows : task.players).find(p => p.definitionId === offer.definitionId);
+        const copies = held.filter(h => h.definitionId === offer.definitionId && h.phase !== 'sold').length;
+        const cap = task.mode === 'filter' ? task.settings.perVersion : row?.qty;
+        if (!row || offer.expiresAt <= now() || ledger.intents.some(i => i.kind === 'buy' && i.tradeId === offer.tradeId)
+          || cap != null && copies >= cap || task.mode === 'filter' && !taskCandidateAllowed(row, task)) { c.offers.shift(); continue; }
+        return remember(task, settings, { ...offer, kind: 'buy' });
+      }
+    return null;
+  };
   const api = {
     dispatchBoundary: true,
+    nextPurchase: ({task,settings,ledger}) => { check(); return nextPurchase(task,settings,ledger); },
+    discardOffers: taskId => { const c=cursors.get(taskId); if(c)c.offers=[]; },
+    finishPurchaseBatch: ({ task, ledger, reason }) => {
+      check(); const c = cursors.get(task.id);
+      // Only a local, definite no-send limit may defer its pause long enough to
+      // handle purchases already confirmed. Unknown/auth/user stops never drain.
+      if (!c || !['MARKET_TRANSFER_FULL','MARKET_FUNDS_OR_CAPACITY','MARKET_HOLDING_CAP','MARKET_SPEND_CAP','MARKET_VERSION_CAP'].includes(reason)
+        || ledger.intents.some(i => i.phase === 'pending')
+        || !ledger.holdings.some(h => h.taskId === task.id && h.phase === 'held')) return false;
+      c.offers = [];
+      c.purchaseStop = task.schedule && reason === 'MARKET_TRANSFER_FULL' ? null : reason;
+      return true;
+    },
     traffic: () => native.traffic?.() ?? null,
     clearTraffic: () => native.clearTraffic?.(),
     stopTraffic: reason => native.stopTraffic?.(reason),
@@ -85,7 +111,13 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       const scheduleWait = () => { const wake = marketScheduleWake(task, c.schedule, ledger.holdings, now(),h=>marketRelistAllowed(ledger,task,h));
         return wake === null ? { kind: 'done' } : { kind: 'wait', until: Math.max(now()+1000,wake), scheduleWait: true }; };
       if (task.mode === 'filter' && (!c.catalog || !c.isCurrent?.())) fail('CATALOG_UNAVAILABLE');
-      const due = h => h.phase === 'transfer' && marketScheduleGate(task, c.schedule, 'list', h, now()) || marketRelistAllowed(ledger, task, h);
+      // Finish this search's bounded purchase candidates before won-item work.
+      // A new search still waits for all due move/list work below.
+      if (marketScheduleGate(task, c.schedule, 'buy', null, now()) && !c.purchaseStop) {
+        const offerAction = nextPurchase(task, settings, ledger);
+        if (offerAction) return offerAction;
+      } else c.offers = [];
+      const due = h => marketTaskAutoLists(task) && (h.phase === 'transfer' && marketScheduleGate(task, c.schedule, 'list', h, now()) || marketRelistAllowed(ledger, task, h));
       const pending = task.schedule ? held.find(due) ?? held.find(h=>h.phase==='held') : held.find(h => h.phase === 'held' || due(h));
       if (pending) {
         const action = { kind: pending.phase === 'held' ? 'move' : 'list', itemId: pending.itemId,
@@ -106,6 +138,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
         }
         return remember(task, settings, action);
       }
+      if (c.purchaseStop) throw Error(c.purchaseStop);
       if (task.mode === 'sell') {
         const unclaimed = task.owned.find(row => !held.some(h => h.itemId === row.itemId));
         if (unclaimed && marketScheduleGate(task, c.schedule, 'claim', null, now())) return remember(task, settings, { kind: 'claim', itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
@@ -115,16 +148,6 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
         || task.mode !== 'sell' && !marketScheduleGate(task,c.schedule,'buy',null,now()))) return scheduleWait();
       if (task.mode === 'sell') return held.some(h => h.phase === 'listed') ? { kind: 'wait', until: Math.max(now() + 1000, c.salesAt) }
         : { kind: 'done', ...(held.some(h => h.phase === 'unsold') ? { reason: 'MARKET_RELIST_PAUSED' } : {}) };
-      // Consume only offers from the last search for this task. Rejections are
-      // removed in accept, so one stale/competitive auction is never rebid.
-      while (c.offers.length) {
-        const offer = c.offers[0], row = (task.mode === 'filter' ? c.rows : task.players).find(p => p.definitionId === offer.definitionId);
-        const copies = held.filter(h => h.definitionId === offer.definitionId && h.phase !== 'sold').length;
-        const cap = task.mode === 'filter' ? task.settings.perVersion : row?.qty;
-        if (!row || offer.expiresAt <= now() || ledger.intents.some(i => i.kind === 'buy' && i.tradeId === offer.tradeId)
-          || cap != null && copies >= cap || task.mode === 'filter' && !taskCandidateAllowed(row, task)) { c.offers.shift(); continue; }
-        return remember(task, settings, { ...offer, kind: 'buy' });
-      }
       if (task.mode === 'filter') {
         if (c.index >= c.rows.length) {
           if (c.next >= c.catalog.candidates.length) { c.next = 0; c.cycled = true; }
@@ -170,7 +193,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
       return { kind: 'wait', until: Math.max(now() + 1000, c.salesAt) };
     },
-    async preflight({ task, settings, action, ledger }) {
+    async preflight({ task, settings, action, ledger, executionScope }) {
       bound(action, task, settings);
       if (action.kind === 'claim') {
         const row = task.owned.find(r => r.itemId === action.itemId && r.definitionId === action.definitionId);
@@ -200,13 +223,13 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
             || task.settings.relist === 'original' && !same(action.listing, action.previousListing)) fail('ITEM_OCCUPIED');
         } else if (holding.phase !== (action.kind === 'move' ? 'held' : 'transfer')) fail('ITEM_OCCUPIED');
       }
-      const result = await native.preflight({ task, settings, action, ledger }); bound(action, task, settings); return result;
+      const result = await native.preflight({ task, settings, action, ledger, executionScope }); bound(action, task, settings); return result;
     },
-    async send({ action, requestId, beforeDispatch, beforeRequest }) {
+    async send({ action, requestId, beforeDispatch, beforeRequest, executionScope }) {
       const saved = bound(action);
       // The final callback is passed through to the *native* call. Calling it
       // before an awaited pacing/permit step would restore the cancellation bug.
-      return native.send({ ...saved, action, requestId, beforeRequest: async () => { bound(action); await beforeRequest?.(); bound(action); },
+      return native.send({ ...saved, action, requestId, executionScope, beforeRequest: async () => { bound(action); await beforeRequest?.(); bound(action); },
         beforeDispatch: () => { bound(action); beforeDispatch(); } });
     },
     async accept({ action, response, ledger }) {

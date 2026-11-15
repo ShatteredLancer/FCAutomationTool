@@ -1,9 +1,11 @@
 // Optional filter-task policy. No quote fallback for an unconfigured rating.
+import { marketTaskAutoLists } from './market-task-policy.js';
 export const marketRatingStep = value => value < 1000 ? 50 : value < 10000 ? 100 : value < 50000 ? 250 : value < 100000 ? 500 : 1000;
 export const validMarketRatingPrice = value => Number.isSafeInteger(value) && value >= 150 && value <= 15000000 && value % marketRatingStep(value) === 0;
 export const marketRatingRow = (task, rating) => task.mode === 'filter' && task.ratingPrices
   ? task.ratingPrices[String(rating)] ?? null : null;
-export const completeMarketRatingRow = row => validMarketRatingPrice(row?.buy) && validMarketRatingPrice(row?.sell);
+export const completeMarketRatingRow = (row, task = null) => validMarketRatingPrice(row?.buy)
+  && (task && !marketTaskAutoLists(task) || validMarketRatingPrice(row?.sell));
 export function normalizeMarketRatingPrices(input, mode, settings) {
   if (input == null) return null;
   const fail = () => { throw Error('TASKS_RATING_PRICES_INVALID'); };
@@ -15,6 +17,6 @@ export function normalizeMarketRatingPrices(input, mode, settings) {
     for (const side of ['buy','sell']) if (row[side] !== null && !validMarketRatingPrice(row[side])) fail();
     result[key] = { buy: row.buy, sell: row.sell };
   }
-  if (!Object.entries(result).some(([r,row]) => Number(r) >= settings.ratingMin && Number(r) <= settings.ratingMax && completeMarketRatingRow(row))) fail();
+  if (!Object.entries(result).some(([r,row]) => Number(r) >= settings.ratingMin && Number(r) <= settings.ratingMax && completeMarketRatingRow(row,{mode,settings}))) fail();
   return result;
 }

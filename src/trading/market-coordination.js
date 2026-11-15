@@ -1,3 +1,4 @@
+import { marketTaskAutoLists } from './market-task-policy.js';
 import { validateMarketSchedules } from './market-task-schedule.js';
 // Account-wide bookkeeping primitives. They do not authorize or send requests.
 // P3 adapters must supply freshly verified EA facts and exact receipts.
@@ -190,6 +191,9 @@ export function reserveMarketWrite(state, command, funds) {
       if (copies >= funds.perVersion) fail('VERSION_CAP');
     }
     if (funds.freeSlots < 1 || funds.balance - all.reservedCoins - entry.coins < (funds.reserve ?? 0)) fail('FUNDS_OR_CAPACITY');
+    // Won cards awaiting a move occupy future Transfer slots across all tasks.
+    // Buying a batch must not count the same physical slot several times.
+    if (funds.freeSlots <= state.holdings.filter(h => h.phase === 'held').length) fail('TRANSFER_FULL');
     for (const [cap, occupancy] of [[funds.totalCap, all], [funds.taskCap, task]]) {
       if (cap !== null && (occupancy.unknownCosts || occupancy.reservedCoins + occupancy.holdingCoins + entry.coins > cap)) fail('HOLDING_CAP');
     }
@@ -266,6 +270,7 @@ export function marketLastListing(state, holding) {
 }
 
 export function marketRelistAllowed(state, task, holding) {
+  if (!marketTaskAutoLists(task)) return false;
   if (holding.phase !== 'unsold' || task.settings.relist === 'pause' || task.settings.relistTimes === 0) return false;
   const attempts = state.intents.filter(i => i.itemId === holding.itemId && i.kind === 'list' && i.previousTradeId);
   // A rejected relist needs a new explicit review; never hammer the same auction.

@@ -205,7 +205,7 @@ describe('market task native port with synthetic EA services', () => {
     for (const item of [a, b]) item.auction = { ...item.auction, tradeState: 'closed', currentBid: 700, isSold: () => true };
     f.advance(30000); await f.step();
     expect(f.ledger.holdings.map(h => h.salePrice)).toEqual([700, 700]); expect(f.loadQuotes).not.toHaveBeenCalled();
-    expect(f.dispatched).toEqual(['search', 'buy', 'move', 'list', 'buy', 'move', 'list']);
+    expect(f.dispatched).toEqual(['search', 'buy', 'buy', 'move', 'list', 'move', 'list']);
   });
   it.each(['club', 'transfer', 'unassigned'])('imports exact selected %s holdings without fabricating a purchase', async pile => {
     const f = await fixture('sell'); const card = f.makeCard(201, 901, pile); card.purchasePrice = 800;
@@ -257,6 +257,14 @@ describe('market task native port with synthetic EA services', () => {
     expect(result.response).toMatchObject({ status: 'rejected', code: status });
     expect(f.ledger.intents[0].phase).toBe('rejected');
     const next = await f.provider.prepare({ task: f.task, settings: f.settings, ledger: f.ledger }); expect(next.kind).toBe('search');
+  });
+  it.each(['throw', 'reject'])('diagnostic %s cannot change a bid or its exact receipt', async failure => {
+    const onDiagnostic = () => { if (failure === 'throw') throw Error('log failure'); return Promise.reject(Error('log failure')); };
+    const f = await fixture('fixed', { onDiagnostic }); f.makeCard(101, 901);
+    await f.step(); const result = await f.step();
+    expect(result.response.status).toBe('confirmed');
+    expect(f.ledger.holdings[0]).toMatchObject({ itemId: '101', cost: 600, phase: 'held' });
+    expect(f.calls.filter(c => c[0] === 'bid')).toEqual([['bid', 101, 600]]);
   });
   it('does not treat a contradictory failed buy response as proof of no payment', async () => {
     const f = await fixture(); f.makeCard(101, 901); f.hooks.bid = () => ({ success: false, status: 461, data: { itemIds: [101] } });

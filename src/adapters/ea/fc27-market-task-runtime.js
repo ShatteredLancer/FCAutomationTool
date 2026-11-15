@@ -27,7 +27,7 @@ export function marketTaskNativeRuntime(root, requestRoot = root) {
     } }));};
     if(!fc27MarketTraffic(requestRoot))return invoke();
     return runFc27MarketRequest(requestRoot,name==='searchTransferMarket'?'search':name==='bid'?'buy':name,()=>{if(boundary!==permit)throw Error('MARKET_NOT_SENT');},
-      mark=>observeFc27TrafficResult(invoke(mark)),{wait:false,exactDispatch:true,rawErrors:true}).catch(error=>{permit.onBlocked?.(error);throw error;});
+      mark=>observeFc27TrafficResult(invoke(mark)),{wait:false,exactDispatch:true,rawErrors:true,taskBuyResponse:name==='bid'}).catch(error=>{permit.onBlocked?.(error);throw error;});
   }]));
   const runtime = wrap(root, { services: wrap(root.services, { Item: wrap(service, methods) }) });
   return { runtime, async dispatch(permit, operation) {

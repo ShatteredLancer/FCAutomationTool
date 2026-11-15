@@ -41,6 +41,9 @@
   } catch {}
   try {
 (() => {
+  // src/trading/market-task-policy.js
+  var marketTaskAutoLists = (task) => task.mode === "sell" || task.settings?.afterBuy !== "hold";
+
   // src/trading/market-task-schedule.js
   var fail = (reason = "INVALID") => {
     throw Error(`MARKET_SCHEDULE_${reason}`);
@@ -143,6 +146,7 @@
     return row;
   }
   function marketScheduleGate(task, row, kind, holding, now) {
+    if (kind === "list" && !marketTaskAutoLists(task)) return false;
     if (!task.schedule) return true;
     if (!row) return false;
     if (["search", "buy"].includes(kind)) return !row.buyClosed && now >= row.startAt && (row.endAt === null || now < row.endAt);
@@ -153,8 +157,8 @@
   function marketScheduleWake(task, row, holdings, now, canRelist = () => true) {
     if (!task.schedule) return now;
     const held = holdings.filter((h) => h.taskId === task.id && h.phase !== "sold");
-    if (held.some((h) => ["held", "listed"].includes(h.phase) || h.phase === "unsold" && canRelist(h))) return now;
-    const times = held.filter((h) => h.phase === "transfer").map((h) => h.sellAt ?? row.sellAt);
+    if (held.some((h) => ["held", "listed"].includes(h.phase) || marketTaskAutoLists(task) && h.phase === "unsold" && canRelist(h))) return now;
+    const times = marketTaskAutoLists(task) ? held.filter((h) => h.phase === "transfer").map((h) => h.sellAt ?? row.sellAt) : [];
     if (task.mode === "sell") {
       if (task.owned.some((p) => !holdings.some((h) => h.itemId === p.itemId))) times.push(row.sellAt);
     } else if (!row.buyClosed) times.push(row.startAt);
@@ -437,6 +441,7 @@
         if (copies >= funds.perVersion) fail3("VERSION_CAP");
       }
       if (funds.freeSlots < 1 || funds.balance - all.reservedCoins - entry.coins < (funds.reserve ?? 0)) fail3("FUNDS_OR_CAPACITY");
+      if (funds.freeSlots <= state.holdings.filter((h) => h.phase === "held").length) fail3("TRANSFER_FULL");
       for (const [cap, occupancy] of [[funds.totalCap, all], [funds.taskCap, task]]) {
         if (cap !== null && (occupancy.unknownCosts || occupancy.reservedCoins + occupancy.holdingCoins + entry.coins > cap)) fail3("HOLDING_CAP");
       }
@@ -515,6 +520,7 @@
     return state.intents.find((i) => i.itemId === holding.itemId && i.definitionId === holding.definitionId && i.kind === "list" && i.phase === "confirmed" && i.receipt.tradeId === holding.listingTradeId)?.listing ?? null;
   }
   function marketRelistAllowed(state, task, holding) {
+    if (!marketTaskAutoLists(task)) return false;
     if (holding.phase !== "unsold" || task.settings.relist === "pause" || task.settings.relistTimes === 0) return false;
     const attempts = state.intents.filter((i) => i.itemId === holding.itemId && i.kind === "list" && i.previousTradeId);
     if (attempts.some((i) => i.previousTradeId === holding.listingTradeId)) return false;
@@ -556,7 +562,7 @@
   var marketRatingStep = (value) => value < 1e3 ? 50 : value < 1e4 ? 100 : value < 5e4 ? 250 : value < 1e5 ? 500 : 1e3;
   var validMarketRatingPrice = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6 && value % marketRatingStep(value) === 0;
   var marketRatingRow = (task, rating) => task.mode === "filter" && task.ratingPrices ? task.ratingPrices[String(rating)] ?? null : null;
-  var completeMarketRatingRow = (row) => validMarketRatingPrice(row?.buy) && validMarketRatingPrice(row?.sell);
+  var completeMarketRatingRow = (row, task = null) => validMarketRatingPrice(row?.buy) && (task && !marketTaskAutoLists(task) || validMarketRatingPrice(row?.sell));
   function normalizeMarketRatingPrices(input, mode, settings) {
     if (input == null) return null;
     const fail39 = () => {
@@ -569,7 +575,7 @@
       for (const side of ["buy", "sell"]) if (row[side] !== null && !validMarketRatingPrice(row[side])) fail39();
       result[key2] = { buy: row.buy, sell: row.sell };
     }
-    if (!Object.entries(result).some(([r, row]) => Number(r) >= settings.ratingMin && Number(r) <= settings.ratingMax && completeMarketRatingRow(row))) fail39();
+    if (!Object.entries(result).some(([r, row]) => Number(r) >= settings.ratingMin && Number(r) <= settings.ratingMax && completeMarketRatingRow(row, { mode, settings }))) fail39();
     return result;
   }
 
@@ -596,6 +602,7 @@
   };
   var TASK_STORE_LIMIT = 1e6;
   var defaultTradingTaskSettings = () => ({
+    afterBuy: "list",
     buyRule: "percent",
     buyValue: 85,
     sellRule: "reference",
@@ -639,6 +646,7 @@
     const s = { ...defaultTradingTaskSettings(), ...value.settings };
     one(s.buyRule, ["percent", "fixed"]);
     one(s.sellRule, ["reference", "fixed"]);
+    one(s.afterBuy, ["list", "hold"]);
     integer2(s.buyValue, s.buyRule === "fixed" ? 150 : 1, s.buyRule === "fixed" ? 15e6 : 1e4);
     integer2(s.sellValue, s.sellRule === "fixed" ? 150 : 1, s.sellRule === "fixed" ? 15e6 : 1e4);
     one(s.duration, [3600, 10800, 21600, 43200, 86400, 259200]);
@@ -1077,6 +1085,34 @@
     return Object.freeze({ inspect, withOwner });
   }
 
+  // src/trading/market-task-buy-response.js
+  function marketTaskBuyResponse(reply) {
+    const numeric2 = (n) => Number.isSafeInteger(n) && n >= 100 && n <= 99999 ? n : null;
+    const httpStatus = numeric2(reply?.status), errorCode2 = numeric2(reply?.error?.code);
+    const code2 = [401, 429].includes(httpStatus) ? httpStatus : errorCode2 ?? httpStatus;
+    const ids2 = reply?.data?.itemIds;
+    const contradictory = ids2 != null && (!Array.isArray(ids2) || ids2.length > 0);
+    const rejected = reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 426, 429, 461, 470, 473, 478].includes(httpStatus);
+    let category = null, stop6 = null;
+    if (httpStatus === 401 || errorCode2 === 401) {
+      category = "authentication";
+      stop6 = "authentication";
+    } else if ([458, 459].includes(errorCode2)) {
+      category = "captcha";
+      stop6 = "captcha";
+    } else if ([429, 512, 521, 427, 494].includes(httpStatus) || [429, 512, 521, 427, 494].includes(errorCode2) || errorCode2 === null && httpStatus === 426) {
+      category = "throttle";
+      stop6 = "throttle";
+    } else if (rejected && [426, 461, 478].includes(errorCode2)) category = "offer-rejected";
+    else if (rejected && errorCode2 === 470) category = "insufficient-funds";
+    else if (rejected && errorCode2 === 473) category = "destination-full";
+    else if (httpStatus === 403 || errorCode2 === 403) {
+      category = "purchase-denied";
+      stop6 = "manual";
+    }
+    return { code: code2, httpStatus, errorCode: errorCode2, category, stop: stop6, rejected };
+  }
+
   // src/adapters/browser/fc27-market-traffic.js
   var same4 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail6 = (reason, at11 = null) => {
@@ -1170,7 +1206,7 @@
         if (reason) await this.signal(reason);
         return result;
       },
-      async run(kind, check, operation, { wait = true, exactDispatch = false } = {}) {
+      async run(kind, check, operation, { wait = true, exactDispatch = false, taskBuyResponse = false } = {}) {
         if (!kinds.includes(kind) || typeof check !== "function" || typeof operation !== "function") fail6("INVALID");
         const c = capture();
         let waitingSince = now(), dispatched = false;
@@ -1210,7 +1246,7 @@
               current2(c);
               if (kind === "search") settleMarketSearch(value.ledger, requestId, sent ? "sent" : "not-sent");
               else if (!sent) value.writes[kind]--;
-              const stopped = stopOf(result) ?? stopOf(error2);
+              const stopped = (kind === "buy" && taskBuyResponse ? marketTaskBuyResponse(result).stop : stopOf(result)) ?? stopOf(error2);
               if (stopped) value.ledger.stopped = stopped;
               await save(c, value);
               if (error2) throw error2;
@@ -29071,7 +29107,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-market-task-schedule-view.js
-  var marketScheduleSummary = (task) => task.schedule ? `${task.schedule.repeat === "daily" ? "\u6BCF\u5929" : "\u5355\u6B21"} \xB7 ${task.mode === "sell" ? "\u6302\u724C" : "\u4E70\u5165"} ${task.schedule.start}${task.mode === "sell" ? "" : `\u2013${task.schedule.end ?? "\u6EE1\u4ED3"} \xB7 \u6302\u724C ${task.schedule.sell ?? "\u4E70\u540E\u7ACB\u5373"}`} \xB7 ${task.schedule.zone}` : "\u7ACB\u5373\u6267\u884C";
+  var marketScheduleSummary = (task) => task.schedule ? `${task.schedule.repeat === "daily" ? "\u6BCF\u5929" : "\u5355\u6B21"} \xB7 ${task.mode === "sell" ? "\u6302\u724C" : "\u4E70\u5165"} ${task.schedule.start}${task.mode === "sell" ? "" : `\u2013${task.schedule.end ?? "\u6EE1\u4ED3"} \xB7 ${marketTaskAutoLists(task) ? "\u6302\u724C " + (task.schedule.sell ?? "\u4E70\u540E\u7ACB\u5373") : "Hold only"}`} \xB7 ${task.schedule.zone}` : "\u7ACB\u5373\u6267\u884C";
   function mountMarketScheduleEditor({ document, parent }) {
     const box = document.createElement("details");
     box.className = "box";
@@ -29082,12 +29118,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     box.append(style);
     parent.insertBefore(box, parent.querySelector("#moreRules"));
     const $ = (id15) => box.querySelector(`#schedule-${id15}`);
-    let zone = Intl.DateTimeFormat().resolvedOptions().timeZone, previous = "once";
+    let zone = Intl.DateTimeFormat().resolvedOptions().timeZone, previous = "once", afterBuy = "list";
     const localDefault = () => {
       const d = new Date(Date.now() + 36e5);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
     };
-    const refresh = (mode) => {
+    const refresh = (mode, disposition = afterBuy) => {
+      afterBuy = disposition;
       const daily = $("repeat").value === "daily";
       if (previous !== $("repeat").value) {
         for (const key2 of ["start", "end", "sell"]) {
@@ -29099,7 +29136,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       $("fields").hidden = !$("enabled").checked;
       $("start-label").textContent = mode === "sell" ? "\u5356\u51FA\u5F00\u59CB" : "\u4E70\u5165\u5F00\u59CB";
-      $("end-label").hidden = $("sell-label").hidden = mode === "sell";
+      $("end-label").hidden = mode === "sell";
+      $("sell-label").hidden = mode === "sell" || afterBuy === "hold";
+      $("sell-label").classList.toggle("hidden", mode === "sell" || afterBuy === "hold");
       $("zone").textContent = `\u65F6\u533A\uFF1A${zone}\u3002\u5B9A\u65F6\u5F00\u59CB\u8868\u793A\u6700\u65E9\u6267\u884C\u65F6\u95F4\uFF0C\u4ECD\u9075\u5B88\u8BF7\u6C42\u95F4\u9694\u3002`;
     };
     return { open(schedule, mode) {
@@ -29121,7 +29160,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/adapters/browser/fc27-market-rating-view.js
   function marketRatingSummary(task) {
-    const rows = Object.entries(task.ratingPrices ?? {}).filter(([rating, row]) => Number(rating) >= task.settings.ratingMin && Number(rating) <= task.settings.ratingMax && completeMarketRatingRow(row));
+    const rows = Object.entries(task.ratingPrices ?? {}).filter(([rating, row]) => Number(rating) >= task.settings.ratingMin && Number(rating) <= task.settings.ratingMax && completeMarketRatingRow(row, task));
     return `\u6309\u8BC4\u5206\u56FA\u5B9A\u4EF7 \xB7 \u5DF2\u914D\u7F6E ${rows.length} \u6863`;
   }
   function mountMarketRatingEditor({ document, $, onChange }) {
@@ -29131,7 +29170,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     host.innerHTML = '<label>\u5B9A\u4EF7\u65B9\u5F0F<select id="rating-price-mode"><option value="reference">\u6BCF\u5361\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="rating">\u6309\u8BC4\u5206\u56FA\u5B9A\u4EF7</option><option value="uniform">\u7EDF\u4E00\u56FA\u5B9A\u4EF7</option><option value="mixed">\u5206\u522B\u8BBE\u7F6E\u4E70\u5356\u89C4\u5219</option></select></label><div id="rating-price-body"><p id="rating-price-summary" class="hint" role="status"></p><div class="rating-grid"><b>\u8BC4\u5206</b><b>\u4E70\u5165\u4E0A\u9650</b><b>\u6302\u724C\u4EF7</b></div><div id="rating-price-rows"></div><button type="button" id="rating-price-expand"></button><p id="rating-price-warning" class="hint"></p><div id="rating-price-duration" class="fields"></div></div>';
     $("buyFields").before(host);
     const style = document.createElement("style");
-    style.textContent = ".rating-grid{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;margin:8px 0}.rating-grid>small{grid-column:1/-1}.rating-grid input{width:100%;min-width:0}#rating-prices[hidden],#rating-price-body[hidden]{display:none}";
+    style.textContent = ".rating-grid{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;margin:8px 0}.rating-grid>small{grid-column:1/-1}.hold-only .rating-grid{grid-template-columns:44px minmax(0,1fr)}.hold-only .rating-grid>b:nth-child(3){display:none}.rating-grid input{width:100%;min-width:0}#rating-prices[hidden],#rating-price-body[hidden]{display:none}";
     host.append(style);
     const get = (id15) => host.querySelector("#" + id15), select = get("rating-price-mode"), body = get("rating-price-body"), rowsHost = get("rating-price-rows");
     const sellFields = $("sellRule").closest(".fields"), duration = $("duration").closest("label"), anchor = document.createComment("duration");
@@ -29146,25 +29185,34 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const derived = (task) => task.ratingPrices ? "rating" : task.settings.buyRule === "fixed" && task.settings.sellRule === "fixed" ? "uniform" : task.settings.buyRule === "percent" && task.settings.sellRule === "reference" ? "reference" : "mixed";
     const refresh = (task) => {
+      const hold = !marketTaskAutoLists(task);
       current2 = task;
       host.hidden = task.mode !== "filter";
       const active = task.mode === "filter" && mode === "rating";
       body.hidden = !active;
       $("buyFields").classList.toggle("hidden", task.mode === "sell" || active);
-      sellFields.classList.toggle("hidden", active);
+      sellFields.classList.toggle("hidden", active || hold);
+      duration.hidden = hold;
+      duration.classList.toggle("hidden", hold);
+      for (const key2 of ["relist", "relistTimes"]) {
+        const label = $(key2).closest("label");
+        label.hidden = hold;
+        label.classList.toggle("hidden", hold);
+      }
+      host.classList.toggle("hold-only", hold);
       if (active) get("rating-price-duration").append(duration);
       else anchor.after(duration);
       if (task.mode === "filter" && mode !== "rating") mode = derived(task);
       select.value = mode;
       if (!active) return;
       const min = Math.max(1, Math.min(99, task.settings.ratingMin)), max = Math.min(99, task.settings.ratingMax), ratings = Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i);
-      const count3 = ratings.filter((r) => completeMarketRatingRow(rows[r])).length;
+      const count3 = ratings.filter((r) => completeMarketRatingRow(rows[r], task)).length;
       get("rating-price-summary").textContent = `\u5DF2\u914D\u7F6E ${count3} / ${ratings.length} \u6863 \xB7 \u7A7A\u767D\u6216\u672A\u586B\u5B8C\u6574\u7684\u6863\u4F4D\u8DF3\u8FC7${count3 ? "" : "\uFF1B\u81F3\u5C11\u586B\u5B8C\u6574\u4E00\u6863\u624D\u80FD\u4FDD\u5B58"}`;
-      get("rating-price-warning").textContent = task.settings.quality === "all" || task.settings.quality === "special" ? "\u5305\u542B\u7279\u6B8A\u5361\uFF1A\u540C\u8BC4\u5206\u7684\u7279\u6B8A\u5361\u4E5F\u4F7F\u7528\u672C\u884C\u4EF7\u683C\uFF0C\u8BF7\u786E\u8BA4\u7B5B\u9009\u8303\u56F4\u3002" : "\u4E70\u5356\u72EC\u7ACB\u5B9A\u4EF7\uFF1B\u4E0D\u4F1A\u7531\u4E70\u5165\u6210\u672C\u53CD\u63A8\u5356\u4EF7\u3002";
+      get("rating-price-warning").textContent = task.settings.quality === "all" || task.settings.quality === "special" ? "\u5305\u542B\u7279\u6B8A\u5361\uFF1A\u540C\u8BC4\u5206\u7684\u7279\u6B8A\u5361\u4E5F\u4F7F\u7528\u672C\u884C\u4EF7\u683C\uFF0C\u8BF7\u786E\u8BA4\u7B5B\u9009\u8303\u56F4\u3002" : hold ? "Only a buy limit is required. Purchased cards will not be listed." : "\u4E70\u5356\u72EC\u7ACB\u5B9A\u4EF7\uFF1B\u4E0D\u4F1A\u7531\u4E70\u5165\u6210\u672C\u53CD\u63A8\u5356\u4EF7\u3002";
       const expand = get("rating-price-expand");
       expand.hidden = ratings.length <= 5;
       expand.textContent = expanded ? "\u6536\u8D77\u5176\u4F59\u8BC4\u5206" : `\u5C55\u5F00\u5176\u4F59 ${Math.max(0, ratings.length - 5)} \u6863`;
-      const nextKey = JSON.stringify([min, max, expanded]);
+      const nextKey = JSON.stringify([min, max, expanded, hold]);
       if (nextKey === renderKey) return;
       renderKey = nextKey;
       rowsHost.replaceChildren();
@@ -29174,7 +29222,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const label = document.createElement("b");
         label.textContent = String(r);
         row.append(label);
-        for (const side of ["buy", "sell"]) {
+        for (const side of hold ? ["buy"] : ["buy", "sell"]) {
           const input = document.createElement("input");
           input.type = "number";
           input.min = "150";
@@ -29235,7 +29283,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Number.isSafeInteger(card.rating) && card.rating >= settings.ratingMin && card.rating <= settings.ratingMax && (settings.quality === "all" || card.quality === settings.quality) && [["league", "leagueId"], ["nation", "nationId"], ["club", "teamId"], ["position", "preferredPosition"]].every(([key2, field]) => settings[key2] === null || card[field] === settings[key2]);
   }
   var taskExclusion = (card, excluded) => excluded.find((e) => e.type === "version" ? e.id === card.definitionId : card.playerId != null && e.id === card.playerId);
-  var taskCandidateAllowed = (card, task) => taskMatches(card, task.settings) && (!task.ratingPrices || completeMarketRatingRow(marketRatingRow(task, card.rating))) && !taskExclusion(card, task.excluded) && (!task.excluded.some((e) => e.type === "player") || Number.isSafeInteger(card.playerId) && card.playerId > 0);
+  var taskCandidateAllowed = (card, task) => taskMatches(card, task.settings) && (!task.ratingPrices || completeMarketRatingRow(marketRatingRow(task, card.rating), task)) && !taskExclusion(card, task.excluded) && (!task.excluded.some((e) => e.type === "player") || Number.isSafeInteger(card.playerId) && card.playerId > 0);
   async function readTaskCatalogPage({ rows, settings = null, query = "", cursor = 0, isCurrent = () => true, yieldControl = yieldTaskCatalog }) {
     const search = query.trim().toLocaleLowerCase(), page = [];
     let next = cursor, scanned = 0;
@@ -29256,6 +29304,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 
   // src/trading/market-task-messages.js
   var marketTaskMessages = Object.freeze({
+    MARKET_HOLD_ONLY: "This task is set to Hold only. Change After buying to Auto list and start the task to sell its holdings.",
+    MARKET_PURCHASE_DENIED: "Purchase rejected; reason unverified. Trading paused. Export diagnostics for the EA error code.",
+    MARKET_INSUFFICIENT_FUNDS: "EA rejected the purchase: insufficient coins. Review your balance before restarting.",
+    MARKET_DESTINATION_FULL: "EA rejected the purchase: destination full. Clear space before restarting.",
     MARKET_PLAYER_DATA_UNAVAILABLE: "EA \u59D3\u540D\u8D44\u6599\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u8FDB\u5165 Web App \u540E\u91CD\u8BD5\u3002",
     MARKET_PLAYER_QUERY_INVALID: "\u8BF7\u9009\u62E9\u59D3\u540D\u5217\u8868\u4E2D\u7684\u7403\u5458\uFF0C\u518D\u8BFB\u53D6\u5177\u4F53\u7248\u672C\u3002",
     MARKET_PLAYER_VERSIONS_INVALID: "EA \u7248\u672C\u8D44\u6599\u672A\u901A\u8FC7\u8EAB\u4EFD\u6838\u9A8C\uFF0C\u672A\u52A0\u5165\u5019\u9009\u3002",
@@ -29267,9 +29319,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     MARKET_SCHEDULE_WAIT: "\u7B49\u5F85\u9884\u5B9A\u4E70\u5165\uFF0F\u6302\u724C\u65F6\u95F4\uFF1B\u6CA1\u6709\u63D0\u524D\u641C\u7D22\u6216\u4EA4\u6613\u3002",
     MARKET_SCHEDULE_WINDOW_CLOSED: "\u4E70\u5165\u65F6\u6BB5\u5DF2\u7ED3\u675F\uFF0C\u4E0D\u518D\u53D1\u9001\u8D2D\u4E70\uFF1B\u5DF2\u8D2D\u5361\u4ECD\u6309\u8BA1\u5212\u6302\u724C\u3002",
     MARKET_SCHEDULE_CLOCK_CHANGED: "\u7CFB\u7EDF\u65F6\u95F4\u53D1\u751F\u660E\u663E\u53D8\u5316\uFF0C\u5DF2\u6682\u505C\u5B9A\u65F6\uFF0C\u8BF7\u6838\u5BF9\u65F6\u95F4\u540E\u7EE7\u7EED\u3002",
-    MARKET_TRANSFER_FULL: "Transfer List \u5DF2\u6EE1\uFF0C\u672C\u8F6E\u505C\u6B62\u4E70\u5165\uFF0C\u7EE7\u7EED\u5904\u7406\u5DF2\u8D2D\u5361\u4E0E\u5B9A\u65F6\u6302\u724C\u3002",
+    MARKET_TRANSFER_FULL: "Transfer List is full. Buying has stopped. Purchased cards are retained; listing follows the task rules.",
     MARKET_TRAFFIC_WAIT: "\u7B49\u5F85 FCAT \u5171\u7528\u641C\u7D22\uFF0F\u4EA4\u6613\u95F4\u9694\uFF1B\u989D\u5EA6\u8F83\u957F\u65F6\u8BF7\u5230\u5E02\u573A\u4EA4\u6613\u9875\u67E5\u770B\u53EF\u6062\u590D\u65F6\u95F4\u3002",
-    MARKET_TRAFFIC_STOPPED: "\u5176\u4ED6 FCAT \u5E02\u573A\u5165\u53E3\u89E6\u53D1\u4E86\u5168\u5C40\u6682\u505C\uFF0C\u8BF7\u6838\u5BF9\u56DE\u6267\u548C\u4F1A\u8BDD\u540E\u89E3\u9664\u3002",
+    MARKET_TRAFFIC_STOPPED: "FCAT market activity is globally paused. Check receipts and session, then clear the global pause.",
+    MARKET_RESTART_TIME_LIMIT: "Accumulated runtime has reached the limit. Edit the task limit before restarting; elapsed time is retained.",
+    MARKET_SPEND_CAP: "The cumulative purchase limit has been reached. Edit the task limit to continue; restarting does not reset spending.",
+    MARKET_HOLDING_CAP: "The task or global holding-cost limit prevents this purchase. Review holdings and limits before continuing.",
+    MARKET_VERSION_CAP: "The per-version holding limit has been reached. Review holdings or edit the task limit.",
     MARKET_TRAFFIC_INVALID: "\u5171\u7528\u5E02\u573A\u7528\u91CF\u8BB0\u5F55\u672A\u901A\u8FC7\u6821\u9A8C\uFF0C\u539F\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002",
     MARKET_TRAFFIC_STORAGE_LIMIT: "\u5171\u7528\u5E02\u573A\u8BB0\u5F55\u8FBE\u5230\u5BB9\u91CF\u9650\u5236\uFF0C\u5DF2\u505C\u6B62\u8BF7\u6C42\u5E76\u4FDD\u7559\u539F\u8BB0\u5F55\u3002",
     MARKET_TRAFFIC_SAVE_UNVERIFIED: "\u5E02\u573A\u7528\u91CF\u4FDD\u5B58\u672A\u786E\u8BA4\uFF0C\u5DF2\u505C\u6B62\u65B0\u589E\u8BF7\u6C42\u3002",
@@ -29303,7 +29359,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     MARKET_SESSION_UNVERIFIED: "\u4F1A\u8BDD\u3001\u4F59\u989D\u6216\u5E02\u573A\u6743\u9650\u5C1A\u672A\u786E\u8BA4\u3002",
     MARKET_RECOVERY_REQUIRED: "\u6709\u672A\u51B3\u4EA4\u6613\uFF0C\u8BF7\u5148\u70B9\u51FB\u201C\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u201D\u3002",
     MARKET_RESPONSE_UNCONFIRMED: "\u4EA4\u6613\u56DE\u6267\u672A\u77E5\uFF0C\u8BF7\u6838\u5BF9\uFF0C\u4E0D\u4F1A\u91CD\u590D\u4E70\u5356\u3002",
-    MARKET_TASK_SELECTION_INVALID: "\u8BE5\u4EFB\u52A1\u5F53\u524D\u4E0D\u80FD\u542F\u52A8\uFF1B\u5DF2\u505C\u6B62\u7684\u4EFB\u52A1\u8BF7\u590D\u5236\u540E\u91CD\u65B0\u8BBE\u7F6E\u3002",
+    MARKET_TASK_SELECTION_INVALID: "This task cannot start in its current state. Use Restart for a stopped task; unresolved receipts must be checked first.",
     MARKET_AUTHENTICATION: "EA \u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55\u3002",
     MARKET_THROTTLED: "EA \u8FD4\u56DE\u5E02\u573A\u9650\u5236\uFF0C\u5DF2\u6682\u505C\u6240\u6709\u4EFB\u52A1\u3002",
     MARKET_CAPTCHA: "EA \u8981\u6C42\u9A8C\u8BC1\uFF0C\u5DF2\u6682\u505C\u6240\u6709\u4EFB\u52A1\u3002",
@@ -29472,6 +29528,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       readInputs();
       renderDraft();
     } });
+    const afterBuyLabel = document.createElement("label");
+    afterBuyLabel.innerHTML = '<span>After buying</span><select id="afterBuy"><option value="list">Auto list</option><option value="hold">Hold only (Transfer List)</option></select><small id="afterBuyHint">Hold only moves purchased cards to Transfer List without listing or relisting. Existing live listings are not cancelled.</small>';
+    $("rating-prices").before(afterBuyLabel);
     $("taskPreview").nextElementSibling.textContent = "\u4FDD\u5B58\u4E0D\u4F1A\u4E70\u5356\uFF1B\u70B9\u51FB\u542F\u52A8\u5E76\u786E\u8BA4\u540E\u6267\u884C\u3002";
     $("confirm").querySelector("h2").textContent = "\u786E\u8BA4\u4EFB\u52A1\u64CD\u4F5C";
     const editorStatus = document.createElement("output");
@@ -29491,7 +29550,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     runtimeOutput.setAttribute("role", "status");
     runtimeOutput.hidden = true;
     coordinationStatus.after(runtimeOutput);
-    let runtimeStatus = runtime?.inspect(), pendingStart = null;
+    let runtimeStatus = runtime?.inspect(), pendingStart = null, pendingRestart = false;
     const recoveryBar = document.createElement("div");
     recoveryBar.className = "actions";
     runtimeOutput.after(recoveryBar);
@@ -29596,7 +29655,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       sessionOutput.title = "Enabled only for running or waiting tasks. Recent successful requests postpone checks. Sleep, disconnection or an EA logout may require login and manual resume.";
       if (runtimeStatus?.available) {
         const row = runtimeStatus.tasks.find((r) => r.id === runtimeStatus.taskId), label = snapshot.store.tasks.find((t) => t.id === row?.id)?.name ?? "";
-        const labels2 = { initialize: "\u6838\u5BF9\u4EA4\u6613\u63A5\u53E3", idle: "\u5DF2\u505C\u6B62\u6267\u884C", prepare: "\u51C6\u5907\u5019\u9009", preflight: "\u6838\u5BF9\u6761\u4EF6", search: "\u641C\u7D22", buy: "\u4E70\u5165", move: "\u79FB\u5361", list: "\u6302\u724C", waiting: "\u7B49\u5F85\u4E0B\u4E00\u8F6E", recover: "\u53EA\u8BFB\u6838\u5BF9", "resume-check": "\u6838\u5BF9\u6062\u590D\u6761\u4EF6", "session-check": "Checking EA session" };
+        const labels2 = { initialize: "\u6838\u5BF9\u4EA4\u6613\u63A5\u53E3", idle: "\u5DF2\u505C\u6B62\u6267\u884C", prepare: "\u51C6\u5907\u5019\u9009", preflight: "\u6838\u5BF9\u6761\u4EF6", search: "\u641C\u7D22", buy: "\u4E70\u5165", move: "\u79FB\u5361", list: "\u6302\u724C", waiting: "\u7B49\u5F85\u4E0B\u4E00\u8F6E", recover: "\u53EA\u8BFB\u6838\u5BF9", "resume-check": "\u6838\u5BF9\u6062\u590D\u6761\u4EF6", "session-check": "Checking EA session", "restart-check": "Checking task restart" };
         runtimeOutput.textContent = `${label ? label + " \xB7 " : ""}${labels2[runtimeStatus.phase] ?? "\u7B49\u5F85"}${row?.nextAt > Date.now() ? ` \xB7 ${Math.ceil((row.nextAt - Date.now()) / 1e3)} \u79D2` : ""}${runtimeStatus.reason ? " \xB7 " + (marketTaskMessages[runtimeStatus.reason] ?? runtimeStatus.reason) : ""}`;
       }
       if (coordination) {
@@ -29605,9 +29664,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         coordinationStatus.textContent = `${shared ? "FCAT \u5171\u7528\u5E02\u573A" : "\u5F53\u524D\u4EA4\u6613\u4EFB\u52A1"} \xB7 \u641C\u7D22 1h ${gate.hour} / 24h ${gate.day}${gate.uncertain ? `\uFF08${gate.uncertain} \u6B21\u53D1\u9001\u5F85\u786E\u8BA4\uFF09` : ""} \xB7 \u6301\u4ED3 ${funds.count} \xB7 \u5728\u9014 ${funds.reservedCoins} \u91D1\u5E01${gate.recoveryRequired ? " \xB7 \u6709\u4EA4\u6613\u5F85\u6838\u5BF9" : gate.stopped ? " \xB7 \u6267\u884C\u5DF2\u6682\u505C" : ""}${shared && gate.nextAt > Date.now() ? ` \xB7 \u53EF\u641C\u7D22 ${new Date(gate.nextAt).toLocaleTimeString()}` : ""}`;
         coordinationStatus.title = shared ? "FCAT Gallery / SBC / \u4EA4\u6613\u5DF2\u53D1\u9001\u7684\u5E02\u573A\u641C\u7D22\uFF1B\u4E0D\u542B\u5176\u4ED6\u63D2\u4EF6\u3001\u624B\u52A8\u64CD\u4F5C\u6216\u5176\u4ED6\u8BBE\u5907\u3002\u6301\u4ED3\u4E0E\u5728\u9014\u91D1\u5E01\u4ECD\u4EC5\u4E3A\u4EA4\u6613\u4EFB\u52A1\u8D26\u672C\u3002" : "\u4EC5\u672C\u4EFB\u52A1\u7CFB\u7EDF\u8BB0\u5F55\u3002";
       } else coordinationStatus.hidden = true;
-      $("tasks").innerHTML = tasks.map((t) => `<tr><td><button type="button" class="task-name" data-action="detail" data-id="${esc(t.id)}">${esc(t.name)}</button><small>${modes[t.mode]}${t.mode === "sell" ? "" : ` \xB7 \u4E70\u5165 ${esc(t.settings.buyValue)}${t.settings.buyRule === "percent" ? "%" : ""}`} \xB7 \u5356\u51FA ${esc(t.settings.sellValue)}${t.settings.sellRule === "reference" ? "%" : ""}</small>${t.schedule ? `<small>${esc(marketScheduleSummary(t))}</small>` : ""}</td><td>${states3[stateFor(t)]}${reasonFor(t)}${runtimeRow(t)?.schedule ? `<small>${runtimeRow(t).schedule.buyClosed ? "\u4E70\u5165\u5DF2\u7ED3\u675F" : "\u4E70\u5165\u672A\u7ED3\u675F"}${runtimeRow(t)?.nextAt > Date.now() ? ` / ${new Date(runtimeRow(t).nextAt).toLocaleString()}` : ""}</small>` : ""}</td><td>${countsOf2(t).join(" / ")}</td><td><div class="actions"><button type="button" data-action="start" data-id="${esc(t.id)}" ${runtimeStatus?.available && runtimeStatus.modes.includes(t.mode) && ["ready", "paused"].includes(stateFor(t)) ? "" : "disabled"} title="\u6309\u5DF2\u4FDD\u5B58\u89C4\u5219\u542F\u52A8\uFF1B\u505C\u6B62\u540E\u8BF7\u590D\u5236\u4E3A\u65B0\u4EFB\u52A1">\u542F\u52A8</button>${stateFor(t) === "review" && !factsOf2(t).unresolved ? `<button type="button" data-action="acknowledge" data-id="${esc(t.id)}">\u786E\u8BA4\u6838\u5BF9\u5B8C\u6210</button>` : ""}${["ready", "paused"].includes(stateFor(t)) ? `<button type="button" data-action="edit" data-id="${esc(t.id)}">\u7F16\u8F91</button>` : ""}<button type="button" data-action="copy" data-id="${esc(t.id)}">\u590D\u5236</button>${["running", "queued", "waiting"].includes(stateFor(t)) ? `<button type="button" data-action="pause" data-id="${esc(t.id)}">\u6682\u505C</button>` : ""}${!["stopped", "archived"].includes(stateFor(t)) ? `<button type="button" data-action="stop" data-id="${esc(t.id)}">\u505C\u6B62</button>` : ""}<button type="button" data-action="delete" data-id="${esc(t.id)}">${t.activity.receipts.length || factsOf2(t).hasEvidence ? "\u5F52\u6863" : "\u5220\u9664"}</button></div></td></tr>`).join("");
+      $("tasks").innerHTML = tasks.map((t) => `<tr><td><button type="button" class="task-name" data-action="detail" data-id="${esc(t.id)}">${esc(t.name)}</button><small>${modes[t.mode]}${t.mode === "sell" ? "" : ` \xB7 \u4E70\u5165 ${esc(t.settings.buyValue)}${t.settings.buyRule === "percent" ? "%" : ""}`} \xB7 \u5356\u51FA ${esc(t.settings.sellValue)}${t.settings.sellRule === "reference" ? "%" : ""}</small>${t.schedule ? `<small>${esc(marketScheduleSummary(t))}</small>` : ""}</td><td>${states3[stateFor(t)]}${reasonFor(t)}${runtimeRow(t)?.schedule ? `<small>${runtimeRow(t).schedule.buyClosed ? "\u4E70\u5165\u5DF2\u7ED3\u675F" : "\u4E70\u5165\u672A\u7ED3\u675F"}${runtimeRow(t)?.nextAt > Date.now() ? ` / ${new Date(runtimeRow(t).nextAt).toLocaleString()}` : ""}</small>` : ""}</td><td>${countsOf2(t).join(" / ")}</td><td><div class="actions"><button type="button" data-action="start" data-id="${esc(t.id)}" ${runtimeStatus?.available && runtimeStatus.modes.includes(t.mode) && ["ready", "paused", "stopped"].includes(stateFor(t)) ? "" : "disabled"} title="Start or restart using saved rules; accumulated records are retained">${stateFor(t) === "stopped" ? "Restart" : "\u542F\u52A8"}</button>${stateFor(t) === "review" && !factsOf2(t).unresolved ? `<button type="button" data-action="acknowledge" data-id="${esc(t.id)}">\u786E\u8BA4\u6838\u5BF9\u5B8C\u6210</button>` : ""}${["ready", "paused", "stopped"].includes(stateFor(t)) ? `<button type="button" data-action="edit" data-id="${esc(t.id)}">\u7F16\u8F91</button>` : ""}<button type="button" data-action="copy" data-id="${esc(t.id)}">\u590D\u5236</button>${["running", "queued", "waiting"].includes(stateFor(t)) ? `<button type="button" data-action="pause" data-id="${esc(t.id)}">\u6682\u505C</button>` : ""}${!["stopped", "archived"].includes(stateFor(t)) ? `<button type="button" data-action="stop" data-id="${esc(t.id)}">\u505C\u6B62</button>` : ""}<button type="button" data-action="delete" data-id="${esc(t.id)}">${t.activity.receipts.length || factsOf2(t).hasEvidence ? "\u5F52\u6863" : "\u5220\u9664"}</button></div></td></tr>`).join("");
       $("empty").hidden = tasks.length > 0;
-      for (const [i, row] of [...$("tasks").children].entries()) if (tasks[i]?.ratingPrices) row.querySelector("small").textContent = marketRatingSummary(tasks[i]);
+      for (const [i, row] of [...$("tasks").children].entries()) {
+        const task = tasks[i];
+        if (task?.ratingPrices) row.querySelector("small").textContent = marketRatingSummary(task);
+        if (task && !marketTaskAutoLists(task)) row.querySelector("small").textContent = (task.ratingPrices ? marketRatingSummary(task) : modes[task.mode] + " ? Buy " + task.settings.buyValue + (task.settings.buyRule === "percent" ? "%" : "")) + " ? Hold only";
+      }
       if (syncSettings) for (const key2 of Object.keys(defaultTradingPublicSettings())) $(key2).value = String(snapshot.store.settings[key2] ?? "");
       $("settingsBrief").textContent = `${snapshot.store.settings.source.toUpperCase()} \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 ${snapshot.store.settings.gapMin}\u2013${snapshot.store.settings.gapMax} \u79D2`;
     };
@@ -29672,7 +29735,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return rows;
     };
     const renderDraft = () => {
-      scheduleEditor.refresh(draft.mode);
+      scheduleEditor.refresh(draft.mode, draft.settings.afterBuy);
+      afterBuyLabel.hidden = draft.mode === "sell";
+      afterBuyLabel.classList.toggle("hidden", draft.mode === "sell");
       for (const b of shadow.querySelectorAll("[data-mode]")) b.classList.toggle("active", b.dataset.mode === draft.mode);
       for (const mode of ["fixed", "filter", "sell"]) $(`${mode}Box`).classList.toggle("hidden", draft.mode !== mode);
       $("buyFields").classList.toggle("hidden", draft.mode === "sell");
@@ -29835,15 +29900,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const money2 = (value) => value === null ? "\u672A\u77E5" : esc(value);
       const elapsedMs = runtimeRow(task)?.elapsedMs ?? report?.elapsedMs ?? 0;
       const scope2 = runtimeRow(task)?.candidateScope;
-      const receipts = report && (report.events.length || report.holdings.length) ? `<p>\u5DF2\u4E70 ${report.purchased} \xB7 \u5DF2\u6302 ${report.listed} \xB7 \u5DF2\u552E ${report.sold} \xB7 \u6301\u4ED3\u6210\u672C ${money2(report.heldCost)} \xB7 \u5DF2\u5B9E\u73B0\u5229\u6DA6 ${money2(report.realizedProfit)}</p><p class="hint">\u4EC5\u5DF2\u552E\u56DE\u6267\u8BA1\u5165\u6536\u76CA\uFF0C\u6309 5% \u4EA4\u6613\u7A0E\u8BA1\u7B97\uFF1B\u6210\u672C\u7F3A\u5931\u65F6\u5229\u6DA6\u4FDD\u6301\u672A\u77E5\u3002</p><h3>\u6301\u4ED3\uFF08\u6700\u8FD1 40 \u5F20 / \u5171 ${report.holdings.length} \u5F20\uFF09</h3>${report.holdings.slice(-40).reverse().map((h) => `<p>EA ${h.definitionId} \xB7 ${esc(h.itemId)} \xB7 ${{ held: "\u5F85\u79FB\u5361", transfer: "\u5F85\u6302\u724C", listed: "\u5DF2\u6302\u724C", unsold: "\u672A\u552E\u51FA", sold: "\u5DF2\u552E\u51FA" }[h.phase]} \xB7 \u4E70\u5165 ${money2(h.cost)}${h.phase === "sold" ? ` \xB7 \u552E\u51FA ${money2(h.salePrice)}` : ""}</p>`).join("")}<h3>\u4EA4\u6613\u56DE\u6267\uFF08\u6700\u8FD1 40 \u6761 / \u5171 ${report.events.length} \u6761\uFF09</h3>${report.events.slice(-40).reverse().map((r) => `<p>${r.previousTradeId ? "\u91CD\u6302" : { buy: "\u4E70\u5165", move: "\u79FB\u52A8", list: "\u6302\u724C" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${{ pending: "\u5F85\u6838\u5BF9", confirmed: "\u5DF2\u786E\u8BA4", rejected: "\u672A\u6210\u4EA4\uFF0F\u672A\u53D1\u9001" }[r.phase]} \xB7 ${r.coins}${r.listing ? ` \xB7 ${r.listing.startPrice}/${r.listing.buyNow} \xB7 ${r.listing.durationSeconds / 3600}h` : ""}</p>`).join("")}` : `<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
-      $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[stateFor(task)]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p><p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p><p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}${receipts}`;
+      const receipts = report && (report.events.length || report.holdings.length) ? `<p>\u5DF2\u4E70 ${report.purchased} \xB7 \u5DF2\u6302 ${report.listed} \xB7 \u5DF2\u552E ${report.sold} \xB7 \u6301\u4ED3\u6210\u672C ${money2(report.heldCost)} \xB7 \u5DF2\u5B9E\u73B0\u5229\u6DA6 ${money2(report.realizedProfit)}</p><p class="hint">\u4EC5\u5DF2\u552E\u56DE\u6267\u8BA1\u5165\u6536\u76CA\uFF0C\u6309 5% \u4EA4\u6613\u7A0E\u8BA1\u7B97\uFF1B\u6210\u672C\u7F3A\u5931\u65F6\u5229\u6DA6\u4FDD\u6301\u672A\u77E5\u3002</p><h3>\u6301\u4ED3\uFF08\u6700\u8FD1 40 \u5F20 / \u5171 ${report.holdings.length} \u5F20\uFF09</h3>${report.holdings.slice(-40).reverse().map((h) => `<p>EA ${h.definitionId} \xB7 ${esc(h.itemId)} \xB7 ${{ held: "\u5F85\u79FB\u5361", transfer: marketTaskAutoLists(task) ? "\u5F85\u6302\u724C" : "Held on Transfer List", listed: "\u5DF2\u6302\u724C", unsold: "\u672A\u552E\u51FA", sold: "\u5DF2\u552E\u51FA" }[h.phase]} \xB7 \u4E70\u5165 ${money2(h.cost)}${h.phase === "sold" ? ` \xB7 \u552E\u51FA ${money2(h.salePrice)}` : ""}</p>`).join("")}<h3>\u4EA4\u6613\u56DE\u6267\uFF08\u6700\u8FD1 40 \u6761 / \u5171 ${report.events.length} \u6761\uFF09</h3>${report.events.slice(-40).reverse().map((r) => `<p>${r.previousTradeId ? "\u91CD\u6302" : { buy: "\u4E70\u5165", move: "\u79FB\u52A8", list: "\u6302\u724C" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${{ pending: "\u5F85\u6838\u5BF9", confirmed: "\u5DF2\u786E\u8BA4", rejected: "\u672A\u6210\u4EA4\uFF0F\u672A\u53D1\u9001" }[r.phase]} \xB7 ${r.coins}${r.listing ? ` \xB7 ${r.listing.startPrice}/${r.listing.buyNow} \xB7 ${r.listing.durationSeconds / 3600}h` : ""}</p>`).join("")}` : `<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
+      $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[stateFor(task)]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p>${marketTaskAutoLists(task) ? `<p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p>` : "<p>After buying: Hold only (Transfer List)</p>"}<p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}${receipts}`;
       if (task.ratingPrices) {
         const prices = document.createElement("section");
         prices.className = "box";
-        prices.textContent = marketRatingSummary(task) + "\uFF1A" + Object.entries(task.ratingPrices).filter(([r]) => Number(r) >= task.settings.ratingMin && Number(r) <= task.settings.ratingMax).map(([r, p]) => `${r} \u4E70\u5165\u2264${p.buy ?? "\u672A\u586B"} / \u5356\u51FA ${p.sell ?? "\u672A\u586B"}`).join("\uFF1B");
+        prices.textContent = marketRatingSummary(task) + "\uFF1A" + Object.entries(task.ratingPrices).filter(([r]) => Number(r) >= task.settings.ratingMin && Number(r) <= task.settings.ratingMax).map(([r, p]) => `${r} \u4E70\u5165\u2264${p.buy ?? "\u672A\u586B"}${marketTaskAutoLists(task) ? ` / \u5356\u51FA ${p.sell ?? "\u672A\u586B"}` : ""}`).join("\uFF1B");
         const paragraphs = $("taskDetailBody").querySelectorAll(":scope > p");
         paragraphs[1]?.remove();
-        paragraphs[2]?.remove();
+        if (marketTaskAutoLists(task)) paragraphs[2]?.remove();
         $("taskDetailBody").prepend(prices);
       }
       const scheduleNote = document.createElement("p");
@@ -29852,13 +29917,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       $("taskDetailBody").append(scheduleNote);
       const extra = document.createElement("section");
       extra.className = "box";
-      extra.innerHTML = `<p>\u7D2F\u8BA1\u8FD0\u884C ${Math.ceil(elapsedMs / 1e3)} \u79D2 \xB7 \u91CD\u6302\uFF1A${{ original: "\u539F\u6302\u724C\u4EF7", reference: "\u5F53\u524D\u5356\u51FA\u89C4\u5219\u91CD\u65B0\u5B9A\u4EF7", pause: "\u6682\u505C\u6B64\u5361" }[task.settings.relist]} \xB7 \u6700\u591A ${task.settings.relistTimes ?? "\u4E0D\u9650"} \u6B21</p><p class="hint">\u6682\u505C\u548C\u7EE7\u7EED\u4E0D\u91CD\u7F6E\u7528\u65F6\u3001\u652F\u51FA\u6216\u91CD\u6302\u6B21\u6570\u3002\u5F02\u5E38\u5173\u95ED\u6700\u591A\u4FDD\u5B88\u8BA1\u5165\u5269\u4F59 60 \u79D2\uFF1B\u79BB\u7EBF\u65F6\u95F4\u4E0D\u7D2F\u8BA1\u3002</p>${(report?.handoffs ?? []).slice(-40).map((h) => `<p>${h.fromTaskId === task.id ? "\u79FB\u4EA4\u7ED9" : "\u63A5\u6536\u81EA"} ${esc(snapshot.store.tasks.find((t) => t.id === (h.fromTaskId === task.id ? h.toTaskId : h.fromTaskId))?.name ?? "\u5386\u53F2\u4EFB\u52A1")} \xB7 EA ${h.definitionId} \xB7 \u6210\u672C ${money2(h.cost)}</p>`).join("")}`;
+      extra.innerHTML = `<p>\u7D2F\u8BA1\u8FD0\u884C ${Math.ceil(elapsedMs / 1e3)} \u79D2 ${marketTaskAutoLists(task) ? `\xB7 \u91CD\u6302\uFF1A${{ original: "\u539F\u6302\u724C\u4EF7", reference: "\u5F53\u524D\u5356\u51FA\u89C4\u5219\u91CD\u65B0\u5B9A\u4EF7", pause: "\u6682\u505C\u6B64\u5361" }[task.settings.relist]} \xB7 \u6700\u591A ${task.settings.relistTimes ?? "\u4E0D\u9650"} \u6B21` : "\xB7 Hold only; relisting disabled"}</p><p class="hint">\u6682\u505C\u548C\u7EE7\u7EED\u4E0D\u91CD\u7F6E\u7528\u65F6\u3001\u652F\u51FA\u6216\u91CD\u6302\u6B21\u6570\u3002\u5F02\u5E38\u5173\u95ED\u6700\u591A\u4FDD\u5B88\u8BA1\u5165\u5269\u4F59 60 \u79D2\uFF1B\u79BB\u7EBF\u65F6\u95F4\u4E0D\u7D2F\u8BA1\u3002</p>${(report?.handoffs ?? []).slice(-40).map((h) => `<p>${h.fromTaskId === task.id ? "\u79FB\u4EA4\u7ED9" : "\u63A5\u6536\u81EA"} ${esc(snapshot.store.tasks.find((t) => t.id === (h.fromTaskId === task.id ? h.toTaskId : h.fromTaskId))?.name ?? "\u5386\u53F2\u4EFB\u52A1")} \xB7 EA ${h.definitionId} \xB7 \u6210\u672C ${money2(h.cost)}</p>`).join("")}`;
       $("taskDetailBody").append(extra);
       if (task.mode === "filter") {
         const note = document.createElement("p");
         note.className = "hint";
         note.textContent = scope2 ? `\u672C\u8F6E ${scope2.revision} \xB7 \u5DF2\u77E5\u76EE\u5F55 ${scope2.known} \u4E2A\u7248\u672C \xB7 \u5DF2\u5339\u914D ${scope2.matched} \u4E2A \xB7 \u5F53\u524D\u6279 ${scope2.batch} \u4E2A \xB7 \u7F3A\u4EF7 ${scope2.missing} \u4E2A\u3002\u4EC5\u5DF2\u77E5\u76EE\u5F55\uFF0C\u975E\u5168\u5E02\u573A\uFF1B\u6BCF\u6B21\u91CD\u65B0\u542F\u52A8\u66F4\u65B0\u76EE\u5F55\u3002` : "\u542F\u52A8\u540E\u6309\u6700\u65B0\u5DF2\u77E5\u76EE\u5F55\u5206\u6279\u7B5B\u9009\uFF0C\u6BCF\u6279\u6700\u591A 20 \u4E2A\u7248\u672C\uFF1B\u9884\u89C8\u6BCF\u9875 5 \u5F20\u3002\u4E0D\u4EE3\u8868\u5168\u5E02\u573A\u8986\u76D6\uFF0C\u7F3A\u5C11\u6240\u9700\u5B57\u6BB5\u7684\u7248\u672C\u4E0D\u53C2\u4E0E\u3002";
         extra.append(note);
+      }
+      if (!marketTaskAutoLists(task)) {
+        const note = document.createElement("p");
+        note.textContent = "Hold only: purchased cards stay on Transfer List without listing or relisting. To sell, edit this task to Auto list and start it explicitly, or stop and hand off its holdings.";
+        extra.prepend(note);
       }
       if (runtime && report && ["stopped", "archived"].includes(task.state) && !factsOf2(task).unresolved) {
         const holdings = report.holdings.filter((h) => ["held", "transfer", "unsold"].includes(h.phase));
@@ -29928,8 +29998,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             pendingRelease = false;
             pendingDelete = null;
             pendingStart = task.id;
+            pendingRestart = stateFor(task) === "stopped";
+            $("confirm").querySelector("h2").textContent = pendingRestart ? "Restart task" : "Start task";
             $("confirmBody").textContent = `\u542F\u52A8\u201C${task.name}\u201D\uFF1A\u6309\u5DF2\u4FDD\u5B58\u7684${modes[task.mode]}\u548C\u4E70\u5356\u89C4\u5219\u6301\u7EED\u6267\u884C\uFF0C\u76F4\u5230\u6682\u505C\u3001\u505C\u6B62\u6216\u89E6\u53CA\u9650\u5236\u3002\u62A5\u4EF7\u6E90 ${snapshot.store.settings.source.toUpperCase()}\u3002\u4FDD\u5B58\u672C\u8EAB\u4E0D\u4F1A\u542F\u52A8\u3002`;
             if (task.schedule) $("confirmBody").textContent = marketScheduleSummary(task) + "\n\u542F\u52A8\u540E\u7B49\u5F85\u5BF9\u5E94\u65F6\u6BB5\u6267\u884C\uFF1B\u4E0D\u8865\u8DD1\u5DF2\u8FC7\u671F\u7684\u4E70\u5165\u7A97\u53E3\u3002\u6BCF\u5929\u91CD\u590D\u4E0D\u91CD\u7F6E\u7D2F\u8BA1\u989D\u5EA6\u3002";
+            if (!marketTaskAutoLists(task)) $("confirmBody").textContent += "\nHold only: buy and move to Transfer List, without listing or relisting.";
+            if (pendingRestart) $("confirmBody").textContent = "Restart this task using its saved rules. Holdings, spending, elapsed time and receipts are retained. Unresolved trades and global pauses must be cleared first.\n" + $("confirmBody").textContent;
             $("confirm").showModal();
           } else if (action === "acknowledge") void run(async () => {
             const result = await service.action({ ...snapshot, id: task.id, action });
@@ -29939,6 +30013,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           else if (action === "edit") openEditor(task);
           else if (action === "detail") void run(() => showDetail(task));
           else if (action === "delete") {
+            $("confirm").querySelector("h2").textContent = "Delete or archive task";
             pendingRelease = false;
             pendingStart = null;
             pendingDelete = task.id;
@@ -30013,6 +30088,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     releaseButton.onclick = (event) => {
       if (!event.isTrusted) return;
+      $("confirm").querySelector("h2").textContent = "Clear global pause";
       pendingRelease = true;
       pendingStart = null;
       pendingDelete = null;
@@ -30033,14 +30109,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return;
       }
       if (pendingStart) {
-        const taskId = pendingStart;
+        const taskId = pendingStart, restarting = pendingRestart;
         pendingStart = null;
+        pendingRestart = false;
         $("confirm").close();
         try {
           check();
           if (!runtime?.inspect().available) throw Error("TASKS_EXECUTION_UNAVAILABLE");
-          const options = { approved: true, snapshot: structuredClone(snapshot), taskIds: [taskId] };
-          void (runtime.inspect().busy ? runtime.enqueue(options) : runtime.run(options)).catch((error2) => message(errors[error2.message] ?? marketTaskMessages[marketTaskFailureReason(error2)]));
+          const launch = () => {
+            const options = { approved: true, snapshot: structuredClone(snapshot), taskIds: [taskId] };
+            void (runtime.inspect().busy ? runtime.enqueue(options) : runtime.run(options)).catch((error2) => message(errors[error2.message] ?? marketTaskMessages[marketTaskFailureReason(error2)]));
+          };
+          if (restarting) {
+            const ticket = epoch2;
+            void run(async () => {
+              const fresh = await runtime.reopen({ approved: true, snapshot: structuredClone(snapshot), taskId });
+              if (ticket !== epoch2 || !active) return;
+              check();
+              snapshot = { context: fresh.context, store: fresh.store };
+              coordination = fresh.coordination;
+              render(false);
+              launch();
+            });
+          } else launch();
         } catch (error2) {
           message(errors[error2.message] ?? "\u6267\u884C\u672A\u5F00\u59CB\u3002");
         }
@@ -38379,12 +38470,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       read,
       withTask,
       withSnapshot,
+      // Called only by the explicit restart control round while the account and
+      // native locks are held. Failed writes leave no execution authorization.
+      reopen: (options, prepare2) => mutate(options, async (store, c) => {
+        const task = find(store, options.taskId);
+        if (!["ready", "paused", "stopped"].includes(task.state) || (await evidence(task, c)).unresolved) throw Error("TASKS_UNRESOLVED");
+        await prepare2(structuredClone(task));
+        current2(c);
+        delete task.stopRequested;
+        task.state = "paused";
+        touch(task);
+      }),
       saveTask: (options) => {
         const input = normalizeTradingTaskInput(options.input);
         return mutate(options, async (store, c) => {
           if (options.id) {
             const task = find(store, options.id);
-            if (!["ready", "paused"].includes(task.state) || task.stopRequested || (await evidence(task, c)).unresolved) throw Error("TASKS_EDIT_BLOCKED");
+            if (!["ready", "paused", "stopped"].includes(task.state) || (await evidence(task, c)).unresolved) throw Error("TASKS_EDIT_BLOCKED");
             delete task.schedule;
             delete task.ratingPrices;
             Object.assign(task, input);
@@ -38525,15 +38627,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     const invoke = async (method8, options) => {
       const ticket = generation;
-      if (["run", "enqueue", "acknowledgeStop", "handoff"].includes(method8) && options?.approved !== true) throw Error("MARKET_APPROVAL_REQUIRED");
+      if (["run", "enqueue", "reopen", "acknowledgeStop", "handoff"].includes(method8) && options?.approved !== true) throw Error("MARKET_APPROVAL_REQUIRED");
       const current2 = await ensure();
       if (ticket !== generation) throw Error("MARKET_USER_STOP");
+      if (method8 === "reopen") {
+        const result = await current2.reopen(options);
+        if (ticket !== generation) throw Error("MARKET_USER_STOP");
+        return result;
+      }
       return current2[method8](options);
     };
     return Object.freeze({
       inspect,
       run: (options) => invoke("run", options),
       enqueue: (options) => invoke("enqueue", options),
+      reopen: (options) => invoke("reopen", options),
       recover: () => invoke("recover"),
       acknowledgeStop: (options) => invoke("acknowledgeStop", options),
       handoff: (options) => invoke("handoff", options),
@@ -38586,7 +38694,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     signal.addEventListener("abort", finish, { once: true });
   });
   var codeOf = (result) => Number.isSafeInteger(result?.code) && result.code >= 100 && result.code <= 99999 ? result.code : null;
-  var stopReason = (result) => result?.category === "captcha" ? "captcha" : codeOf(result) === 401 ? "authentication" : [403, 427, 429, 512, 521, 426, 459].includes(codeOf(result)) || result?.category === "market-unavailable" ? "throttle" : null;
+  var stopReason = (result) => result?.category === "captcha" ? "captcha" : result?.category === "throttle" ? "throttle" : result?.category === "purchase-denied" ? "manual" : ["offer-rejected", "insufficient-funds", "destination-full"].includes(result?.category) ? null : codeOf(result) === 401 ? "authentication" : [403, 427, 429, 512, 521, 426, 459].includes(codeOf(result)) || result?.category === "market-unavailable" ? "throttle" : null;
   function createMarketTaskScheduler({
     taskStore,
     coordinator,
@@ -38611,6 +38719,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let tasks = /* @__PURE__ */ new Map(), phase = "idle", currentTask = null, lastReason = null, errorCounts = /* @__PURE__ */ new Map();
     const listeners = /* @__PURE__ */ new Set();
     let traffic = null, lastSearch = null;
+    let activeSession = null, reopening = false;
     let sessionHealth = { state: "idle", lastOnlineAt: null };
     const inspect = () => ({
       available: enabled && Boolean(provider),
@@ -38808,7 +38917,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           state.stopped = reason;
         });
         await provider.stopTraffic?.(reason);
-        lastReason = reason === "authentication" ? "MARKET_AUTHENTICATION" : reason === "captcha" ? "MARKET_CAPTCHA" : reason === "manual" ? "MARKET_ERROR_LIMIT" : "MARKET_THROTTLED";
+        if (provider.traffic) {
+          try {
+            traffic = await provider.traffic();
+          } catch {
+          }
+        }
+        lastReason = reason === "authentication" ? "MARKET_AUTHENTICATION" : reason === "captcha" ? "MARKET_CAPTCHA" : reason === "manual" ? result?.category === "purchase-denied" ? "MARKET_PURCHASE_DENIED" : "MARKET_ERROR_LIMIT" : "MARKET_THROTTLED";
         for (const row of tasks.values()) if (actionable(row)) Object.assign(row, { state: "paused", reason: lastReason });
         diagnostic(turn.inspect(), lastReason, code2);
         publish();
@@ -38869,6 +38984,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       publish();
       try {
         const result = await coordinator.withOwner(async (session2) => {
+          activeSession = session2;
           try {
             while (!disposed && [...tasks.values()].some(actionable)) {
               current2();
@@ -39032,178 +39148,205 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                     stateOf(selected, "review", "MARKET_RECOVERY_REQUIRED");
                     return;
                   }
+                  const executionScope = Object.freeze({});
                   try {
                     await bound(selected, async ({ task: fresh, settings }) => {
-                      if (!allowed(selected) || !validAt(action)) return;
-                      if (!marketScheduleGate(fresh, tasks.get(selected).schedule, action.kind, action, now())) {
-                        stateOf(selected, "queued");
-                        return;
-                      }
-                      phase = "preflight";
-                      publish();
-                      const preflight = await provider.preflight({ task: fresh, settings, action: structuredClone(action), ledger: turn.inspect() });
-                      current2();
-                      if (!allowed(selected)) return;
-                      if (await applyError(turn, preflight)) return;
-                      if (preflight?.ready !== true) {
-                        stateOf(selected, "paused", "MARKET_PREFLIGHT_BLOCKED");
-                        return;
-                      }
-                      if (!validAt(action)) {
-                        stateOf(selected, "paused", "MARKET_ACTION_EXPIRED_OR_INVALID");
-                        return;
-                      }
-                      if (action.kind === "claim") {
-                        const selectedItem = fresh.owned.find((row) => row.itemId === action.itemId && row.definitionId === action.definitionId);
-                        const h = preflight.holding;
-                        if (fresh.mode !== "sell" || !selectedItem || h?.itemId !== selectedItem.itemId || h.definitionId !== selectedItem.definitionId || h.taskId !== selected) throw Error("MARKET_ITEM_OCCUPIED");
-                        await turn.checkpoint((state) => claimMarketHolding(state, { ...h, ...fresh.schedule ? { sellAt: tasks.get(selected).schedule.sellAt } : {} }, preflight.holdingPhase));
-                        diagnostic(turn.inspect());
-                        stateOf(selected, "queued");
-                        return;
-                      }
-                      if (action.kind === "sales") {
-                        if (!Array.isArray(preflight.sales)) throw Error("MARKET_RECEIPT_CONFLICT");
-                        for (const receipt of preflight.sales) {
-                          if (!turn.inspect().holdings.some((h) => h.taskId === selected && h.itemId === receipt.itemId)) throw Error("MARKET_RECEIPT_CONFLICT");
+                      for (let hitStep = 0; hitStep < 2; hitStep++) {
+                        if (!allowed(selected) || !validAt(action)) return;
+                        if (!marketScheduleGate(fresh, tasks.get(selected).schedule, action.kind, action, now())) {
+                          stateOf(selected, "queued");
+                          return;
                         }
-                        await turn.checkpoint((state) => {
+                        phase = "preflight";
+                        publish();
+                        const preflight = await provider.preflight({ task: fresh, settings, action: structuredClone(action), ledger: turn.inspect(), executionScope });
+                        current2();
+                        if (!allowed(selected)) return;
+                        if (await applyError(turn, preflight)) return;
+                        if (preflight?.ready !== true) {
+                          stateOf(selected, "paused", "MARKET_PREFLIGHT_BLOCKED");
+                          return;
+                        }
+                        if (!validAt(action)) {
+                          stateOf(selected, "paused", "MARKET_ACTION_EXPIRED_OR_INVALID");
+                          return;
+                        }
+                        if (action.kind === "claim") {
+                          const selectedItem = fresh.owned.find((row) => row.itemId === action.itemId && row.definitionId === action.definitionId);
+                          const h = preflight.holding;
+                          if (fresh.mode !== "sell" || !selectedItem || h?.itemId !== selectedItem.itemId || h.definitionId !== selectedItem.definitionId || h.taskId !== selected) throw Error("MARKET_ITEM_OCCUPIED");
+                          await turn.checkpoint((state) => claimMarketHolding(state, { ...h, ...fresh.schedule ? { sellAt: tasks.get(selected).schedule.sellAt } : {} }, preflight.holdingPhase));
+                          diagnostic(turn.inspect());
+                          stateOf(selected, "queued");
+                          return;
+                        }
+                        if (action.kind === "sales") {
+                          if (!Array.isArray(preflight.sales)) throw Error("MARKET_RECEIPT_CONFLICT");
                           for (const receipt of preflight.sales) {
-                            if (receipt.unsold === true) settleMarketUnsold(state, receipt);
-                            else settleMarketSale(state, receipt);
+                            if (!turn.inspect().holdings.some((h) => h.taskId === selected && h.itemId === receipt.itemId)) throw Error("MARKET_RECEIPT_CONFLICT");
                           }
-                        });
-                        if (typeof provider.accept === "function") await provider.accept({ action, response: { status: "observed" }, ledger: turn.inspect() });
-                        diagnostic(turn.inspect());
-                        stateOf(selected, "queued");
-                        return;
-                      }
-                      const requestId = id15();
-                      const command = action.kind === "search" ? null : {
-                        id: requestId,
-                        taskId: selected,
-                        kind: action.kind,
-                        itemId: action.itemId,
-                        definitionId: action.definitionId,
-                        tradeId: action.tradeId ?? null,
-                        coins: action.coins,
-                        at: now(),
-                        ...action.kind === "list" && action.listing ? { listing: structuredClone(action.listing) } : {}
-                      };
-                      if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
-                      if (command?.kind === "buy" && fresh.schedule) command.sellAt = tasks.get(selected).schedule.sellAt;
-                      if (command?.kind === "buy") {
-                        const row = fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId) : null;
-                        if (fresh.mode === "sell" || fresh.mode === "fixed" && !row || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap || !fresh.ratingPrices && row?.cap == null && fresh.settings.buyRule === "fixed" && command.coins > fresh.settings.buyValue || row?.cap != null && command.coins > row.cap) throw Error("MARKET_BUY_RULE_CHANGED");
-                      }
-                      if (command?.kind === "list" && !(action.previousTradeId && fresh.settings.relist === "original") && !fresh.ratingPrices && fresh.settings.sellRule === "fixed" && command.coins !== fresh.settings.sellValue) throw Error("MARKET_SELL_RULE_CHANGED");
-                      if (fresh.ratingPrices && ["search", "buy", "list"].includes(action.kind) && !(action.previousTradeId && fresh.settings.relist === "original")) {
-                        const prices = marketRatingRow(fresh, action.rating);
-                        if (!completeMarketRatingRow(prices) || action.kind === "search" && action.maxBuy > prices.buy || action.kind === "buy" && command.coins > prices.buy || action.kind === "list" && command.coins !== prices.sell) throw Error("MARKET_RATING_PRICE_UNAVAILABLE");
-                      }
-                      phase = action.kind;
-                      publish();
-                      if (action.kind === "search") await turn.checkpoint((state) => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
-                      else await turn.checkpoint((state) => reserveMarketWrite(state, command, {
-                        balance: preflight.balance,
-                        freeSlots: preflight.freeSlots,
-                        reserve: settings.reserve,
-                        totalCap: settings.totalCap,
-                        taskCap: fresh.settings.taskCap,
-                        spendCap: fresh.settings.spendCap,
-                        perVersion: fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId)?.qty ?? null : fresh.settings.perVersion
-                      }));
-                      if (!allowed(selected) || !validAt(action)) {
-                        await turn.checkpoint((state) => action.kind === "search" ? settleMarketSearch(state, requestId, "not-sent") : settleMarketWrite(state, requestId, { status: "rejected", receipt: null }));
-                        if (allowed(selected)) stateOf(selected, "paused", "MARKET_ACTION_EXPIRED_OR_INVALID");
-                        return;
-                      }
-                      current2();
-                      let response, dispatched = false, boundaryFailure = null, trafficRetryAt = null;
-                      const guarded = provider.dispatchBoundary === true;
-                      const beforeDispatch = () => {
-                        current2();
-                        if (dispatched) throw Error("MARKET_DUPLICATE_REQUEST");
-                        if (!allowed(selected)) throw Error("MARKET_USER_STOP");
-                        if (!validAt(action)) throw Error("MARKET_ACTION_EXPIRED_OR_INVALID");
-                        if (!marketScheduleGate(fresh, tasks.get(selected).schedule, action.kind, action, now())) throw Error("MARKET_SCHEDULE_WINDOW_CLOSED");
-                        clockBoundary(tasks.get(selected));
-                        dispatched = true;
-                      };
-                      const beforeRequest = async () => {
-                        current2();
-                        if (!allowed(selected)) throw Error("MARKET_USER_STOP");
-                        const row = tasks.get(selected);
-                        if (row.clock?.lease?.token !== row.clockToken) throw Error("MARKET_CLOCK_INVALID");
-                        if (row.clock.lease.until <= now()) {
-                          await turn.checkpoint((state) => reserveMarketClock(
-                            state,
-                            selected,
-                            row.clockToken,
-                            now(),
-                            fresh.settings.runMinutes === null ? null : fresh.settings.runMinutes * 6e4
-                          ));
-                          row.clock = turn.inspect().clocks.find((c) => c.taskId === selected);
+                          await turn.checkpoint((state) => {
+                            for (const receipt of preflight.sales) {
+                              if (receipt.unsold === true) settleMarketUnsold(state, receipt);
+                              else settleMarketSale(state, receipt);
+                            }
+                          });
+                          if (typeof provider.accept === "function") await provider.accept({ action, response: { status: "observed" }, ledger: turn.inspect() });
+                          diagnostic(turn.inspect());
+                          stateOf(selected, "queued");
+                          return;
+                        }
+                        const requestId = id15();
+                        const command = action.kind === "search" ? null : {
+                          id: requestId,
+                          taskId: selected,
+                          kind: action.kind,
+                          itemId: action.itemId,
+                          definitionId: action.definitionId,
+                          tradeId: action.tradeId ?? null,
+                          coins: action.coins,
+                          at: now(),
+                          ...action.kind === "list" && action.listing ? { listing: structuredClone(action.listing) } : {}
+                        };
+                        if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
+                        if (command?.kind === "buy" && fresh.schedule) command.sellAt = tasks.get(selected).schedule.sellAt;
+                        if (command?.kind === "buy") {
+                          const row = fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId) : null;
+                          if (fresh.mode === "sell" || fresh.mode === "fixed" && !row || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap || !fresh.ratingPrices && row?.cap == null && fresh.settings.buyRule === "fixed" && command.coins > fresh.settings.buyValue || row?.cap != null && command.coins > row.cap) throw Error("MARKET_BUY_RULE_CHANGED");
+                        }
+                        if (command?.kind === "list" && !(action.previousTradeId && fresh.settings.relist === "original") && !fresh.ratingPrices && fresh.settings.sellRule === "fixed" && command.coins !== fresh.settings.sellValue) throw Error("MARKET_SELL_RULE_CHANGED");
+                        if (fresh.ratingPrices && ["search", "buy", "list"].includes(action.kind) && !(action.previousTradeId && fresh.settings.relist === "original")) {
+                          const prices = marketRatingRow(fresh, action.rating);
+                          if (!completeMarketRatingRow(prices, fresh) || action.kind === "search" && action.maxBuy > prices.buy || action.kind === "buy" && command.coins > prices.buy || action.kind === "list" && command.coins !== prices.sell) throw Error("MARKET_RATING_PRICE_UNAVAILABLE");
+                        }
+                        phase = action.kind;
+                        publish();
+                        if (action.kind === "search") await turn.checkpoint((state) => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
+                        else {
+                          const funds = {
+                            balance: preflight.balance,
+                            freeSlots: preflight.freeSlots,
+                            reserve: settings.reserve,
+                            totalCap: settings.totalCap,
+                            taskCap: fresh.settings.taskCap,
+                            spendCap: fresh.settings.spendCap,
+                            perVersion: fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId)?.qty ?? null : fresh.settings.perVersion
+                          };
+                          if (command.kind === "buy") reserveMarketWrite(turn.inspect(), command, funds);
+                          await turn.checkpoint((state) => reserveMarketWrite(state, command, funds));
+                        }
+                        if (!allowed(selected) || !validAt(action)) {
+                          await turn.checkpoint((state) => action.kind === "search" ? settleMarketSearch(state, requestId, "not-sent") : settleMarketWrite(state, requestId, { status: "rejected", receipt: null }));
+                          if (allowed(selected)) stateOf(selected, "paused", "MARKET_ACTION_EXPIRED_OR_INVALID");
+                          return;
                         }
                         current2();
-                        if (!allowed(selected)) throw Error("MARKET_USER_STOP");
-                        clockBoundary(row);
-                      };
-                      try {
-                        response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest });
-                      } catch (error2) {
-                        boundaryFailure = safeReason9(error2);
-                        trafficRetryAt = error2.retryAt;
-                        response = { status: "unknown", receipt: null, code: codeOf(error2) };
-                      }
-                      if (guarded && !dispatched) {
-                        response = { ...response, sent: false, status: "rejected", receipt: null };
-                        if (allowed(selected)) stateOf(selected, boundaryFailure === "MARKET_TRAFFIC_WAIT" ? "waiting" : boundaryFailure === "MARKET_SCHEDULE_WINDOW_CLOSED" ? "queued" : "paused", boundaryFailure ?? "MARKET_NOT_SENT", boundaryFailure === "MARKET_TRAFFIC_WAIT" ? Math.max(now() + 1e3, trafficRetryAt ?? 0) : 0);
-                      }
-                      current2();
-                      if (action.kind === "search") {
-                        if (response?.sent === true || response?.sent === false) await turn.checkpoint((state) => settleMarketSearch(state, requestId, response.sent ? "sent" : "not-sent"));
-                      } else {
-                        const status = ["confirmed", "rejected"].includes(response?.status) ? response.status : "unknown";
-                        await turn.checkpoint((state) => settleMarketWrite(state, requestId, {
-                          status,
-                          receipt: response?.receipt ?? null,
-                          ...response?.acknowledged === true ? { acknowledged: true } : {}
-                        }));
-                      }
-                      if (task.schedule && action.kind === "move" && response?.status === "confirmed" && preflight.freeSlots === 1) await closeBuy(turn, selected);
-                      const halted = await applyError(turn, response);
-                      if (!halted && (response?.status === "unknown" || action.kind === "search" && response?.sent !== true && allowed(selected) && !["MARKET_SCHEDULE_WINDOW_CLOSED", "MARKET_TRAFFIC_WAIT"].includes(boundaryFailure))) {
-                        stateOf(selected, action.kind === "search" ? "paused" : "review", "MARKET_RESPONSE_UNCONFIRMED");
-                      }
-                      const accepted = boundaryFailure !== "MARKET_TRAFFIC_WAIT" && typeof provider.accept === "function" ? await provider.accept({ action, response, ledger: turn.inspect() }) : null;
-                      let searchDetails = {};
-                      if (action.kind === "search") {
-                        const count3 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 21 ? value : null;
-                        const returned = count3(response?.responseCount), eligible = count3(accepted?.acceptedCount);
-                        searchDetails = {
-                          definitionId: action.definitionId,
-                          searchCeiling: action.maxBuy,
-                          rating: action.rating,
-                          ...returned !== null ? { responseCount: returned } : {},
-                          ...eligible !== null ? { acceptedCount: eligible } : {}
+                        let response, dispatched = false, boundaryFailure = null, trafficRetryAt = null;
+                        const guarded = provider.dispatchBoundary === true;
+                        const beforeDispatch = () => {
+                          current2();
+                          if (dispatched) throw Error("MARKET_DUPLICATE_REQUEST");
+                          if (!allowed(selected)) throw Error("MARKET_USER_STOP");
+                          if (!validAt(action)) throw Error("MARKET_ACTION_EXPIRED_OR_INVALID");
+                          if (!marketScheduleGate(fresh, tasks.get(selected).schedule, action.kind, action, now())) throw Error("MARKET_SCHEDULE_WINDOW_CLOSED");
+                          clockBoundary(tasks.get(selected));
+                          dispatched = true;
                         };
-                        lastSearch = {
-                          definitionId: action.definitionId,
-                          searchCeiling: action.maxBuy,
-                          responseCount: returned,
-                          acceptedCount: eligible,
-                          sent: dispatched || response?.sent === true,
-                          confirmed: response?.status === "confirmed",
-                          at: now()
+                        const beforeRequest = async () => {
+                          current2();
+                          if (!allowed(selected)) throw Error("MARKET_USER_STOP");
+                          const row = tasks.get(selected);
+                          if (row.clock?.lease?.token !== row.clockToken) throw Error("MARKET_CLOCK_INVALID");
+                          if (row.clock.lease.until <= now()) {
+                            await turn.checkpoint((state) => reserveMarketClock(
+                              state,
+                              selected,
+                              row.clockToken,
+                              now(),
+                              fresh.settings.runMinutes === null ? null : fresh.settings.runMinutes * 6e4
+                            ));
+                            row.clock = turn.inspect().clocks.find((c) => c.taskId === selected);
+                          }
+                          current2();
+                          if (!allowed(selected)) throw Error("MARKET_USER_STOP");
+                          clockBoundary(row);
                         };
+                        try {
+                          response = await provider.send({ action: structuredClone(action), requestId, beforeDispatch, beforeRequest, executionScope });
+                        } catch (error2) {
+                          boundaryFailure = safeReason9(error2);
+                          trafficRetryAt = error2.retryAt;
+                          response = { status: "unknown", receipt: null, code: codeOf(error2) };
+                        }
+                        if (guarded && !dispatched) {
+                          response = { ...response, sent: false, status: "rejected", receipt: null };
+                          if (boundaryFailure === "MARKET_SEARCH_HIT_CHANGED") {
+                            provider.discardOffers?.(selected);
+                          }
+                          if (allowed(selected)) stateOf(selected, boundaryFailure === "MARKET_SEARCH_HIT_CHANGED" ? "queued" : boundaryFailure === "MARKET_TRAFFIC_WAIT" ? "waiting" : boundaryFailure === "MARKET_SCHEDULE_WINDOW_CLOSED" ? "queued" : "paused", boundaryFailure ?? "MARKET_NOT_SENT", boundaryFailure === "MARKET_TRAFFIC_WAIT" ? Math.max(now() + 1e3, trafficRetryAt ?? 0) : 0);
+                        }
+                        current2();
+                        if (action.kind === "search") {
+                          if (response?.sent === true || response?.sent === false) await turn.checkpoint((state) => settleMarketSearch(state, requestId, response.sent ? "sent" : "not-sent"));
+                        } else {
+                          const status = ["confirmed", "rejected"].includes(response?.status) ? response.status : "unknown";
+                          await turn.checkpoint((state) => settleMarketWrite(state, requestId, {
+                            status,
+                            receipt: response?.receipt ?? null,
+                            ...response?.acknowledged === true ? { acknowledged: true } : {}
+                          }));
+                        }
+                        if (task.schedule && action.kind === "move" && response?.status === "confirmed" && preflight.freeSlots === 1) await closeBuy(turn, selected);
+                        const halted = await applyError(turn, response);
+                        if (!halted && ["insufficient-funds", "destination-full"].includes(response?.category)) {
+                          stateOf(selected, "paused", response.category === "insufficient-funds" ? "MARKET_INSUFFICIENT_FUNDS" : "MARKET_DESTINATION_FULL");
+                        }
+                        if (!halted && (response?.status === "unknown" || action.kind === "search" && response?.sent !== true && allowed(selected) && !["MARKET_SCHEDULE_WINDOW_CLOSED", "MARKET_TRAFFIC_WAIT"].includes(boundaryFailure))) {
+                          stateOf(selected, action.kind === "search" ? "paused" : "review", "MARKET_RESPONSE_UNCONFIRMED");
+                        }
+                        const accepted = boundaryFailure !== "MARKET_TRAFFIC_WAIT" && typeof provider.accept === "function" ? await provider.accept({ action, response, ledger: turn.inspect() }) : null;
+                        let searchDetails = {};
+                        if (action.kind === "search") {
+                          const count3 = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 21 ? value : null;
+                          const returned = count3(response?.responseCount), eligible = count3(accepted?.acceptedCount);
+                          searchDetails = {
+                            definitionId: action.definitionId,
+                            searchCeiling: action.maxBuy,
+                            rating: action.rating,
+                            ...returned !== null ? { responseCount: returned } : {},
+                            ...eligible !== null ? { acceptedCount: eligible } : {}
+                          };
+                          lastSearch = {
+                            definitionId: action.definitionId,
+                            searchCeiling: action.maxBuy,
+                            responseCount: returned,
+                            acceptedCount: eligible,
+                            sent: dispatched || response?.sent === true,
+                            confirmed: response?.status === "confirmed",
+                            at: now()
+                          };
+                        }
+                        diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason, codeOf(response), searchDetails);
+                        current2();
+                        if (allowed(selected) && boundaryFailure !== "MARKET_TRAFFIC_WAIT") stateOf(selected, "queued");
+                        if (hitStep !== 0 || action.kind !== "search" || response?.status !== "confirmed" || !allowed(selected) || !accepted?.acceptedCount || !provider.nextPurchase) break;
+                        const hit = provider.nextPurchase({ task: fresh, settings, ledger: turn.inspect() });
+                        if (!hit || hit.kind !== "buy" || !validAt(hit)) break;
+                        action = structuredClone(hit);
                       }
-                      diagnostic(turn.inspect(), tasks.get(selected)?.reason ?? lastReason, codeOf(response), searchDetails);
-                      current2();
-                      if (allowed(selected) && boundaryFailure !== "MARKET_TRAFFIC_WAIT") stateOf(selected, "queued");
                     });
                   } catch (error2) {
+                    if (error2.message === "MARKET_SEARCH_HIT_CHANGED") {
+                      provider.discardOffers?.(selected);
+                      stateOf(selected, "queued");
+                      return;
+                    }
                     if (await applyError(turn, error2)) return;
+                    if (allowed(selected) && action.kind === "buy" && provider.finishPurchaseBatch?.({ task, ledger: turn.inspect(), reason: error2.message })) {
+                      if (error2.message === "MARKET_TRANSFER_FULL" && task.schedule) await closeBuy(turn, selected);
+                      stateOf(selected, "queued");
+                      return;
+                    }
                     if (error2.message === "MARKET_SCHEDULE_WINDOW_CLOSED") {
                       stateOf(selected, "queued");
                       return;
@@ -39225,7 +39368,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
             return inspect();
           } finally {
-            await syncClocks(session2, true);
+            try {
+              await syncClocks(session2, true);
+            } finally {
+              activeSession = null;
+            }
           }
         });
         if (result?.status === "busy") {
@@ -39246,6 +39393,81 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         publish();
       }
       return inspect();
+    }
+    async function reopen({ approved = false, snapshot: requested, taskId } = {}) {
+      ensureProvider();
+      if (approved !== true) throw Error("MARKET_APPROVAL_REQUIRED");
+      if (reopening || busy && !activeSession) throw Error("MARKET_BUSY");
+      if (actionable(tasks.get(taskId) ?? {})) throw Error("MARKET_TASK_SELECTION_INVALID");
+      if (!same35(requested?.context, taskStore.context())) throw Error("TASKS_CONTEXT_CHANGED");
+      const session2 = activeSession, ticket = controlGeneration;
+      if (!session2) {
+        runContext = structuredClone(requested.context);
+        busy = true;
+        phase = "restart-check";
+      }
+      reopening = true;
+      publish();
+      const check = () => {
+        current2();
+        if (disposed || ticket !== controlGeneration) throw Error("MARKET_USER_STOP");
+      };
+      const prepare2 = (owner) => owner.control(async (turn) => {
+        check();
+        if (turn.inspect().intents.some((i) => i.phase === "pending")) throw Error("MARKET_RECOVERY_REQUIRED");
+        if (turn.inspect().stopped) throw Error("MARKET_STOPPED");
+        const shared = await provider.traffic?.();
+        check();
+        if (shared?.ledger.stopped) throw Error("MARKET_TRAFFIC_STOPPED");
+        const result = await taskStore.reopen({ ...requested, taskId }, async (task) => {
+          check();
+          const clock = turn.inspect().clocks?.find((c) => c.taskId === taskId);
+          if (task.state !== "stopped" && !task.stopRequested && !clock?.stopped) throw Error("MARKET_TASK_SELECTION_INVALID");
+          if (task.settings.runMinutes !== null && (clock?.elapsedMs ?? 0) >= task.settings.runMinutes * 6e4) throw Error("MARKET_RESTART_TIME_LIMIT");
+          if (clock?.lease && clock.lease.until > now()) throw Error("MARKET_BUSY");
+          if (clock?.stopped) await turn.checkpoint((state) => {
+            check();
+            const saved = state.clocks.find((c) => c.taskId === taskId);
+            saved.stopped = false;
+            saved.lease = null;
+          });
+          check();
+        });
+        check();
+        tasks.delete(taskId);
+        return { ...result, coordination: { context: structuredClone(runContext), ledger: turn.inspect(), traffic: shared ?? null } };
+      });
+      const reportRestart = (reason) => {
+        try {
+          Promise.resolve(onDiagnostic({
+            area: "trading",
+            event: "task-scheduler",
+            phase: "restart-check",
+            status: reason ? "blocked" : "observed",
+            ...reason ? { reason } : {},
+            requestedCount: 1
+          })).catch(() => {
+          });
+        } catch {
+        }
+      };
+      try {
+        const result = session2 ? await prepare2(session2) : await coordinator.withOwner(prepare2);
+        if (result?.status === "busy") throw Error("MARKET_BUSY");
+        check();
+        reportRestart(null);
+        return result;
+      } catch (error2) {
+        reportRestart(safeReason9(error2));
+        throw error2;
+      } finally {
+        reopening = false;
+        if (!session2) {
+          busy = false;
+          phase = "idle";
+        }
+        publish();
+      }
     }
     async function recover() {
       ensureProvider();
@@ -39319,6 +39541,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           await turn.checkpoint((state) => {
             state.stopped = null;
           });
+          lastReason = null;
           return turn.inspect();
         }));
       } finally {
@@ -39378,6 +39601,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return Object.freeze({
       run,
       enqueue,
+      reopen,
       recover,
       acknowledgeStop,
       handoff,
@@ -39425,8 +39649,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }) {
     if (!["buy", "sell"].includes(side)) fail34("PRICE_INVALID");
     const buy = side === "buy", settings = task.settings;
+    if (!buy && !marketTaskAutoLists(task)) fail34("HOLD_ONLY");
     const ratingRow = marketRatingRow(task, rating);
-    if (task.ratingPrices && !completeMarketRatingRow(ratingRow)) fail34("RATING_PRICE_UNAVAILABLE");
+    if (task.ratingPrices && !completeMarketRatingRow(ratingRow, task)) fail34("RATING_PRICE_UNAVAILABLE");
     const override = buy && player?.cap != null ? player.cap : null;
     const fixed = Boolean(ratingRow) || override !== null || (buy ? settings.buyRule : settings.sellRule) === "fixed";
     const reference = fixed ? null : marketTaskReference({ quotes, source, definitionId, context, now });
@@ -39653,8 +39878,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!held || held.taskId !== task.id || held.definitionId !== action.definitionId) fail35("ITEM_OCCUPIED");
       return held;
     };
+    const nextPurchase = (task, settings, ledger) => {
+      const c = cursor(task, settings), held = ledger.holdings.filter((h) => h.taskId === task.id);
+      while (c.offers.length) {
+        const offer = c.offers[0], row = (task.mode === "filter" ? c.rows : task.players).find((p) => p.definitionId === offer.definitionId);
+        const copies = held.filter((h) => h.definitionId === offer.definitionId && h.phase !== "sold").length;
+        const cap = task.mode === "filter" ? task.settings.perVersion : row?.qty;
+        if (!row || offer.expiresAt <= now() || ledger.intents.some((i) => i.kind === "buy" && i.tradeId === offer.tradeId) || cap != null && copies >= cap || task.mode === "filter" && !taskCandidateAllowed(row, task)) {
+          c.offers.shift();
+          continue;
+        }
+        return remember(task, settings, { ...offer, kind: "buy" });
+      }
+      return null;
+    };
     const api = {
       dispatchBoundary: true,
+      nextPurchase: ({ task, settings, ledger }) => {
+        check();
+        return nextPurchase(task, settings, ledger);
+      },
+      discardOffers: (taskId) => {
+        const c = cursors.get(taskId);
+        if (c) c.offers = [];
+      },
+      finishPurchaseBatch: ({ task, ledger, reason }) => {
+        check();
+        const c = cursors.get(task.id);
+        if (!c || !["MARKET_TRANSFER_FULL", "MARKET_FUNDS_OR_CAPACITY", "MARKET_HOLDING_CAP", "MARKET_SPEND_CAP", "MARKET_VERSION_CAP"].includes(reason) || ledger.intents.some((i) => i.phase === "pending") || !ledger.holdings.some((h) => h.taskId === task.id && h.phase === "held")) return false;
+        c.offers = [];
+        c.purchaseStop = task.schedule && reason === "MARKET_TRANSFER_FULL" ? null : reason;
+        return true;
+      },
       traffic: () => native.traffic?.() ?? null,
       clearTraffic: () => native.clearTraffic?.(),
       stopTraffic: (reason) => native.stopTraffic?.(reason),
@@ -39702,7 +39957,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return wake === null ? { kind: "done" } : { kind: "wait", until: Math.max(now() + 1e3, wake), scheduleWait: true };
         };
         if (task.mode === "filter" && (!c.catalog || !c.isCurrent?.())) fail35("CATALOG_UNAVAILABLE");
-        const due = (h) => h.phase === "transfer" && marketScheduleGate(task, c.schedule, "list", h, now()) || marketRelistAllowed(ledger, task, h);
+        if (marketScheduleGate(task, c.schedule, "buy", null, now()) && !c.purchaseStop) {
+          const offerAction = nextPurchase(task, settings, ledger);
+          if (offerAction) return offerAction;
+        } else c.offers = [];
+        const due = (h) => marketTaskAutoLists(task) && (h.phase === "transfer" && marketScheduleGate(task, c.schedule, "list", h, now()) || marketRelistAllowed(ledger, task, h));
         const pending3 = task.schedule ? held.find(due) ?? held.find((h) => h.phase === "held") : held.find((h) => h.phase === "held" || due(h));
         if (pending3) {
           const action = {
@@ -39733,6 +39992,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           return remember(task, settings, action);
         }
+        if (c.purchaseStop) throw Error(c.purchaseStop);
         if (task.mode === "sell") {
           const unclaimed = task.owned.find((row) => !held.some((h) => h.itemId === row.itemId));
           if (unclaimed && marketScheduleGate(task, c.schedule, "claim", null, now())) return remember(task, settings, { kind: "claim", itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
@@ -39740,16 +40000,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (held.some((h) => h.phase === "listed") && now() >= c.salesAt) return remember(task, settings, { kind: "sales" });
         if (task.schedule && (task.mode === "sell" && (held.some((h) => h.phase === "transfer") || task.owned.some((r) => !held.some((h) => h.itemId === r.itemId))) || task.mode !== "sell" && !marketScheduleGate(task, c.schedule, "buy", null, now()))) return scheduleWait();
         if (task.mode === "sell") return held.some((h) => h.phase === "listed") ? { kind: "wait", until: Math.max(now() + 1e3, c.salesAt) } : { kind: "done", ...held.some((h) => h.phase === "unsold") ? { reason: "MARKET_RELIST_PAUSED" } : {} };
-        while (c.offers.length) {
-          const offer = c.offers[0], row = (task.mode === "filter" ? c.rows : task.players).find((p) => p.definitionId === offer.definitionId);
-          const copies = held.filter((h) => h.definitionId === offer.definitionId && h.phase !== "sold").length;
-          const cap = task.mode === "filter" ? task.settings.perVersion : row?.qty;
-          if (!row || offer.expiresAt <= now() || ledger.intents.some((i) => i.kind === "buy" && i.tradeId === offer.tradeId) || cap != null && copies >= cap || task.mode === "filter" && !taskCandidateAllowed(row, task)) {
-            c.offers.shift();
-            continue;
-          }
-          return remember(task, settings, { ...offer, kind: "buy" });
-        }
         if (task.mode === "filter") {
           if (c.index >= c.rows.length) {
             if (c.next >= c.catalog.candidates.length) {
@@ -39831,7 +40081,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         return { kind: "wait", until: Math.max(now() + 1e3, c.salesAt) };
       },
-      async preflight({ task, settings, action, ledger }) {
+      async preflight({ task, settings, action, ledger, executionScope }) {
         bound(action, task, settings);
         if (action.kind === "claim") {
           const row = task.owned.find((r) => r.itemId === action.itemId && r.definitionId === action.definitionId);
@@ -39864,16 +40114,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (!marketRelistAllowed(ledger, task, holding) || holding.listingTradeId !== action.previousTradeId || !same36(marketLastListing(ledger, holding), action.previousListing) || task.settings.relist === "original" && !same36(action.listing, action.previousListing)) fail35("ITEM_OCCUPIED");
           } else if (holding.phase !== (action.kind === "move" ? "held" : "transfer")) fail35("ITEM_OCCUPIED");
         }
-        const result = await native.preflight({ task, settings, action, ledger });
+        const result = await native.preflight({ task, settings, action, ledger, executionScope });
         bound(action, task, settings);
         return result;
       },
-      async send({ action, requestId, beforeDispatch, beforeRequest }) {
+      async send({ action, requestId, beforeDispatch, beforeRequest, executionScope }) {
         const saved = bound(action);
         return native.send({
           ...saved,
           action,
           requestId,
+          executionScope,
           beforeRequest: async () => {
             bound(action);
             await beforeRequest?.();
@@ -39985,7 +40236,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (boundary !== permit) throw Error("MARKET_NOT_SENT");
         },
         (mark) => observeFc27TrafficResult(invoke(mark)),
-        { wait: false, exactDispatch: true, rawErrors: true }
+        { wait: false, exactDispatch: true, rawErrors: true, taskBuyResponse: name2 === "bid" }
       ).catch((error2) => {
         permit.onBlocked?.(error2);
         throw error2;
@@ -40074,7 +40325,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     tradeFactory = createEaTradeAdapter,
     inventoryFactory = createFc27GalleryListingInventory,
-    sessionReaderFactory = createFc27MarketReadTransport
+    sessionReaderFactory = createFc27MarketReadTransport,
+    onDiagnostic = null
   }) {
     if (![assertCurrent, assertProtected, checkOtherTransactions].every((fn) => typeof fn === "function")) fail36("GUARDS_UNAVAILABLE");
     const context = readFc27Context(root), service = root.services.Item, repository = root.repositories.Item;
@@ -40105,7 +40357,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const forTask = (taskId) => {
       if (!taskTrades.has(taskId)) {
         const facade = marketTaskNativeRuntime(view, root);
-        taskTrades.set(taskId, { ...facade, adapter: tradeFactory(facade.runtime) });
+        taskTrades.set(taskId, { ...facade, adapter: tradeFactory(facade.runtime), lastSearchAt: null });
       }
       return taskTrades.get(taskId);
     };
@@ -40184,6 +40436,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       await checkOtherTransactions();
       assert();
     };
+    const searchSnapshots = /* @__PURE__ */ new WeakMap();
+    const pileStamp = () => {
+      if (typeof repository.isDirty !== "function" || repository.isDirty(5) !== false || repository.isDirty(6) !== false) return null;
+      const transfer = repository.getTransferItems(), unassigned = repository.getUnassignedItems();
+      if (!Array.isArray(transfer) || !Array.isArray(unassigned) || transfer.length !== repository.numItemsInCache(5) || unassigned.length !== repository.numItemsInCache(6)) return null;
+      return JSON.stringify([capabilities(), root.MAX_NEW_ITEMS, ...[transfer, unassigned].map((rows) => rows.map((item2) => {
+        const auction = item2.getAuctionData?.();
+        return [item2.id, item2.definitionId, item2.pile, auction?.tradeId, auction?.tradeState, auction?.currentBid];
+      }))]);
+    };
+    const hitSnapshot = (action, task, scope2) => {
+      const saved = scope2 && searchSnapshots.get(scope2);
+      if (action.kind !== "buy" || !saved) return null;
+      if (saved.used || saved.task !== JSON.stringify(task) || saved.definitionId !== action.definitionId || now() - saved.at > 15e3 || now() < saved.at || saved.stamp !== pileStamp()) fail36("SEARCH_HIT_CHANGED");
+      return saved;
+    };
     const unknown = (result) => ({ status: "unknown", receipt: null, ...errorResult(result) });
     const reconcile = async (entry) => {
       try {
@@ -40220,8 +40488,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           cost: Number.isSafeInteger(cost) && cost > 0 && cost <= 15e6 ? cost : null
         };
       },
-      async preflight({ action, task }) {
+      async preflight({ action, task, executionScope }) {
         await guards();
+        const hit = hitSnapshot(action, task, executionScope);
         if (["move", "list"].includes(action.kind)) {
           const result = await owned2(action), pile = result.candidate.item.pile;
           if (action.kind === "list" && pile !== "transfer" || action.kind === "move" && !["club", "unassigned"].includes(pile)) fail36("HOLDING_UNAVAILABLE");
@@ -40238,12 +40507,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
               priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS
             }) !== action.coins) fail36("PRICE_LIMIT");
           }
-        } else {
+        } else if (!hit) {
           await refresh("unassigned");
           await refresh("transfer");
         }
         const cap = capabilities();
-        if (task?.schedule && ["search", "buy", "move"].includes(action.kind) && cap.freeSlots < 1) fail36("TRANSFER_FULL");
+        if ((task?.schedule || task && !marketTaskAutoLists(task)) && ["search", "buy", "move"].includes(action.kind) && cap.freeSlots < 1) fail36("TRANSFER_FULL");
         if (action.kind === "buy" || action.kind === "search") {
           const count3 = repository.numItemsInCache(6), max = root.MAX_NEW_ITEMS;
           if (!Number.isSafeInteger(count3) || !Number.isSafeInteger(max) || count3 < 0 || count3 >= max || cap.freeSlots < 1) fail36("FUNDS_OR_CAPACITY");
@@ -40251,16 +40520,47 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (action.kind === "move" && cap.freeSlots < 1) fail36("FUNDS_OR_CAPACITY");
         await guards();
+        if (action.kind === "search" && executionScope) {
+          const stamp2 = pileStamp();
+          if (stamp2 !== null) searchSnapshots.set(executionScope, { task: JSON.stringify(task), definitionId: action.definitionId, stamp: stamp2, at: now(), used: false });
+        }
         return cap;
       },
-      async send({ action, task, beforeDispatch, beforeRequest }) {
-        await pace();
+      async send({ action, task, beforeDispatch, beforeRequest, executionScope }) {
+        const hit = hitSnapshot(action, task, executionScope);
+        if (!hit) await pace();
         await guards();
-        const { adapter, dispatch } = forTask(task.id);
-        let dispatched = false, reply = null, blocked12 = null;
+        const taskTrade = forTask(task.id), { adapter, dispatch } = taskTrade;
+        let dispatched = false, reply = null, blocked12 = null, dispatchAt = null;
+        const diagnostic = (transportPhase, value = null) => {
+          if (!["buy", "move", "list"].includes(action.kind)) return;
+          try {
+            const httpStatus = Number.isSafeInteger(value?.status) ? value.status : null;
+            const errorCode2 = Number.isSafeInteger(value?.error?.code) ? value.error.code : Number.isSafeInteger(value?.code) ? value.code : null;
+            const permissionDenied = errorCode2 !== null && errorCode2 === root.UtasErrorCode?.PERMISSION_DENIED;
+            Promise.resolve(onDiagnostic?.({
+              area: "trading",
+              event: "task-native",
+              phase: action.kind,
+              transportPhase,
+              method: `service.${action.kind === "buy" ? "bid" : action.kind}`,
+              definitionId: action.definitionId,
+              actualPrice: action.kind === "buy" ? action.coins : void 0,
+              capturedAt: action.kind === "buy" ? taskTrade.lastSearchAt : void 0,
+              durationMs: dispatchAt === null ? void 0 : Math.max(0, now() - dispatchAt),
+              status: value === null ? "dispatch-approved" : value?.success === false ? "rejected" : "received",
+              httpStatus,
+              errorCode: errorCode2,
+              ...permissionDenied ? { localReason: "FC27_MARKET_PERMISSION_DENIED" } : {}
+            })).catch(() => {
+            });
+          } catch {
+          }
+        };
         const options = { beforeRequest, beforeDispatch: (item2) => {
           assert();
           if (action.kind === "buy") {
+            if (hit) hitSnapshot(action, task, executionScope);
             if (task.mode === "filter") {
               const facts2 = readTradingTaskCard(item2);
               if (!facts2 || !taskCandidateAllowed(facts2, task) || task.ratingPrices && facts2.rating !== action.rating) fail36("CANDIDATE_CHANGED");
@@ -40280,8 +40580,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
           beforeDispatch();
           dispatched = true;
+          if (hit) {
+            hit.used = true;
+            lastRequest = now();
+          }
+          dispatchAt = now();
+          diagnostic("before-dispatch");
         }, onResponse: (value) => {
           reply = value;
+          diagnostic("native-response", value);
         }, onBlocked: (error2) => {
           blocked12 = error2;
         } };
@@ -40291,6 +40598,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           assert();
           if (blocked12) throw blocked12;
           const ok = result.status === "completed" && result.response?.success === true && result.response.status >= 200 && result.response.status < 300;
+          if (ok) taskTrade.lastSearchAt = now();
           if (ok && (!Array.isArray(result.candidates) || result.candidates.length > 21)) return { sent: dispatched, status: "unknown" };
           return {
             sent: dispatched,
@@ -40316,14 +40624,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         assert();
         if (blocked12) throw blocked12;
         if (!dispatched) return { status: "rejected", receipt: null, ...errorResult(result) };
+        const buyResponse = action.kind === "buy" ? marketTaskBuyResponse(reply) : null;
+        if (buyResponse?.rejected) return { status: "rejected", receipt: null, ...buyResponse };
         const evidence = reply?.data?.itemIds;
         const contradictory = evidence != null && (!Array.isArray(evidence) || evidence.length > 0);
-        if (reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 429, 461].includes(reply.status)) {
+        if (!buyResponse && reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 429, 461].includes(reply.status)) {
           return { status: "rejected", receipt: null, ...errorResult(result) };
         }
         const acknowledged = reply?.success === true && Number.isSafeInteger(reply.status) && reply.status >= 200 && reply.status < 300 && (action.kind === "list" || Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId));
         const checked = await reconcile({ ...action, ...acknowledged ? { acknowledged: true } : {} });
-        return { ...checked, ...acknowledged ? { acknowledged: true } : {}, code: checked.code ?? codeOf2(result), category: checked.category ?? errorResult(result).category };
+        return {
+          ...checked,
+          ...acknowledged ? { acknowledged: true } : {},
+          code: buyResponse?.code ?? checked.code ?? codeOf2(result),
+          category: buyResponse?.category ?? checked.category ?? errorResult(result).category
+        };
       },
       reconcile,
       async readSales(holdings) {
@@ -42890,7 +43205,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       modes: modes2,
       createScheduler: async ({ context, assertCurrent }) => {
         const guards = createFc27MarketTaskGuards({ root, get, context, assertCurrent });
-        const native = await createNative({ root, assertCurrent, ...guards, now });
+        const native = await createNative({
+          root,
+          assertCurrent,
+          ...guards,
+          now,
+          onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
+        });
         assertCurrent();
         const provider = createMarketTaskProvider({
           context,
@@ -44386,6 +44707,14 @@ ${version ?? ""}`;
     "MARKET_THROTTLED",
     "MARKET_SESSION_UNVERIFIED",
     "MARKET_TRAFFIC_STOPPED",
+    "MARKET_RESTART_TIME_LIMIT",
+    "MARKET_TASK_SELECTION_INVALID",
+    "MARKET_PURCHASE_DENIED",
+    "MARKET_INSUFFICIENT_FUNDS",
+    "MARKET_DESTINATION_FULL",
+    "TASKS_STALE",
+    "TASKS_UNRESOLVED",
+    "TASKS_SAVE_UNVERIFIED",
     "MARKET_ERROR_LIMIT",
     "MARKET_RECOVERY_REQUIRED",
     "MARKET_STOPPED",

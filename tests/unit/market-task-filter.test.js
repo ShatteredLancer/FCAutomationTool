@@ -23,6 +23,16 @@ async function fixture() {
 }
 
 describe('bounded filter execution on frozen public definitions', () => {
+  it('holds transfer and unsold cards while selecting buy-only rating rows, then requires sell prices when listing is enabled',async()=>{
+    const f=await fixture();f.task.settings.afterBuy='hold';f.task.ratingPrices={84:{buy:1100,sell:null}};
+    claimMarketHolding(f.ledger,{taskId:'t',itemId:'held',definitionId:2,cost:600});f.ledger.holdings[0].phase='transfer';
+    await f.begin();expect(await f.prepare()).toMatchObject({kind:'search',maxBuy:1100});expect(f.loadQuotes).not.toHaveBeenCalled();
+    f.ledger.holdings[0].phase='unsold';f.ledger.holdings[0].listingTradeId='old-list';
+    await f.begin();expect(await f.prepare()).toMatchObject({kind:'search'});
+    f.ledger.holdings[0].phase='transfer';f.task.settings.afterBuy='list';await f.begin();
+    await expect(f.prepare()).rejects.toThrow('RATING_PRICE_UNAVAILABLE');
+    f.task.ratingPrices[84].sell=1400;await f.begin();expect(await f.prepare()).toMatchObject({kind:'list',coins:1400,itemId:'held'});
+  });
   it('skips incomplete rating rows and sells held cards with the same rating rule after restart without quotes',async()=>{
     const f=await fixture();f.task.ratingPrices={83:{buy:null,sell:1000},84:{buy:1100,sell:1400}};
     f.replace([{definitionId:1,playerId:1,rating:83,rarity:1},{definitionId:2,playerId:2,rating:84,rarity:1}]);f.task.settings.ratingMin=83;f.task.settings.ratingMax=84;await f.begin();

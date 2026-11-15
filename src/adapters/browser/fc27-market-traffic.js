@@ -1,6 +1,7 @@
 import { emptyMarketCoordination, readMarketCoordination, marketSearchGate, reserveMarketSearch, settleMarketSearch, MARKET_COORDINATION_BYTES } from '../../trading/market-coordination.js';
 import { tradingTaskContext, tradingPublicSettings } from '../../trading/task-model.js';
 import { marketCoordinationKey } from './fc27-market-coordinator.js';
+import { marketTaskBuyResponse } from '../../trading/market-task-buy-response.js';
 
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const fail=(reason,at=null)=>{throw Object.assign(Error(`MARKET_TRAFFIC_${reason}`),{retryAt:at});};
@@ -46,7 +47,7 @@ export function createFc27MarketTraffic({context,get,set,locks,readSettings,now=
  return Object.freeze({inspect,
   async signal(reason){if(!['authentication','captcha','throttle','manual'].includes(reason))fail('INVALID');const c=capture();return locked(c,async()=>{const v=await read(c);v.ledger.stopped=reason;await save(c,v);});},
   async observe(result){const reason=stopOf(result);if(reason)await this.signal(reason);return result;},
-  async run(kind,check,operation,{wait=true,exactDispatch=false}={}){
+  async run(kind,check,operation,{wait=true,exactDispatch=false,taskBuyResponse=false}={}){
    if(!kinds.includes(kind)||typeof check!=='function'||typeof operation!=='function')fail('INVALID');
    const c=capture();let waitingSince=now(),dispatched=false;
    try {
@@ -68,7 +69,7 @@ export function createFc27MarketTraffic({context,get,set,locks,readSettings,now=
      current(c);
      if(kind==='search')settleMarketSearch(value.ledger,requestId,sent?'sent':'not-sent');
      else if(!sent)value.writes[kind]--;
-     const stopped=stopOf(result)??stopOf(error);
+     const stopped=(kind==='buy'&&taskBuyResponse ? marketTaskBuyResponse(result).stop : stopOf(result))??stopOf(error);
      if(stopped)value.ledger.stopped=stopped;
      await save(c,value);
      if(error)throw error;

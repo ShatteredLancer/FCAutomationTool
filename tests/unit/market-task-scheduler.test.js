@@ -104,6 +104,85 @@ describe('shared session maintenance during approved scheduled waiting', () => {
 });
 
 describe('approved task scheduler with simulated providers', () => {
+  it('explicitly reopens the same stopped task without losing holdings, spend or elapsed time', async () => {
+    const f = await fixture(); f.queues.set(f.ids[0], [buy()]); await f.run();
+    const snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });
+    await f.coordinator.withOwner(s => s.control(t => t.checkpoint(l => {
+      Object.assign(l.clocks.find(c => c.taskId === f.ids[0]), { stopped: true, elapsedMs: 23000 });
+    })));
+    const before = (await f.coordinator.inspect()).ledger;
+    const next = await f.scheduler.reopen({ approved: true, snapshot, taskId: f.ids[0] });
+    expect(next.store.tasks[0]).toMatchObject({ id: f.ids[0], state: 'paused' });
+    expect(next.store.tasks[0].stopRequested).toBeUndefined();
+    const after = (await f.coordinator.inspect()).ledger;
+    expect(after.holdings).toEqual(before.holdings); expect(after.intents).toEqual(before.intents);
+    expect(after.clocks.find(c => c.taskId === f.ids[0])).toMatchObject({ stopped: false, elapsedMs: 23000 });
+    expect(f.provider.send).toHaveBeenCalledTimes(1);
+    f.queues.set(f.ids[0], [search]);
+    await f.scheduler.run({ approved: true, snapshot: next, taskIds: [f.ids[0]] });
+    expect(f.events.map(e => e.kind)).toEqual(['buy', 'search']);
+  });
+  it('allows a stopped task to edit its time limit but only explicit reopen clears its clock', async () => {
+    const f = await fixture();
+    await f.coordinator.withOwner(s => s.control(t => t.checkpoint(l => {
+      l.clocks = [{ taskId: f.ids[0], stopped: true, elapsedMs: 60000, lease: null }];
+    })));
+    const input = f.input('More time'); input.settings.runMinutes = 2;
+    const snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input });
+    expect((await f.coordinator.inspect()).ledger.clocks[0].stopped).toBe(true);
+    const next = await f.scheduler.reopen({ approved: true, snapshot, taskId: f.ids[0] });
+    expect((await f.coordinator.inspect()).ledger.clocks[0]).toMatchObject({ elapsedMs: 60000, stopped: false });
+    expect(next.store.tasks[0].settings.runMinutes).toBe(2);
+    await expect(f.scheduler.reopen({ approved: true, snapshot: next, taskId: f.ids[0] })).rejects.toThrow('TASK_SELECTION_INVALID');
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
+  it('reopens and enqueues a stopped task while another task owns the scheduler', async () => {
+    const f = await fixture(), entered = deferred(), release = deferred();
+    const snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[1], action: 'stop' });
+    f.hooks.wait = async () => { entered.resolve(); await release.promise; };
+    f.provider.prepare.mockImplementation(async ({ task }) => task.id === f.ids[0]
+      ? { kind: 'wait', until: f.now() + 1000 }
+      : { kind: 'done' });
+    const running = f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    await entered.promise;
+    const reopened = await f.scheduler.reopen({ approved: true, snapshot, taskId: f.ids[1] });
+    await f.scheduler.enqueue({ approved: true, snapshot: reopened, taskIds: [f.ids[1]] });
+    expect(f.scheduler.inspect().tasks.find(t => t.id === f.ids[1]).state).toBe('queued');
+    f.scheduler.pause(f.ids[0]); release.resolve(); await running;
+    expect(f.scheduler.inspect().tasks.find(t => t.id === f.ids[1]).state).toBe('completed');
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
+  it('retains the original cumulative spending cap after restart', async () => {
+    const f = await fixture(), input = f.input('Capped'); input.settings.spendCap = 800;
+    let snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input });
+    f.queues.set(f.ids[0], [buy()]);
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });
+    snapshot = await f.scheduler.reopen({ approved: true, snapshot, taskId: f.ids[0] });
+    f.queues.set(f.ids[0], [buy('101')]);
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [f.ids[0]] });
+    expect(f.provider.send).toHaveBeenCalledTimes(1);
+    expect(f.scheduler.inspect().tasks[0].reason).toBe('MARKET_SPEND_CAP');
+    expect((await f.coordinator.inspect()).ledger.holdings).toHaveLength(1);
+  });
+  it.each(['unapproved', 'shared', 'pending', 'elapsed', 'stale', 'cancelled', 'save-failed'])('does not restart or send on %s recovery', async reason => {
+    const f = await fixture(); let snapshot = await f.taskStore.action({ ...await f.taskStore.read(), id: f.ids[0], action: 'stop' });
+    if (reason === 'elapsed') {
+      const input = f.input('Limited'); input.settings.runMinutes = 1;
+      snapshot = await f.taskStore.saveTask({ ...snapshot, id: f.ids[0], input });
+    }
+    await f.coordinator.withOwner(s => s.control(t => t.checkpoint(l => {
+      l.clocks = [{ taskId: f.ids[0], stopped: true, elapsedMs: 60000, lease: null }];
+      if (reason === 'shared') l.stopped = 'throttle';
+      if (reason === 'pending') l.intents.push({ id: 'pending', taskId: f.ids[1], kind: 'buy', itemId: '100', definitionId: 1001, tradeId: '200', coins: 800, at: 1000, phase: 'pending', receipt: null });
+    })));
+    if (reason === 'stale') await f.taskStore.action({ ...snapshot, id: f.ids[1], action: 'pause' });
+    if (reason === 'cancelled') f.provider.traffic = async () => { f.scheduler.pauseAll(); return null; };
+    if (reason === 'save-failed') f.hooks.write = key => { if (key === tradingTaskKey(f.account)) throw Error('storage failed'); };
+    await expect(f.scheduler.reopen({ approved: reason !== 'unapproved', snapshot, taskId: f.ids[0] })).rejects.toThrow();
+    expect((await f.taskStore.read()).store.tasks[0].state).toBe('stopped');
+    expect(f.provider.send).not.toHaveBeenCalled();
+  });
   it('persists elapsed time across a normal pause and a new scheduler; the original duration still applies', async () => {
     const f = await fixture(); const input = f.input('Limited'); input.settings.runMinutes = 1;
     const snapshot = await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input });

@@ -40,6 +40,31 @@ export async function exerciseMarketRatingPicker(context,directory){
   const chosen=101+0x1000000*5;await v.locator(`[data-add="${chosen}"]`).click();assert.equal(await v.locator(`[data-add="${chosen}"]`).isDisabled(),true);assert.equal(await page.evaluate(()=>globalThis.versionRequests),1);
   await v.locator('[data-close=picker]').click();await v.locator('#taskForm button[type=submit]').click();await v.locator('#toast').getByText('任务已保存，尚未启动。',{exact:true}).waitFor();
   task=await page.evaluate(async()=>(await globalThis.ratingStore.read()).store.tasks[0]);assert.equal(task.mode,'fixed');assert.equal(task.players[0].definitionId,chosen);assert.equal(task.ratingPrices,undefined);
+  // New filter task: buy-only rows require no hidden sale price and retain
+  // the hold setting across save/copy/reopen. Changing back requires sell data.
+  await v.locator('#newTask').click();await v.locator('[data-mode=filter]').click();await v.locator('#taskName').fill('Hold only');
+  await v.locator('#afterBuy').selectOption('hold');await v.locator('#rating-price-mode').selectOption('rating');
+  assert.equal(await v.locator('#sellRule').isVisible(),false);assert.equal(await v.locator('#duration').isVisible(),false);assert.equal(await v.locator('#relist').isVisible(),false);
+  assert.equal(await v.locator('input[data-side=sell]').count(),0);
+  await field(84,'buy').fill('1100');await field(84,'buy').press('Tab');
+  await v.locator('#market-schedule summary').click();await v.locator('#schedule-enabled').check();
+  assert.equal(await v.locator('#schedule-sell').isVisible(),false);await v.locator('#schedule-enabled').uncheck();
+  await v.locator('#taskForm button[type=submit]').click();await v.locator('#tasks .task-name').getByText('Hold only',{exact:true}).waitFor();
+  task=await page.evaluate(async()=>(await globalThis.ratingStore.read()).store.tasks[1]);assert.equal(task.settings.afterBuy,'hold');assert.deepEqual(task.ratingPrices['84'],{buy:1100,sell:null});
+  assert.match(await v.locator('[data-action=detail][data-id="task-2"]').locator('..').innerText(),/Hold only/);
+  await v.locator('[data-action=detail][data-id="task-2"]').click();
+  assert.match(await v.locator('#taskDetailBody').innerText(),/After buying: Hold only/);
+  assert.doesNotMatch(await v.locator('#taskDetailBody').innerText(),/卖出：|重挂：/);
+  await v.locator('[data-close=taskDetail]').click();
+  await v.locator('[data-action=copy][data-id="task-2"]').click();
+  await v.locator('[data-action=edit][data-id="task-3"]').waitFor();await v.locator('[data-action=edit][data-id="task-3"]').click();
+  assert.equal(await v.locator('#afterBuy').inputValue(),'hold');assert.equal(await field(84,'buy').inputValue(),'1100');
+  await v.locator('#afterBuy').selectOption('list');assert.equal(await field(84,'sell').inputValue(),'');assert.equal(await v.locator('#duration').isVisible(),true);
+  await v.locator('#taskForm button[type=submit]').click();assert.equal(await v.locator('#editor').isVisible(),true);
+  await field(84,'sell').fill('1400');await field(84,'sell').press('Tab');
+  await v.locator('#afterBuy').selectOption('hold');await v.locator('#afterBuy').selectOption('list');assert.equal(await field(84,'sell').inputValue(),'1400');
+  await v.locator('#taskForm button[type=submit]').click();await v.locator('#editor').waitFor({state:'hidden'});
+  task=await page.evaluate(async()=>(await globalThis.ratingStore.read()).store.tasks[2]);assert.equal(task.settings.afterBuy,'list');assert.equal(task.ratingPrices['84'].sell,1400);
   assert.deepEqual(errors,[]);assert.equal(requests,0);
   console.log('Rating/picker Chrome passed: separate prices, EA tier arrows, partial/range retention, saved/reopened configs, five visible rows/versions, native-name then exact-version selection, 390px; zero network/EA writes.');
  }catch(error){console.error({errors,ui:await page.locator('#editor').textContent(),fields:await page.locator('#editor input,#editor select').evaluateAll(nodes=>nodes.map(n=>({id:n.id,value:n.value})))});await page.screenshot({path:path.join(directory,'market-rating-failure.png')});throw error;}finally{await page.close();}

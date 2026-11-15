@@ -1,5 +1,17 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-16 用户授权提交并合并累计Trading改动：fetch后origin/main仍08c0faf，本地main为7de00d2，领先1/落后0；独立fix/trading-batches-20261116分支合入origin/main已最新，无冲突。纳入命中提速/403分类、停止任务显式重启、只买不挂及先买后移售批次，版本保持27.0.110；此前verify505/6584和完整离线Chrome已过，本轮重新完整verify后提交并快进合并本地main。最终业务产物SHAf427af9f9aa4e794ae1221f01efa470775e0464895f43c18b6290ec2194c92e5已专用安装回读一致，但真实交易待用户；不push/tag/Release，两个私人.tmp不入Git。本段覆盖此前累计WIP未提交状态，见docs/FC27_TRADING_SEARCH_BATCH_ZH.md提交记录。
+
+2026-11-15 Trading搜索批次（本地27.0.110）：用户批准借鉴Enhancer先串行买本轮候选再移售；保留默认1/可配N、低价优先、原鲜读/请求间隔与多任务逐笔轮转。provider改顺序；全任务held预留Transfer容量，本地确定未发送的额度/容量不足先收尾已确认卡，再原限制暂停；定时满额仍关闭买入，未知/认证/用户停止不收尾或重发。原锁内同一reserve副本预核再checkpoint，存储失败仍停。新增18回归，原native旧顺序断言按已批准流程更新；verify505/6584及完整离线Chrome通过，最终测试时钟修正后组合53/ESLint再过。原Enhancer30154四组相同输入对照通过，仅购买批次控制，不证明全适配器一致。root/dist2951817字节/SHAf427af9f9aa4e794ae1221f01efa470775e0464895f43c18b6290ec2194c92e5已专用安装完整回读一致；无真实交易/升版提交。详见docs/FC27_TRADING_SEARCH_BATCH_ZH.md；保留此前hold/restart/命中提速WIP与私人.tmp。
+
+2026-11-15 Trading仅买入持有（本地27.0.110）：新增After buying=list/hold，旧任务默认自动挂牌；hold仍精确买入/移至Transfer，不挂牌或重挂，不读卖出报价，已有挂牌继续读回执。按评分只需买价，隐藏但保留旧卖价/定时/重挂值；暂停编辑回list后显式启动处理原持仓，不重买。容量/预算/未知保护不变，保留此前命中提速/403分类/停止重启WIP。verify505/6566、组合38及最终界面和完整离线Chrome通过；首轮无关Streamlined测试超时，独立22项及全套重跑通过。root/dist2950360字节/SHA30053ade5902bb0d1b1c73c4d61514c801c2afff223846afd4c3d88e4bc80202已专用安装完整回读一致，未真实交易/升版提交。另核Enhancer27.0.0.4默认每搜索1、可多张串行且先处理结果再移售；FCAT现仍每张买后移售再下一张，研究不冒充已改批次顺序。见docs/FC27_TRADING_HOLD_ONLY_ZH.md；私人.tmp不入Git。
+
+2026-11-15 Trading 已停止任务恢复（本地27.0.110）：用户明确批准同任务重新启动且保留累计记录，覆盖此前“停止只能复制”的终态交互。新增 owner/native/task 锁内 reopen 与原 run/enqueue 接线，保留 ID/持仓/已购支出/运行时长/时间窗/回执；停止任务可编辑但保存不启动。未决/共享暂停/原时间上限仍阻断，确认解除全局暂停不重启；重启中取消/陈旧快照/写失败不发交易，另一个任务运行中可短轮加入。11:26日志末次交易仍为旧09:58Z的403，无新启动证据，不能断言是谁停止。verify505/6551及完整离线Chrome通过，最后诊断/状态投影补丁定向123项与调度Chrome/ESLint/构建通过。root/dist2947156字节、SHA4aa315d0e30564edaf2873ca8be5ac87c03e3bed24cd6f005301f4f883bbecf7；安装状态见恢复文档。未真实交易/升版提交，私人.tmp不入Git。见docs/FC27_TRADING_RESTART_20261115_ZH.md。
+
+2026-11-15 Trading 命中提速/403分类（恢复上轮乱码记录）：H1–H4实施在本地27.0.110。仅任务bid保留HTTP与EA业务码，已明确竞购拒绝可继续，未知403保留manual共享暂停；同owner/task/native轮次search后首笔buy复用15秒完整快照，变化/过期撤销命中且不绕过价格/预算/intent/停止保护。合成9秒人为等待降为0额外读/0人为等待，不代表真实网络延迟。verify505/6539、prelaunch103/1941及完整离线Chrome通过，最终88项追加控制通过。旧产物2940972字节/SHA0e11ead26e16d3984c64871f46b46c19bc2c6858ccd44fb0df471c97f5aae14b曾专用安装并完整回读，用户登录后34Set/669Club、health online、分档/Raya版本/跨页只读通过；专用任务列表0，不代表用户87/88真实买卖已验收。见docs/FC27_TRADING_HIT_LATENCY_20261115_ZH.md及87拒绝调查。后续产物以最新恢复记录为准。
+
+
+
 2026-11-15 用户授权提交并合并Gallery首页排序纠正：fetch后origin/main与本地均08c0faf，无上游新增。本轮仅纳入首页分类顺序、对应单元/离线浏览器回归、文档和已验证生成脚本；版本保持27.0.110，保留既有Trading提交，两个私人.tmp不入Git。按独立fix分支提交并快进合并本地main，不push/tag/Release；此前verify504/6504与完整离线Chrome通过，合并后按规范复跑verify，实机安装仍待用户。本段覆盖下段本轮尚未提交状态。
 
 2026-11-15 Gallery首页排序纠正本地27.0.110：用户双截图确认FUT.GG源序Rarities首位不同于Enhancer首页第七位，上轮仅核12联赛Set却外推大类源序一致的结论撤回。仅view构建首页时按已确认10类slug排列，未知类别后置且保留源序；原目录/revision/内部Set/计分与规划输入不动，旧缓存直接适用，无新请求。截图10类顺序浏览器先红后绿，缓存/新源逆序/NWSL进入返回/桌面390px及冻结输入回归通过。verify504/6504、prelaunch103/1941与完整Chrome通过；root/dist2932261字节/SHA556c78ee61025fdc8de18e4855a1451239aa0c0973ad30d28781f8ec97696209，FSU26.09.10。保留08c0faf Trading后台执行及私人.tmp，未安装/升版提交/EA写。见docs/FC27_GALLERY_UI_ENHANCER_20261115_ZH.md追加大类首页段。

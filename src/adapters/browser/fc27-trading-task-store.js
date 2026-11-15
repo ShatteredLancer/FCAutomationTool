@@ -69,12 +69,20 @@ export function createTradingTaskStore({ context, get, set, locks, now = () => D
     });
   };
   return Object.freeze({ context: capture, read, withTask, withSnapshot,
+    // Called only by the explicit restart control round while the account and
+    // native locks are held. Failed writes leave no execution authorization.
+    reopen: (options, prepare) => mutate(options, async (store, c) => {
+      const task = find(store, options.taskId);
+      if (!['ready', 'paused', 'stopped'].includes(task.state) || (await evidence(task, c)).unresolved) throw Error('TASKS_UNRESOLVED');
+      await prepare(structuredClone(task)); current(c);
+      delete task.stopRequested; task.state = 'paused'; touch(task);
+    }),
     saveTask: options => {
       const input = normalizeTradingTaskInput(options.input);
       return mutate(options, async (store, c) => {
         if (options.id) {
           const task = find(store, options.id);
-          if (!['ready', 'paused'].includes(task.state) || task.stopRequested || (await evidence(task, c)).unresolved) throw Error('TASKS_EDIT_BLOCKED');
+          if (!['ready', 'paused', 'stopped'].includes(task.state) || (await evidence(task, c)).unresolved) throw Error('TASKS_EDIT_BLOCKED');
           delete task.schedule; delete task.ratingPrices; Object.assign(task, input); touch(task);
         } else store.tasks.push({ id: id(), revision: 0, ...input, state: 'ready',
           createdAt: now(), updatedAt: now(), activity: emptyTaskActivity() });

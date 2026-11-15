@@ -11,6 +11,15 @@ const receipt = entry => ({ itemId: entry.itemId, definitionId: entry.definition
 const confirm = (state, entry) => settleMarketWrite(state, entry.id, { status: 'confirmed', receipt: receipt(entry) });
 
 describe('account-wide market pacing and ledger primitives', () => {
+  it('reserves remaining Transfer capacity for held cards belonging to any task', () => {
+    const state = emptyMarketCoordination(), first = buy();
+    reserveMarketWrite(state, first, { ...funds, freeSlots: 1 }); confirm(state, first);
+    const second = buy({ id:'buy-2', taskId:'B', itemId:'102', tradeId:'502' });
+    expect(() => reserveMarketWrite(state, second, { ...funds, freeSlots: 1 })).toThrow('MARKET_TRANSFER_FULL');
+    expect(state.intents).toHaveLength(1);
+    reserveMarketWrite(state, second, { ...funds, freeSlots: 2 }); confirm(state, second);
+    expect(state.holdings.map(h => h.taskId)).toEqual(['A','B']);
+  });
   it('persists frozen listing terms and a positive acknowledgement without converting an unknown to a sale', () => {
     const state = emptyMarketCoordination();
     claimMarketHolding(state, { taskId: 'A', itemId: '101', definitionId: 1001, cost: null }, 'transfer');
