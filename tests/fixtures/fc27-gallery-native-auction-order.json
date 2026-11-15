@@ -1,0 +1,7 @@
+{
+  "evidence": "Captured EA web app function. Auction DTOs, identities and account context in tests are synthetic. No account data in this fixture.",
+  "source": "artifacts/fc27-browser/ea-compiled_2.js",
+  "method": "UTItemEntityFactory.prototype.generateItemsFromAuctionData",
+  "sha256": "a205c32d75e9c2cbed8b8900fe13d4939b9e0d4a04296d70dc6cef53e27aa4ae",
+  "functionSource": "function(t,i){var o=this;return t.map(function(t){var e=o.createItem(t.itemData),t=o.auctionFactory.createFromUtasObject(t);return e.setAuctionData(t),0===e.id&&(e.id=\"Trade\"+t.tradeId),!e.isConsumable()&&i&&(t=JSUtils.find(i,function(t){return t.itemId===e.id}))&&(e.duplicateId=t.duplicateItemId),e},this)}"
+}

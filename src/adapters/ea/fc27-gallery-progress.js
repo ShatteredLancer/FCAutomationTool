@@ -6,6 +6,7 @@ import { GALLERY_TOP_CANDIDATE_LIMIT, normalizeGalleryPool } from '../../gallery
 import { fodderPoolQueries, matchesFodderPool, fodderPoolItem } from '../../gallery/fodder-pool.js';
 import { observeFc27ItemFactory } from './fc27-item-factory-observer.js';
 import { encodeGalleryCollectionCache, decodeGalleryCollectionCache } from '../browser/fc27-gallery-cache-codec.js';
+import { readEnhancerGalleryHistory } from '../browser/fc27-gallery-enhancer-history.js';
 
 // Behavioral reference: Enhancer 27.0.0.4, b_/GAe/iFe/fy. Requests and
 // authentication belong to EA's service/DAO/queue, not to this adapter.
@@ -121,18 +122,33 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     const key = contextKey(context, 'gallery-collection');
     if (!states.has(key)) states.set(key, { key, context, rows: new Map(), firstOwnerHistory: [], reading: null, writing: Promise.resolve(),
       fetchedAt: 0, syncedAt: null, fullSyncAt: null, coveredDefinitionIds: new Set(), setSyncedAt: {},
-      sessionSynced: false, retryAt: 0, timer: null, clubSnapshot: null, clubSnapshotAt: 0, heldSnapshot: null, displayEntities: new Map() });
+      sessionSynced: false, retryAt: 0, timer: null, clubSnapshot: null, clubSnapshotAt: 0, heldSnapshot: null, displayEntities: new Map(),
+      enhancerHistory: new Map(), enhancerRead: null, enhancerReadAt: null });
     return states.get(key);
   };
   const assert = context => { if (disposed || !same(context, readFc27Context(root))) fail('FC27_GALLERY_CONTEXT_CHANGED'); };
+  const restoreEnhancer = state => {
+    if (state.enhancerRead) return state.enhancerRead;
+    if (state.enhancerReadAt !== null && now() - state.enhancerReadAt < 5000) return Promise.resolve();
+    state.enhancerRead = (async () => {
+      const personaId = /^ea:\d+:([1-9]\d*)$/.exec(state.context.accountScope)?.[1];
+      const history = await readEnhancerGalleryHistory(root.indexedDB, personaId);
+      assert(state.context);
+      state.enhancerHistory = history ?? new Map();
+      state.enhancerReadAt = now();
+    })().finally(() => { state.enhancerRead = null; });
+    return state.enhancerRead;
+  };
   const merge = (state, rows) => {
     let changed = false;
     for (const row of rows) {
       const previous = state.rows.get(row.definitionId);
       const owners = [previous?.collectedOwners, row.collectedOwners].filter(value => id(value));
+      const verifiedOwners = [previous?.verifiedCollectedOwners, row.verifiedCollectedOwners].filter(value => id(value));
       const next = { ...previous, ...row,
         isCollected: previous?.isCollected === true || row.isCollected === true ? true : row.isCollected,
         ...(owners.length ? { collectedOwners: Math.min(...owners) } : {}),
+        ...(verifiedOwners.length ? { verifiedCollectedOwners: Math.min(...verifiedOwners) } : {}),
         cardData: row.cardData ?? previous?.cardData };
       if (!same(previous, next)) { state.rows.set(row.definitionId, next); changed = true; }
     }
@@ -154,6 +170,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
       const rows = sanitizeRows(saved.concepts, new Set(saved.concepts.map(row => row.definitionId)));
       for (let i = 0; i < rows.length; i++) {
         if (id(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
+        if (id(saved.concepts[i].verifiedCollectedOwners)) rows[i].verifiedCollectedOwners = saved.concepts[i].verifiedCollectedOwners;
         const readAt = saved.concepts[i].readAt ?? saved.fetchedAt;
         if (Number.isSafeInteger(readAt) && readAt >= 0 && readAt <= now()) rows[i].readAt = readAt;
       }
@@ -200,6 +217,15 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     const auction = item.getAuctionData();
     return !item.concept && !(auction.isValid() && !auction.tradeOwner) && item.owners > 0 ? item.owners : null;
   };
+  const changedState = state => {
+    state.clubSnapshot = null;
+    state.heldSnapshot = null;
+    state.fetchedAt = now();
+    if (state.timer === null) state.timer = setTimeout(() => {
+      state.timer = null;
+      void restore(state).then(() => persist(state)).then(notify).catch(() => {});
+    }, 250);
+  };
   const observeItem = (item, raw, context) => {
     if (!item) return;
     // These two flags are lost by EA's factory. Enhancer preserves them here.
@@ -211,17 +237,21 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     if ([...nativePending].some(pending => !same(context, pending.context))) return;
     const definitionId = item.definitionId;
     if (!id(definitionId)) return;
-    const state = stateFor(context), owners = ownerCount(item);
+    const state = stateFor(context);
     const changed = merge(state, [{ definitionId, isCollected: true, gradingScore: Number.isFinite(item.gradingScore) ? item.gradingScore : null,
-      cardData: nativeCardData(raw), ...(id(owners) ? { collectedOwners: owners } : {}) }]);
-    state.clubSnapshot = null;
-    state.heldSnapshot = null;
-    if (!changed) return;
-    state.fetchedAt = now();
-    if (state.timer === null) state.timer = setTimeout(() => {
-      state.timer = null;
-      void restore(state).then(() => persist(state)).then(notify).catch(() => {});
-    }, 250);
+      cardData: nativeCardData(raw) }]);
+    if (changed) changedState(state);
+    // EA generateItemsFromAuctionData attaches the auction AFTER createItem.
+    // Reading owners in this synchronous hook mistakes the seller's first-owner
+    // copy for ours. Like the reference's deferred batch, inspect the completed
+    // entity only after native synchronous construction, without changing it.
+    void Promise.resolve().then(() => {
+      assert(context);
+      if (item.definitionId !== definitionId || !item.isPlayer() || !item.isCollected
+          || [...nativePending].some(pending => !same(context, pending.context))) return;
+      const owners = ownerCount(item);
+      if (id(owners) && merge(state, [{ definitionId, verifiedCollectedOwners: owners }])) changedState(state);
+    }).catch(() => { /* A late or unreadable observation cannot alter EA's result. */ });
   };
   const install = () => {
     if (disposed) return false;
@@ -255,7 +285,13 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     }
     const clubItems = state.clubSnapshot.filter(row => allowed.has(row.definitionId));
     const heldItems = (state.heldSnapshot ?? []).filter(row => allowed.has(row.definitionId));
-    const collectionHistory = [...state.rows.values(), ...state.firstOwnerHistory];
+    // Preserve old owner minima on disk, but they lack post-auction provenance.
+    // Never merge those possibly foreign counts into newly verified history.
+    const collectionHistory = concepts.map(row => ({ definitionId: row.definitionId,
+      collectedOwners: row.verifiedCollectedOwners,
+      enhancerFirstOwned: row.isCollected === true ? state.enhancerHistory.get(row.definitionId) : null,
+      ownerHistoryUnverified: id(row.collectedOwners) && !id(row.verifiedCollectedOwners) }));
+    collectionHistory.push(...state.firstOwnerHistory.filter(row => allowed.has(row.definitionId)));
     return { status: 'observed', scope: contextKey(state.context, 'gallery-view'), fetchedAt: state.fetchedAt,
       pool, runtimeCards: new Map(concepts.filter(row => row.cardData || state.displayEntities.has(row.definitionId))
         .map(row => [row.definitionId, state.displayEntities.get(row.definitionId) ?? row.cardData])),
@@ -264,7 +300,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
   const project = async pool => {
     try {
       const context = readFc27Context(root); validatePool(pool, context); const state = stateFor(context);
-      await restore(state); return projectState(pool, state, { cached: true });
+      await Promise.all([restore(state), restoreEnhancer(state)]); return projectState(pool, state, { cached: true });
     } catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
   };
   const nativePage = (criteria, context) => new Promise((resolve, reject) => {
@@ -324,7 +360,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
         try { onProgress?.(value); } catch { /* UI only. */ }
       };
       try {
-        await restore(state); assert(context);
+        await Promise.all([restore(state), restoreEnhancer(state)]); assert(context);
         const allIds = definitionIds ?? (pool ? pool.items.map(row => row.eaId) : root.repositories.Item.getStaticData().map(row => row.id));
         if (!Array.isArray(allIds) || !allIds.length || allIds.length > 100000 || allIds.some(value => !id(value))) fail('FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE');
         const fullSync = !pool && definitionIds === null;
@@ -478,7 +514,7 @@ export function createFc27GalleryProgressReader(root, { gmGetValue, gmSetValue, 
     catch (error) { return { status: 'blocked', reason: safeReason(error) }; }
     const state = stateFor(context);
     try {
-      await restore(state); assert(context);
+      await Promise.all([restore(state), restoreEnhancer(state)]); assert(context);
       // Keep previously verified per-set snapshots usable after the upgrade.
       // They seed shared evidence; they never mark a full-library sync complete.
       if (!pool.items.every(row => state.rows.has(row.eaId)) && typeof gmGetValue === 'function') {

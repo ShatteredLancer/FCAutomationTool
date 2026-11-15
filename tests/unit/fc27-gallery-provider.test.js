@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createFc27GalleryCatalogProvider, createFc27GalleryTransport } from '../../src/adapters/browser/fc27-gallery-catalog.js';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 import { futggGallery, fodderGallery } from '../fixtures/fc27-gallery.js';
+import { decodeGalleryCacheValue } from '../../src/adapters/browser/fc27-gallery-cache-codec.js';
 
 function harness() {
   let time = 1000000;
@@ -16,6 +17,33 @@ function harness() {
     now: () => time, ...options });
   return { provider, get, calls, store, advance: ms => { time += ms; } };
 }
+
+it('recovers source order once from an old normalized cache, preserving offline fallback and future conditional reads', async () => {
+  const t = harness(), original = t.provider(); await original.load();
+  const saved = await decodeGalleryCacheValue(t.store.get(original.cacheKey));
+  delete saved.entries[0].orderVerified;
+  t.store.set(original.cacheKey, saved);
+  const restored = t.provider();
+  expect((await restored.peek()).cached).toBe(true);
+  await restored.load();
+  expect(t.calls).toHaveLength(2);
+  expect(t.calls[1].headers).toEqual({});
+  await restored.load(); expect(t.calls).toHaveLength(2);
+  t.advance(300001); t.get.mockResolvedValueOnce({ status: 304, headers: {} });
+  await restored.load(); expect(t.get.mock.calls.at(-1)).toEqual(['futgg', { 'If-None-Match': '"v1"' }]);
+});
+
+it('keeps the old ordered snapshot usable when presentation migration is offline, with existing backoff', async () => {
+  const t = harness(), original = t.provider(); const previous = await original.load();
+  const saved = await decodeGalleryCacheValue(t.store.get(original.cacheKey));
+  delete saved.entries[0].orderVerified; t.store.set(original.cacheKey, saved);
+  t.get.mockRejectedValue(new Error('offline'));
+  const restored = t.provider();
+  expect(await restored.load()).toMatchObject({ stale: true, catalog: previous.catalog });
+  const calls = t.calls.length;
+  expect(await restored.load()).toMatchObject({ stale: true, catalog: previous.catalog });
+  expect(t.calls).toHaveLength(calls);
+});
 
 it('uses FUT.GG, a five-minute cache, 304 and conditional requests', async () => {
   const t = harness(), p = t.provider();

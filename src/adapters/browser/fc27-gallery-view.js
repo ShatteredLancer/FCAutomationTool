@@ -2,6 +2,7 @@ import { GALLERY_TTL_MS } from './fc27-gallery-catalog.js';
 import { marketTrafficMessages } from '../../trading/market-traffic-messages.js';
 import { diffGalleryCatalog } from '../../gallery/catalog.js';
 import { createGalleryScoreQueue } from '../../gallery/score-queue.js';
+import { GALLERY_SCORE_ENGINE } from '../../gallery/scoring.js';
 import { galleryCategoryScoring } from '../../gallery/category-scoring.js';
 import { planGalleryGrade, planGalleryGradeSteps } from '../../gallery/planner.js';
 import { planGalleryJointSteps } from '../../gallery/joint-planner.js';
@@ -43,6 +44,13 @@ export function selectGalleryCategoryIcons(candidates, random = Math.random) {
   return selected;
 }
 
+// Enhancer c8: compact only exact thousands; full values stay in titles.
+export function formatGalleryThreshold(value) {
+  return Number.isFinite(value) ? value > 0 && value % 1000 === 0
+    ? new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+    : value.toLocaleString() : '未知';
+}
+
 // Enhancer JAe/yPt: each segment spans the previous threshold to this one.
 // Known progress is useful even before a full lineup exists. An uncertain
 // interval is projected using its known lower score, never the upper estimate.
@@ -71,7 +79,7 @@ export function galleryPlanningStateKey(detail) {
     'positions', 'weakFoot', 'skillMoves'];
   const expired = detail?.priceSnapshot?.expiresAt != null && Date.now() >= detail.priceSnapshot.expiresAt;
   const quotes = detail?.priceSnapshot ? expired ? {} : detail.priceSnapshot.freshPrices : detail?.prices;
-  return JSON.stringify([detail?.status, detail?.scope, detail?.stale === true, detail?.poolStale === true,
+  return JSON.stringify([GALLERY_SCORE_ENGINE, detail?.status, detail?.scope, detail?.stale === true, detail?.poolStale === true,
     detail?.pool?.revision, progress?.complete !== false, progress?.candidateOnly === true, progress?.poolComplete !== false,
     (progress?.rows ?? []).map(row => fields.map(key => row[key] ?? null)).sort((a, b) => a[0] - b[0]),
     (progress?.rows ?? []).map(row => [row.eaId, quotes?.[row.eaId] ?? null]).sort((a, b) => a[0] - b[0])]);
@@ -481,6 +489,15 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     const img = document.createElement('img'); img.src = src; img.alt = alt || ''; img.loading = 'lazy'; img.decoding = 'async';
     img.className = className; img.referrerPolicy = 'no-referrer'; parent.append(img); return img;
   };
+  const setEmblem = (parent, src, name) => {
+    const fallback = add(parent, 'span', '▧', 'gallery-set-icon-fallback');
+    fallback.setAttribute('aria-label', `${name} 图标暂缺`); fallback.setAttribute('role', 'img');
+    const img = image(parent, src, name, 'gallery-set-icon');
+    if (img) {
+      fallback.hidden = true;
+      img.addEventListener('error', () => { img.hidden = true; fallback.hidden = false; }, { once: true });
+    }
+  };
   const nativeCards = new Set();
   let cardSequence = 0, disposed = false;
   const disposeNativeCards = () => {
@@ -557,15 +574,18 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const gradeTrack = (parent, grades, summary = null) => {
     const state = summary?.status ?? '';
+    const uncertain = ['uncertain', 'partial'].includes(state);
     const track = add(parent, 'div', '', `gallery-grade-track ${state}`); track.setAttribute('role', 'list');
+    if (uncertain) track.title = '进度按已确认贡献下限显示，EA 等级仍待核实。';
     for (const { grade, reached, current, fraction } of galleryGradeSegments(grades, summary)) {
-      const cell = add(track, 'span', '', 'gallery-grade-cell'); cell.setAttribute('role', 'listitem');
+      const cell = add(track, 'span', '', `gallery-grade-cell grade-${String(grade.name).toLowerCase()} ${current && !uncertain ? 'is-current' : ''}`); cell.setAttribute('role', 'listitem');
       const bar = add(cell, 'span', '', 'gallery-grade-bar'); const fill = add(bar, 'i'); fill.style.width = `${Math.round(fraction * 100)}%`;
-      const diamond = add(cell, 'span', '', `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? 'is-reached' : ''} ${current ? 'is-current' : ''}`);
+      const diamond = add(cell, 'span', '', `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? 'is-reached' : ''} ${current && !uncertain ? 'is-current' : ''}`);
       add(diamond, 'span', grade.name, 'gallery-grade-letter');
       diamond.title = `${grade.name} · ${count(grade.threshold)} 分 · ${grade.rewards.map(reward => reward.label).join('、') || '无奖励'}${grade.rewardsComplete ? '' : ' · 未提供非代币奖励'}`;
-      diamond.setAttribute('aria-label', `${grade.name} 档，${count(grade.threshold)} 分${reached ? '，已达到' : ''}`);
-      add(cell, 'small', count(grade.threshold), 'gallery-grade-threshold');
+      diamond.setAttribute('aria-label', `${grade.name} 档，${count(grade.threshold)} 分${reached ? uncertain ? '，已确认贡献下限已达到，EA 等级待核实' : '，已达到' : ''}`);
+      const threshold = add(cell, 'small', formatGalleryThreshold(grade.threshold), 'gallery-grade-threshold');
+      threshold.title = `${count(grade.threshold)} 分`;
     }
     return track;
   };
@@ -597,8 +617,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     for (const reward of rewards) {
       const item = add(summary, 'span', '', 'gallery-reward-token');
       item.dataset.rewardType = reward.type;
-      image(item, reward.icon, reward.type, 'gallery-reward-token-icon');
       add(item, 'span', count(reward.value), 'gallery-reward-token-value');
+      image(item, reward.icon, reward.type, 'gallery-reward-token-icon');
       item.title = `${reward.type} ${count(reward.value)}`;
       item.setAttribute('aria-label', item.title);
     }
@@ -606,7 +626,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   let scoreRenderTimer = null;
   const scoredSets = new Set();
-  const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, onUpdate: setId => {
+  const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, selectionMode: 'enhancer', onUpdate: setId => {
     scoredSets.add(setId);
     if (disposed || !active || scoreRenderTimer !== null) return;
     scoreRenderTimer = setTimeout(() => {
@@ -621,8 +641,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         const summary = set && scoreSummary(detail, set, 3);
         const label = card.querySelector('.gallery-summary'), grades = card.querySelector('.gallery-grades');
         if (!summary || !label || !grades) continue;
-        label.textContent = compactScore(summary); label.title = `Base score · ${scoreText(summary)}`;
-        label.setAttribute('aria-label', `Base score ${scoreText(summary)}`);
+        renderSetScore(label, summary);
         grades.replaceChildren(); gradeTrack(grades, set.grades, summary);
       }
       if ([...changed].some(id => jointTargets.has(id))) renderJoint();
@@ -682,27 +701,50 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const compactScore = summary => !summary?.low ? summary?.status === 'calculating' ? '计分中…' : '计分待同步'
     : `${count(summary.low.total)}${summary.low.total !== summary.high?.total ? `–${count(summary.high?.total)}` : ''} 分`;
+  const renderSetScore = (label, summary) => {
+    label.replaceChildren();
+    label.title = `候选阵容估分 · ${scoreText(summary)}`;
+    label.setAttribute('aria-label', label.title);
+    if (!summary?.low) { label.textContent = compactScore(summary); return; }
+    const range = summary.low.total !== summary.high?.total;
+    add(label, 'strong', `${count(summary.low.total)}${range ? `–${count(summary.high.total)}` : ''}`, 'gallery-set-total');
+    const gem = add(label, 'span', '', 'gallery-score-gem'); gem.setAttribute('aria-hidden', 'true');
+    if (summary.low.bonus > 0 || range && summary.high.bonus > 0) {
+      const bonus = add(label, 'span', `(+${count(summary.low.bonus)}${range ? `–${count(summary.high.bonus)}` : ''})`, 'gallery-set-bonus');
+      bonus.title = `加成 ${count(summary.low.bonus)}${range ? `–${count(summary.high.bonus)}` : ''} 分`;
+    }
+    if (['uncertain', 'partial'].includes(summary.status)) add(label, 'span', '待核', 'gallery-unknown');
+  };
   const renderScoring = (target, summary, value) => {
     const section = add(target, 'section', '', 'gallery-score');
-    add(section, 'strong', `${value.stale || value.poolStale || result?.stale ? '快照' : '当前'}计分：${scoreText(summary)}`);
+    const uncertain = ['uncertain', 'partial'].includes(summary?.status);
+    const heading = uncertain ? '本地估算区间' : '候选阵容估分';
+    add(section, 'strong', `${value.stale || value.poolStale || result?.stale ? '快照 · ' : ''}${heading}：${scoreText(summary)}`);
     if (!summary?.low) {
       if (summary?.status === 'calculating') { add(section, 'small', '正在后台计算，可继续浏览或切换页面。'); return; }
       add(section, 'small', summary?.reason === 'base-score-unknown' ? '部分已收集卡缺少 EA 基础分；公开估值不会代替账号分值。' : '目录包含未识别的计分条件，保留收集进度并等待规则适配。');
       return;
     }
     add(section, 'small', `基础分 ${count(summary.low.base)} ＋ 已知加成 ${count(summary.low.bonus)} · 计分 ${summary.lineup.length} 张`);
+    add(section, 'small', 'EA 当前分数取决于主机已选卡片；可按“计分阵容”换卡后 Regrade 核对。此候选不保证最高分。');
+    if (uncertain) add(section, 'small', `${count(summary.low.total)} 是已确认贡献下限，不是 EA 当前分数。缺失的首任历史或规则差异未核实前，不能据此判断还需多少分才能升档。`, 'gallery-unknown');
     if (summary.zeroScoreCards) add(section, 'small', `${summary.zeroScoreCards} 张已收集版本的 EA 基础分为 0，按参考规则不计入计分人数。`);
-    if (summary.full && summary.nextGrade) add(section, 'p', `下一档 ${summary.nextGrade}：按已知贡献还差 ${count(summary.pointsToNext)} 分`);
-    else if (summary.full) add(section, 'p', '按已知贡献达到最高档门槛');
+    if (summary.full && !uncertain && summary.nextGrade) add(section, 'p', `下一档 ${summary.nextGrade}：按已知贡献还差 ${count(summary.pointsToNext)} 分`);
+    else if (summary.full && !uncertain) add(section, 'p', '按已知贡献达到最高档门槛');
     if (summary.full && summary.low.total !== summary.high.total) {
       add(section, 'small', `同一计分组合的条件等级：${summary.lowGrade ?? '未达 D'}–${summary.highGrade ?? '未达 D'}。区间仅针对已选组合，不代表所有组合的最高分。`, 'gallery-unknown');
     }
     const names = { firstOwned: 'First Owner 历史', holographic: '闪卡属性', weakFoot: '逆足', skillMoves: '花式',
       nationEaId: '国籍', clubEaId: '俱乐部', leagueEaId: '联赛', playerEaId: '球员身份', positions: '位置', overall: '评分', rarityEaId: '卡种' };
     if (summary.unknownFields.length) add(section, 'small', `未知：${summary.unknownFields.map(field => names[field] ?? field).join('、')}。已知贡献不计未知项，区间另一端按未知项满足条件计算；重新同步未必能找回已离队卡的首任历史。`, 'gallery-unknown');
+    if (summary.unknownFields.includes('firstOwned')) add(section, 'small', `首任证据：${summary.lineup.filter(row => row.firstOwned === true).length} 张已确认，${summary.lineup.filter(row => row.firstOwned == null).length} 张待核实。`, 'gallery-unknown');
+    if (summary.lineup.some(row => row.firstOwnedHistoryUnverified)) add(section, 'small', 'Some first-owner history needs verification. Previous records are preserved, but are not counted as confirmed bonuses. Current Club cards or your explicit first-owner declarations can resolve these entries.', 'gallery-unknown');
     if (summary.ruleDifference) add(section, 'small', `分组规则有差异：同组合 Fodder ${count(summary.low.total)}–${count(summary.high.total)}，FUT.GG ${count(summary.comparison.low.total)}–${count(summary.comparison.high.total)}；EA 规则仍待对照。`, 'gallery-unknown');
     if (summary.collectionUnknown) add(section, 'small', '收集状态尚未完整，当前仅计算已确认收集卡。', 'gallery-unknown');
-    add(section, 'small', `${summary.selection === 'bounded-search' ? '按参考插件有界换阵选出组合，不保证全局最优。' : ''}本地计算参考等级，不代表 EA 已确认等级或奖励可领取；首任证据来自当前 Club 缓存。`);
+    if (summary.lineup.some(row => row.firstOwnedSource === 'enhancer-history')) add(section, 'small',
+      '已复用此账号在本机 Enhancer 中保存的首任历史；该记录可能包含手工标记。', 'gallery-history-source');
+    add(section, 'small', `${summary.selection === 'enhancer-seeds' ? '按 Enhancer 的基础分与标签候选方式选出计分阵容。'
+      : summary.selection === 'bounded-search' ? '有界换阵选出组合，不保证全局最优。' : ''}本地计算参考等级，不代表 EA 已确认等级或奖励可领取；首任证据来自当前 Club、历史观测或本地标记。`);
     const explanation = add(section, 'details'); add(explanation, 'summary', '计分卡片与加成明细');
     const selected = add(explanation, 'ul', '', 'gallery-lineup');
     for (const row of summary.lineup) add(selected, 'li', `${row.name ?? row.eaId} · ${row.version ?? ''} · EA ${count(row.gradingScore)}`);
@@ -1721,8 +1763,10 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
               const rows = detail.progress.rows.map(item => {
                 if (item.eaId !== row.eaId) return item;
                 const observed = item.observedFirstOwned ?? (item.firstOwnedSource === 'ea-observed' ? item.firstOwned : null);
-                return { ...item, observedFirstOwned: observed, firstOwned: localFirstOwner ? observed : true,
-                  firstOwnedSource: localFirstOwner ? observed === null ? null : 'ea-observed' : 'local-history' };
+                const automatic = observed ?? item.enhancerFirstOwned ?? null;
+                return { ...item, observedFirstOwned: observed, firstOwned: localFirstOwner ? automatic : true,
+                  firstOwnedSource: localFirstOwner ? observed !== null ? 'ea-observed'
+                    : automatic !== null ? 'enhancer-history' : null : 'local-history' };
               });
               details.set(id, { ...detail, progress: { ...detail.progress, rows, totals: { ...detail.progress.totals,
                 firstOwned: rows.filter(item => item.firstOwned === true).length,
@@ -1883,8 +1927,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         chosen = { key: JSON.stringify(candidates), src: selectGallerySetIcon(candidates) };
         setIconSelections.set(set.id, chosen);
       }
-      if (chosen.src) image(iconBox, chosen.src, set.name, 'gallery-set-icon');
-      add(title, 'h4', set.name);
+      setEmblem(iconBox, chosen.src, set.name);
+      add(title, 'h4', set.name).title = set.name;
       const watch = add(title, 'button', jointTargets.has(set.id) ? '★' : '☆', 'gallery-watch');
       watch.type = 'button'; watch.title = jointTargets.has(set.id) ? '取消关注' : '关注集合';
       watch.setAttribute('aria-label', `${watch.title} ${set.name}`);
@@ -1903,14 +1947,11 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       const grades = add(card, 'div', '', 'gallery-grades');
       gradeTrack(grades, set.grades, summary);
       const metrics = add(card, 'div', '', 'gallery-set-metrics');
-      const collected = add(metrics, 'span', totals ? `${totals.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, 'gallery-collected');
-      collected.title = totals ? `已收集 / 目标 · ${totals.unknown} 待核实` : '收集进度：未同步';
-      if (!totals || totals.total > 0 && totals.unknown === totals.total) collected.textContent = `? / ${set.requiredCards}`;
-      const scoreCaption = add(metrics, 'span', 'Base score', 'gallery-score-caption');
-      scoreCaption.title = '集合基础分（本地参考计分）';
-      const score = add(metrics, 'span', compactScore(summary), 'gallery-summary');
-      score.title = `Base score · ${scoreText(summary)}`;
-      score.setAttribute('aria-label', `Base score ${scoreText(summary)}`);
+      const collected = add(metrics, 'span', `已收集 ${totals ? Math.min(totals.collected, set.requiredCards) : '?'} / ${set.requiredCards}`, 'gallery-collected');
+      collected.title = totals ? `完整收藏 ${totals.collected} 张 / 计分需要 ${set.requiredCards} 张 · ${totals.unknown} 待核实` : '收集进度：未同步';
+      if (!totals || totals.total > 0 && totals.unknown === totals.total) collected.textContent = `已收集 ? / ${set.requiredCards}`;
+      const score = add(metrics, 'span', '', 'gallery-summary');
+      renderSetScore(score, summary);
       renderRewardSummary(metrics, [set]);
       if (detail?.progress?.candidateOnly) {
         const candidate = add(metrics, 'span', '▣', 'gallery-collection-flag');
@@ -1923,6 +1964,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       }
       if (typeof loadSet === 'function' && ['futgg', 'fodder'].includes(result.source)) {
         const button = add(card, 'button', '查看卡片', 'gallery-open-set');
+        button.title = `查看 ${set.name} 卡片`;
         button.type = 'button'; button.addEventListener('click', event => { if (event.isTrusted) void loadSetDetails(set); });
         card.addEventListener('click', event => { if (event.isTrusted && !event.target.closest?.('button')) void loadSetDetails(set); });
       }

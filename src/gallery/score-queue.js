@@ -1,4 +1,4 @@
-import { summarizeGalleryScoreSteps } from './scoring.js';
+import { GALLERY_SCORE_ENGINE, summarizeGalleryScoreSteps } from './scoring.js';
 import { runGalleryPlan } from './cooperative-plan.js';
 
 const scoreFields = ['eaId', 'gradingScore', 'collected', 'overall', 'nationEaId', 'clubEaId',
@@ -10,7 +10,7 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
 // Rendering never runs a lineup search. Cache by data rather than freshly
 // projected object identity, and run only one cooperative search at a time.
 export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => performance.now(),
-  cache = null,
+  cache = null, selectionMode = 'bounded-search',
   schedule = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
   const entries = new Map();
   let task = null, epoch = 0, disposed = false;
@@ -35,7 +35,7 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
             if (summary.lineup.every(row => rows.has(row.eaId))) summary.lineup = summary.lineup.map(row => rows.get(row.eaId));
             else summary = null;
           }
-          summary ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
+          summary ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input, { selectionMode }), {
           current, now, schedule, sliceMs: 8, maxMs: Infinity }); }
         catch { summary = {status:'unavailable',reason:'input-invalid'}; }
         if (!current() || !summary) break;
@@ -73,7 +73,7 @@ export function createGalleryScoreQueue({ onUpdate = () => {}, now = () => perfo
       const catalog = input.catalog;
       const tags = (catalog.tags ?? []).map(tag => pick(tag, catalog.source === 'fodder'
         ? ['id', 'match', 'steps'] : ['id', 'rules', 'tiers', 'bonusType', 'thresholdType']));
-      const key = JSON.stringify(stable([pick(input.set, ['id', 'requiredCards']),
+      const key = JSON.stringify(stable([GALLERY_SCORE_ENGINE, selectionMode, pick(input.set, ['id', 'requiredCards']),
         input.set?.grades?.map(grade => pick(grade, ['name', 'threshold'])), catalog.source, tags,
         catalog.source === 'fodder' ? pick(catalog.engine, ['version', 'goldFrom', 'silverFrom', 'bonusMinusOne']) : null,
         scoringKey(input)]));

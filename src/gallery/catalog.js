@@ -92,10 +92,10 @@ export function normalizeGalleryCatalog(source, input, season = '27') {
       if (description !== null && (typeof description !== 'string' || description.length > 2000)) invalid();
       return { id: setId, categoryId: id, name: set.name, slug: set.slug, requiredCards,
         description, conditions, grades: grades(set.grades, source) };
-    }).sort((a, b) => a.id.localeCompare(b.id));
+    });
     unique(sets.map(set => set.slug));
     return { id, name: category.name, slug: category.slug, sets };
-  }).sort((a, b) => a.id.localeCompare(b.id));
+  });
   unique(categoryIds); unique(setIds); unique(categories.map(category => category.slug));
   if (!setIds.length || setIds.length > 10000) invalid();
   const tags = list(data.tags, 256).map(tag => {

@@ -75,8 +75,8 @@ export async function exerciseGalleryResponsive(context) {
     await page.setViewportSize({width:1280,height:800});
     await host.locator('#gallery-categories button').first().click();
     await page.waitForFunction(()=>globalThis.document.getElementById('responsive').shadowRoot.querySelectorAll('.gallery-summary').length===127);
-    await page.waitForFunction(()=>[...globalThis.document.getElementById('responsive').shadowRoot.querySelectorAll('.gallery-summary')]
-      .some(row=>/^[\d,]+ 分$/.test(row.textContent)));
+    await page.waitForFunction(()=>[...globalThis.document.getElementById('responsive').shadowRoot.querySelectorAll('.gallery-set-total')]
+      .some(row=>/^[\d,]+$/.test(row.textContent)));
     assert.equal(await host.locator('.gallery-set').count(),127);
     await host.locator('#gallery-back').click();
     await page.waitForFunction(()=>globalThis.document.getElementById('responsive').shadowRoot
@@ -86,7 +86,8 @@ export async function exerciseGalleryResponsive(context) {
     await host.locator('#gallery-categories button').first().click();
     // Switching away must interrupt pending work; returning reuses completed
     // entries even though peekDetails creates new projection object identities.
-    const completed=await host.locator('.gallery-set').evaluateAll(cards=>cards.filter(card=>/^[\d,]+ 分$/.test(card.querySelector('.gallery-summary')?.textContent)).map(card=>card.dataset.setId));
+    const completed=await host.locator('.gallery-set').evaluateAll(cards=>cards.filter(card=>/^[\d,]+$/.test(card.querySelector('.gallery-set-total')?.textContent)).map(card=>card.dataset.setId));
+    assert.ok(completed.length > 0, 'the reuse check must include a completed score');
     const switchAt=Date.now(); await host.locator('#tab-settings').click();
     assert.ok(Date.now()-switchAt<1500,'Settings remains clickable during background scoring');
     await host.locator('#tab-gallery').click();

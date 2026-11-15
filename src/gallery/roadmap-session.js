@@ -3,6 +3,7 @@ import { createGalleryRoadmapWork } from './roadmap-work.js';
 import { runGalleryPlan } from './cooperative-plan.js';
 import { createGalleryPortfolioWork } from './roadmap-portfolios.js';
 import { isGalleryOwned } from './planner.js';
+import { GALLERY_SCORE_ENGINE } from './scoring.js';
 
 export function galleryRoadmapMaterialKey(progress){
   const fields=['eaId','playerEaId','gradingScore','galleryScore','firstOwned','holographic','overall','nationEaId','clubEaId','leagueEaId','rarityEaId','positions','weakFoot','skillMoves'];
@@ -10,7 +11,7 @@ export function galleryRoadmapMaterialKey(progress){
     (progress?.rows ?? []).map(row=>[isGalleryOwned(row)?'owned':row.collected===false?'missing':'unknown',...fields.map(key=>row[key] ?? null),row.collected ?? null]).sort((a,b)=>a[1]-b[1])]);
 }
 export function galleryRoadmapTargetKey(target) {
-  return JSON.stringify([target.set,target.catalog?.revision,target.catalog?.tags,target.catalog?.engine,
+  return JSON.stringify([GALLERY_SCORE_ENGINE,target.set,target.catalog?.revision,target.catalog?.tags,target.catalog?.engine,
     target.status,!!target.stale,!!target.poolStale,target.pool?.revision,galleryRoadmapMaterialKey(target.progress),
     (target.progress?.rows ?? []).map(row=>[row.eaId,target.prices?.[row.eaId] ?? null]),target.publicReference]);
 }

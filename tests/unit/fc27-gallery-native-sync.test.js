@@ -7,6 +7,9 @@ import { GalleryItemEntity, galleryEntityFromDto } from '../helpers/fc27-gallery
 import { createFc27GalleryNativeRenderer } from '../../src/adapters/ea/fc27-gallery-card.js';
 import { decodeGalleryCollectionCache } from '../../src/adapters/browser/fc27-gallery-cache-codec.js';
 import { finishNativeIo } from '../helpers/native-io-timers.js';
+import vm from 'node:vm';
+import nativeAuctionOrder from '../fixtures/fc27-gallery-native-auction-order.json';
+import londonScore from '../fixtures/fc27-gallery-london-score.json';
 
 afterEach(() => vi.useRealTimers());
 function fixture() {
@@ -349,6 +352,84 @@ it('does not use concept or foreign auction owner counts as history', async () =
   f.factory.createItem({ resourceId: 900002, isCollected: true, gradingScore: 100, dream: false, owners: 1, auctionValid: true, tradeOwner: false });
   await vi.runAllTimersAsync(); const result = await finish(r.load(f.pool));
   expect(result.progress.rows.slice(0,2).every(row => row.firstOwned === null)).toBe(true);
+});
+const auctionRows = (f, tradeOwner, owners = 1) => {
+  // Execute the captured EA method: createItem returns before setAuctionData.
+  f.factory.auctionFactory = { createFromUtasObject: raw => ({ isValid: () => true, tradeOwner: raw.tradeOwner }) };
+  return vm.runInNewContext(`(${nativeAuctionOrder.functionSource})`).call(f.factory, [{ tradeOwner,
+    itemData: { resourceId: 900001, isCollected: true, gradingScore: 100, dream: false, owners } }]);
+};
+it.each([false, true])('reads final auction ownership after native construction (tradeOwner=%s), including reload', async tradeOwner => {
+  vi.useFakeTimers(); const f = fixture(); let r = f.reader();
+  const [item] = auctionRows(f, tradeOwner);
+  expect(item.getAuctionData().tradeOwner).toBe(tradeOwner);
+  expect(item.isCollected).toBe(true); expect(item.gradingScore).toBe(100);
+  await vi.runAllTimersAsync();
+  expect((await r.project(f.pool)).progress.rows[0]).toMatchObject({ collected: true, firstOwned: tradeOwner ? true : null });
+  r.dispose(); r = f.reader();
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBe(tradeOwner ? true : null);
+  expect(f.calls).toHaveLength(0); r.dispose();
+});
+it('does not let an external seller owner count poison a subsequent purchased copy or a later genuine first-owner copy', async () => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  auctionRows(f, false); await vi.runAllTimersAsync();
+  f.factory.createItem({ resourceId: 900001, isCollected: true, gradingScore: 100, dream: false, owners: 2 });
+  await vi.runAllTimersAsync();
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBe(false);
+  f.factory.createItem({ resourceId: 900001, isCollected: true, gradingScore: 100, dream: false, owners: 1 });
+  await vi.runAllTimersAsync();
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBe(true);
+  r.dispose(); expect(f.calls).toHaveLength(0);
+});
+it.each(['account', 'dispose', 'throw'])('drops delayed owner evidence after %s without breaking the native result', async change => {
+  vi.useFakeTimers(); const f = fixture(), r = f.reader();
+  const [item] = auctionRows(f, true);
+  if (change === 'account') f.club.platform = 'other';
+  if (change === 'dispose') r.dispose();
+  if (change === 'throw') item.getAuctionData = () => { throw Error('unavailable'); };
+  await vi.runAllTimersAsync();
+  f.club.platform = 'pc';
+  if (change === 'account') {
+    expect(await r.project(f.pool)).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' });
+    r.dispose();
+  }
+  const next = change === 'throw' ? r : f.reader();
+  expect((await next.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
+  next.dispose(); expect(f.calls).toHaveLength(0);
+});
+it('keeps fresh verified ownership independent of a preserved legacy seller minimum through restart', async () => {
+  vi.useFakeTimers(); const f = fixture(); let r = f.reader();
+  await finish(r.load(f.pool)); r.dispose();
+  const key = [...f.store.keys()].find(key => key.includes('gallery-collection'));
+  f.store.get(key).concepts.find(row => row.definitionId === 900001).collectedOwners = 1;
+  r = f.reader();
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
+  f.factory.createItem({ resourceId: 900001, isCollected: true, gradingScore: 100, dream: false, owners: 2 });
+  await vi.runAllTimersAsync();
+  expect((await r.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: false, firstOwnedHistoryUnverified: false });
+  r.dispose(); r = f.reader();
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBe(false);
+  expect(f.store.get(key).concepts.find(row => row.definitionId === 900001))
+    .toMatchObject({ collectedOwners: 1, verifiedCollectedOwners: 2 });
+  expect(f.calls).toHaveLength(1); r.dispose();
+});
+it('replays the native seller-before-purchase sequence through London progress and scoring without the extra 8250 bonus', async () => {
+  vi.useFakeTimers(); const f = fixture(), firstOwners = new Set([...londonScore.scenario.sharedFirstOwnedIds, 272185]);
+  const rows = londonScore.rows.map(values => Object.fromEntries(londonScore.columns.map((field, index) => [field, values[index]])));
+  f.pool = { ...f.pool, setId: 25, items: rows.map(row => ({ ...row, cardName: row.name, rarityName: row.version })) };
+  const r = f.reader();
+  f.factory.auctionFactory = { createFromUtasObject: () => ({ isValid: () => true, tradeOwner: false }) };
+  vm.runInNewContext(`(${nativeAuctionOrder.functionSource})`).call(f.factory, [{ itemData: {
+    resourceId: 227361, isCollected: true, gradingScore: 5500, dream: false, owners: 1 } }]);
+  await vi.runAllTimersAsync();
+  for (const row of rows) f.factory.createItem({ resourceId: row.eaId, isCollected: true, gradingScore: row.score,
+    dream: false, owners: firstOwners.has(row.eaId) ? 1 : 2 });
+  await vi.runAllTimersAsync();
+  const { progress } = await r.project(f.pool);
+  const score = summarizeGalleryScore({ set: londonScore.set, catalog: { source: 'futgg', tags: londonScore.tags }, progress });
+  expect(score).toMatchObject({ grade: 'A', low: { base: 17745, bonus: 19917, total: 37662 } });
+  expect(progress.rows.find(row => row.eaId === 227361).firstOwned).toBe(false);
+  expect(f.calls).toHaveLength(0); r.dispose();
 });
 it('stops sync between pages and leaves it available to retry', async () => {
   vi.useFakeTimers(); const f = fixture(), r = f.reader(); f.control.staticIds = Array.from({ length: 300 }, (_, i) => 900000 + i);

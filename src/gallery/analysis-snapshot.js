@@ -1,7 +1,7 @@
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 const versionFields = ['eaId', 'playerEaId', 'name', 'version', 'overall', 'galleryScore', 'gradingScore',
   'nationEaId', 'clubEaId', 'leagueEaId', 'rarityEaId', 'positions', 'weakFoot', 'skillMoves', 'holographic',
-  'collected', 'inClub', 'held', 'firstOwned', 'observedFirstOwned', 'firstOwnedSource'];
+  'collected', 'inClub', 'held', 'firstOwned', 'observedFirstOwned', 'enhancerFirstOwned', 'firstOwnedSource', 'firstOwnedHistoryUnverified'];
 const accountFacts = ['collected', 'inClub', 'held', 'firstOwned', 'gradingScore'];
 
 // Explicit allowlist: never serialize a detail, native card, context or journal.

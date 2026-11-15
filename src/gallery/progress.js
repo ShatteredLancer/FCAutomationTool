@@ -9,7 +9,8 @@ function accountRow(item, concept, club, clubKnown, history, held) {
   const observedFirstOwned = history?.collectedOwners === 1 || club?.some(row => row.owners === 1) ? true
     : Number.isSafeInteger(history?.collectedOwners) && history.collectedOwners > 1 ? false
     : club?.every(row => Number.isSafeInteger(row.owners) && row.owners > 1) ? false : null;
-  const firstOwned = typeof history?.firstOwned === 'boolean' ? history.firstOwned : observedFirstOwned;
+  const enhancerFirstOwned = collected === true ? booleanOrUnknown(history?.enhancerFirstOwned) : null;
+  const firstOwned = typeof history?.firstOwned === 'boolean' ? history.firstOwned : observedFirstOwned ?? enhancerFirstOwned;
   return Object.freeze({
     eaId: item.eaId, playerEaId: item.playerEaId, name: item.cardName,
     version: item.rarityName, overall: item.overall, galleryScore: item.score,
@@ -20,8 +21,10 @@ function accountRow(item, concept, club, clubKnown, history, held) {
     gradingScore: scoreOrUnknown(concept?.gradingScore), collected, inClub,
     // Club remains the authoritative submission pile. Other piles are
     // display-only evidence and never change collected or inClub semantics.
-    held: inClub === true || held === true ? true : null, firstOwned, observedFirstOwned,
-    firstOwnedSource: typeof history?.firstOwned === 'boolean' ? 'local-history' : firstOwned !== null ? 'ea-observed' : null,
+    held: inClub === true || held === true ? true : null, firstOwned, observedFirstOwned, enhancerFirstOwned,
+    firstOwnedSource: typeof history?.firstOwned === 'boolean' ? 'local-history'
+      : observedFirstOwned !== null ? 'ea-observed' : enhancerFirstOwned !== null ? 'enhancer-history' : null,
+    firstOwnedHistoryUnverified: history?.ownerHistoryUnverified === true && firstOwned === null,
     status: collected === true ? 'collected' : collected === false ? 'missing' : 'unknown',
   });
 }

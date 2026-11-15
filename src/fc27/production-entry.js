@@ -134,6 +134,15 @@ const galleryAssets = Object.freeze({
       return u.getShellUri(size, 1, Number(rarity.id ?? id), tier, rarity.getGuid()) || '';
     } catch { return ''; }
   },
+  tier: name => {
+    try {
+      // Enhancer a3t: a standard rare shell with the requested rating tier.
+      const rarity = unsafeWindow.repositories?.Rarity?.get?.(1);
+      const tier = unsafeWindow.ItemRatingTier?.[name];
+      return rarity && tier != null && typeof rarity.getGuid === 'function'
+        ? unsafeWindow.AssetLocationUtils?.getShellUri(unsafeWindow.ItemViewSize?.LARGE, 1, 1, tier, rarity.getGuid()) || '' : '';
+    } catch { return ''; }
+  },
   nation: id => { try { const u = unsafeWindow.AssetLocationUtils; return u?.getFilterImage(u.FILTER.NATION, Number(id)) || ''; } catch { return ''; } },
   category: (slug, name = '', sets = []) => {
     const key = `${String(slug ?? '')} ${String(name ?? '')}`.toLocaleLowerCase();
@@ -146,6 +155,9 @@ const galleryAssets = Object.freeze({
       : key.includes('germany') || key.includes('bundesliga') ? [19, 2215]
           : key.includes('france') || key.includes('ligue') || key.includes('arkema') ? [16, 2218]
             : key.includes('italy') || key.includes('serie-a') || key.includes('serie a') ? [31]
+              : key.includes('nwsl') || key.includes('national-women') || key.includes("national women's") ? [2221]
+                : key.includes('mls') ? [39]
+                  : key.includes('roshn') || key.includes('saudi') ? [350]
               : key.includes('leagues') || key === 'league' ? [13, 53, 19, 2215, 16, 31]
                 : [];
     // Enhancer uses the rendered player shell for rarity/foil icons (Qce),
@@ -162,12 +174,15 @@ const galleryAssets = Object.freeze({
       if (kind === 'RARITY' && (set.slug === 'holographics' || set.conditions?.holo === true)) {
         return [galleryAssets.rarity(12)].filter(Boolean); // Enhancer foil: Qce(12).
       }
+      if (kind === 'RARITY' && set.slug === 'starter-set') return ['BRONZE', 'SILVER', 'GOLD'].map(galleryAssets.tier).filter(Boolean);
       if (explicit.length) return explicit.map(id => kind === 'RARITY' ? galleryAssets.rarity(id) : galleryAssets.filter(kind, id)).filter(Boolean);
       if (kind !== 'CLUB') {
-        const leagueIds = { 'premier-league': [13], 'barclays-wsl': [2216], 'ligue-1-mcdonalds': [16],
+        const leagueIds = { 'premier-league': [13], 'barclays-wsl': [2216], 'ligue-1-mcdonalds': [16], 'ligue-1-mcdonald-s': [16],
           'arkema-pl': [2218], 'laliga-ea-sports': [53], 'liga-f-moeve': [2222],
-          'serie-a-enilive': [31], bundesliga: [19], 'frauen-bundesliga': [2215] };
-        const rarityIds = { totw: [3], heroes: [72],
+          'serie-a-enilive': [31], bundesliga: [19], 'frauen-bundesliga': [2215],
+          'roshn-saudi-pro-league': [350], mls: [39], nwsl: [2221], 'national-women-s-soccer-league': [2221] };
+        const rarityIds = { totw: [3, 19], heroes: [72], icons: [12, 160],
+          potm: [86, 42, 177, 114, 79, 43], 'ultimate-scream': [151, 168], 'hall-of-fut': [10, 9],
           'squad-foundations': [87], 'season-1': [150, 22, 71] };
         const known = (kind === 'LEAGUE' ? leagueIds : rarityIds)[set.slug];
         const field = kind === 'LEAGUE' ? 'leagueEaId' : 'rarityEaId';
@@ -197,7 +212,9 @@ const galleryAssets = Object.freeze({
         .filter(row => row.value && row.value === needle);
       const ids = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId))
         .filter(value => Number.isSafeInteger(value) && value > 0).slice(0, 3);
-      return (ids.length ? [...new Set(ids)] : idsFor(pool.slice(0, 3).map(item => item.clubEaId)))
+      const badgeIds = idsFor((set.grades ?? []).flatMap(grade => grade.rewards ?? [])
+        .filter(reward => reward.type === 'item' && reward.itemCategory === 1).map(reward => reward.teamEaId));
+      return (ids.length ? [...new Set(ids)] : badgeIds.length ? badgeIds : idsFor(pool.slice(0, 3).map(item => item.clubEaId)))
         .map(id => galleryAssets.club(id)).filter(Boolean);
     } catch { return []; }
   },

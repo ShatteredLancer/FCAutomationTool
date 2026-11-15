@@ -16,6 +16,8 @@ export class GalleryItemEntity {
   getStaticData() { return this._staticData; }
   getPlayStyles() { return this._playStyles; }
   getAuctionData() { return this._auction; }
+  setAuctionData(value) { this._auction = value; }
+  isConsumable() { return false; }
   getFoilSubtype() { return this._hyperCosmeticDTOs[1]?.subtype ?? -1; }
 }
 

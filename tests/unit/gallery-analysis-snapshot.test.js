@@ -6,7 +6,7 @@ const catalog = { season: '27', source: 'futgg', revision: 'rev-a', tags: [], ac
   categories: [{ id: 'cat', name: 'League', sets: [set] }] };
 const target = extra => ({ set, status: 'observed', fetchedAt: 4000, scope: 'DO_NOT_EXPORT', pool: { revision: 'pool-a' },
   progress: { complete: true, poolComplete: true, rows: [{ eaId: 11, playerEaId: 1, name: 'Public Player',
-    collected: true, inClub: false, firstOwned: null, readAt: 3000, id: 'DO_NOT_EXPORT',
+    collected: true, inClub: false, firstOwned: null, firstOwnedHistoryUnverified: true, readAt: 3000, id: 'DO_NOT_EXPORT',
     safetyFingerprint: 'DO_NOT_EXPORT', token: 'DO_NOT_EXPORT' }] },
   prices: { 11: 1000 }, priceSnapshot: { expiresAt: 6000, policy: { source: 'futbin' }, platform: 'console' },
   runtimeCards: new Map([['DO_NOT_EXPORT', {}]]), journal: { cookie: 'DO_NOT_EXPORT' }, ...extra });
@@ -22,7 +22,7 @@ it('explains missing or retained planning output without exporting private state
 
 it('exports historical collection separately from current holding and leaves claims unknown', () => {
   const result = buildGalleryAnalysisSnapshot({ catalog, targets: [target()], now: 5000 });
-  expect(result.versions[0]).toMatchObject({ eaId: 11, collected: true, inClub: false, firstOwned: null, evidenceAt: 3000 });
+  expect(result.versions[0]).toMatchObject({ eaId: 11, collected: true, inClub: false, firstOwned: null, firstOwnedHistoryUnverified: true, evidenceAt: 3000 });
   expect(result.collections[0]).toMatchObject({ claimState: 'unknown', evidenceAt: 4000, progressComplete: true });
   expect(result.interpretation.rewardClaimsVerified).toBe(false);
   expect(JSON.stringify(result)).not.toContain('DO_NOT_EXPORT');

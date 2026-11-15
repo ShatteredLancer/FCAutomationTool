@@ -92,7 +92,7 @@ export async function exerciseGallerySync(context, directory) {
     await host.locator('.gallery-big-count').waitFor({ state: 'visible' });
     await page.waitForFunction(() => globalThis.nativeSync.state().synced);
     assert.equal(await host.locator('.gallery-set').count(), 2);
-    for (const set of await host.locator('.gallery-set').all()) assert.equal(await set.locator('.gallery-collected').innerText(), '1 / 20');
+    for (const set of await host.locator('.gallery-set').all()) assert.equal(await set.locator('.gallery-collected').innerText(), '已收集 1 / 20');
     assert.equal(await page.evaluate(() => globalThis.syncCalls.length), 1,
       'one native request covers the static IDs; pool mapping does not reread covered versions');
     assert.equal(await host.locator('#gallery-sync').isDisabled(), false, 'completed sync permits explicit full review');

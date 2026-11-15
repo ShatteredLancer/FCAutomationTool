@@ -54,13 +54,13 @@ it.each(['corrupt', 'dropped-write', 'changed-aggregate'])('retains the aggregat
   expect(store.get(base)).toBeTruthy();
 });
 
-it('compresses catalog and pool snapshots and restores both without network reads', async () => {
+it('compresses a source-order-verified catalog and pool snapshots and restores both without network reads', async () => {
   const payload = futggGalleryPool(); payload.padding = 'full DTO retained'.repeat(16000);
   const pool = { ...row(30), payload, schema: 1, season: '27', scope: 'public',
     revision: normalizeGalleryPool('futgg', payload, 30).revision };
   const catalogKey = 'fcat-fc27-gallery-catalog:27:public';
   const catalog = { schema: 2, season: '27', scope: 'public', active: 'futgg',
-    entries: [{ source: 'futgg', fetchedAt: 1000, payload: { ...futggGallery(), padding: payload.padding } }] };
+    entries: [{ source: 'futgg', fetchedAt: 1000, orderVerified: true, payload: { ...futggGallery(), padding: payload.padding } }] };
   const store = new Map([[`${base}:set:30`, pool], [catalogKey, catalog]]), io = options(store);
   expect(await compactGalleryPublicCaches(io)).toMatchObject({ compacted: 2, failed: 0 });
   expect(store.get(catalogKey).format).toBe('fcat-gallery-gzip-v1');

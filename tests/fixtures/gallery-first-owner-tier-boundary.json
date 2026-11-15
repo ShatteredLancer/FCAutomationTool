@@ -1,0 +1,1280 @@
+{
+  "description": "Deidentified numerical scenario: 30 cards, nineteen first-owner cards and multiple duplicate groups; no account or real version identities.",
+  "columns": [
+    "eaId",
+    "playerEaId",
+    "gradingScore",
+    "overall",
+    "nationEaId",
+    "clubEaId",
+    "leagueEaId",
+    "rarityEaId",
+    "positions",
+    "weakFoot",
+    "skillMoves",
+    "holographic",
+    "firstOwned"
+  ],
+  "rows": [
+    [
+      1,
+      1,
+      17500,
+      90,
+      1,
+      1,
+      1,
+      3,
+      [
+        "LM",
+        "LW"
+      ],
+      4,
+      4,
+      false,
+      false
+    ],
+    [
+      2,
+      1,
+      11000,
+      89,
+      1,
+      1,
+      1,
+      0,
+      [
+        "LM",
+        "LW"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      3,
+      2,
+      8300,
+      88,
+      2,
+      2,
+      1,
+      0,
+      [
+        "CAM",
+        "ST"
+      ],
+      5,
+      4,
+      false,
+      false
+    ],
+    [
+      4,
+      3,
+      8300,
+      88,
+      3,
+      3,
+      1,
+      0,
+      [
+        "CAM",
+        "ST"
+      ],
+      4,
+      4,
+      false,
+      false
+    ],
+    [
+      5,
+      4,
+      8250,
+      87,
+      2,
+      4,
+      1,
+      71,
+      [
+        "RB",
+        "RM"
+      ],
+      3,
+      3,
+      false,
+      false
+    ],
+    [
+      6,
+      5,
+      5500,
+      87,
+      4,
+      1,
+      1,
+      0,
+      [
+        "CAM",
+        "ST"
+      ],
+      5,
+      5,
+      false,
+      true
+    ],
+    [
+      7,
+      6,
+      5500,
+      87,
+      2,
+      5,
+      1,
+      0,
+      [
+        "CAM",
+        "CM",
+        "ST"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      8,
+      7,
+      5500,
+      87,
+      5,
+      5,
+      1,
+      0,
+      [
+        "GK"
+      ],
+      4,
+      1,
+      false,
+      true
+    ],
+    [
+      9,
+      8,
+      5500,
+      87,
+      2,
+      6,
+      1,
+      0,
+      [
+        "LM",
+        "LW",
+        "RM",
+        "RW"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      10,
+      9,
+      4725,
+      85,
+      2,
+      7,
+      1,
+      151,
+      [
+        "CAM",
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      4,
+      3,
+      true,
+      false
+    ],
+    [
+      11,
+      10,
+      4100,
+      86,
+      6,
+      5,
+      1,
+      0,
+      [
+        "LB",
+        "LM",
+        "LW"
+      ],
+      3,
+      4,
+      false,
+      true
+    ],
+    [
+      12,
+      11,
+      4100,
+      86,
+      2,
+      8,
+      1,
+      0,
+      [
+        "CAM",
+        "CDM",
+        "CM",
+        "ST"
+      ],
+      3,
+      4,
+      false,
+      false
+    ],
+    [
+      13,
+      12,
+      2100,
+      85,
+      7,
+      5,
+      1,
+      0,
+      [
+        "ST"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      14,
+      13,
+      2100,
+      85,
+      8,
+      9,
+      1,
+      0,
+      [
+        "CDM",
+        "CM"
+      ],
+      3,
+      4,
+      false,
+      false
+    ],
+    [
+      15,
+      14,
+      2100,
+      85,
+      2,
+      10,
+      1,
+      0,
+      [
+        "CAM",
+        "LM",
+        "LW",
+        "ST"
+      ],
+      5,
+      4,
+      false,
+      true
+    ],
+    [
+      16,
+      15,
+      2100,
+      85,
+      4,
+      1,
+      1,
+      0,
+      [
+        "GK"
+      ],
+      2,
+      1,
+      false,
+      false
+    ],
+    [
+      17,
+      16,
+      1245,
+      84,
+      2,
+      11,
+      1,
+      71,
+      [
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      3,
+      3,
+      false,
+      true
+    ],
+    [
+      18,
+      17,
+      1245,
+      84,
+      2,
+      12,
+      1,
+      71,
+      [
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      19,
+      18,
+      830,
+      84,
+      4,
+      3,
+      1,
+      0,
+      [
+        "CAM",
+        "CM",
+        "ST"
+      ],
+      4,
+      5,
+      false,
+      true
+    ],
+    [
+      20,
+      19,
+      830,
+      84,
+      2,
+      11,
+      1,
+      0,
+      [
+        "CDM",
+        "CM",
+        "LM",
+        "LW"
+      ],
+      3,
+      4,
+      false,
+      true
+    ],
+    [
+      21,
+      9,
+      830,
+      84,
+      2,
+      7,
+      1,
+      0,
+      [
+        "CAM",
+        "CB",
+        "CDM",
+        "CM"
+      ],
+      4,
+      3,
+      false,
+      true
+    ],
+    [
+      22,
+      20,
+      769,
+      83,
+      4,
+      13,
+      1,
+      3,
+      [
+        "ST"
+      ],
+      4,
+      3,
+      true,
+      false
+    ],
+    [
+      23,
+      21,
+      525,
+      81,
+      5,
+      8,
+      1,
+      3,
+      [
+        "ST"
+      ],
+      3,
+      3,
+      true,
+      false
+    ],
+    [
+      24,
+      20,
+      513,
+      83,
+      4,
+      13,
+      1,
+      3,
+      [
+        "ST"
+      ],
+      4,
+      3,
+      false,
+      false
+    ],
+    [
+      25,
+      22,
+      410,
+      83,
+      2,
+      5,
+      1,
+      0,
+      [
+        "CB"
+      ],
+      3,
+      3,
+      false,
+      true
+    ],
+    [
+      26,
+      23,
+      410,
+      83,
+      9,
+      4,
+      1,
+      0,
+      [
+        "CAM",
+        "RM",
+        "RW",
+        "ST"
+      ],
+      3,
+      4,
+      false,
+      true
+    ],
+    [
+      27,
+      24,
+      410,
+      83,
+      2,
+      6,
+      1,
+      0,
+      [
+        "GK"
+      ],
+      2,
+      1,
+      false,
+      true
+    ],
+    [
+      28,
+      25,
+      410,
+      83,
+      2,
+      2,
+      1,
+      0,
+      [
+        "CAM",
+        "ST"
+      ],
+      4,
+      4,
+      false,
+      true
+    ],
+    [
+      29,
+      26,
+      410,
+      83,
+      2,
+      1,
+      1,
+      0,
+      [
+        "CDM",
+        "CM"
+      ],
+      3,
+      3,
+      false,
+      true
+    ],
+    [
+      30,
+      27,
+      410,
+      83,
+      10,
+      6,
+      1,
+      0,
+      [
+        "CAM",
+        "CM"
+      ],
+      4,
+      4,
+      false,
+      true
+    ]
+  ],
+  "tags": [
+    {
+      "id": 3,
+      "name": "Same Nation",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "NATION"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 1,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from the same nation.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 17,
+      "name": "Different Nation",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "NATION"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 2,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from different nations.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 8,
+      "name": "Same Club",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "CLUB"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 3,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from the same club.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 14,
+      "name": "Different Club",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "CLUB"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 4,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from different clubs.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 16,
+      "name": "Same League",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "LEAGUEID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 8,
+          "minItems": 20
+        }
+      ],
+      "priority": 5,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from the same league.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 6,
+      "name": "Different League",
+      "color": "#8B9AC2",
+      "rules": [
+        {
+          "type": "COUNT_DIFF",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0"
+          ],
+          "attribute": "LEAGUEID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 6,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from different leagues.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 4,
+      "name": "Bronze",
+      "color": "#552010",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "bronze"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 20,
+          "minItems": 5
+        },
+        {
+          "bonus": 40,
+          "minItems": 10
+        },
+        {
+          "bonus": 80,
+          "minItems": 20
+        }
+      ],
+      "priority": 7,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Bronze",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 11,
+      "name": "Silver",
+      "color": "#182329",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "silver"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 15,
+          "minItems": 5
+        },
+        {
+          "bonus": 30,
+          "minItems": 10
+        },
+        {
+          "bonus": 60,
+          "minItems": 20
+        }
+      ],
+      "priority": 8,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires Silver players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 7,
+      "name": "Golden",
+      "color": "#412D0E",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "gold"
+          ],
+          "attribute": "LEVEL"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 1,
+          "minItems": 5
+        },
+        {
+          "bonus": 2,
+          "minItems": 10
+        },
+        {
+          "bonus": 4,
+          "minItems": 20
+        }
+      ],
+      "priority": 9,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires Gold players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 12,
+      "name": "Holographic",
+      "color": "#296FFF",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "0",
+            "1"
+          ],
+          "attribute": "HYPER_COSMETIC_TYPE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 8,
+          "minItems": 2
+        },
+        {
+          "bonus": 12,
+          "minItems": 4
+        },
+        {
+          "bonus": 20,
+          "minItems": 6
+        }
+      ],
+      "priority": 11,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires Holographic players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 19,
+      "name": "Iconic",
+      "color": "#4C3107",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "12"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 10,
+          "minItems": 2
+        },
+        {
+          "bonus": 15,
+          "minItems": 4
+        },
+        {
+          "bonus": 25,
+          "minItems": 6
+        }
+      ],
+      "priority": 12,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires Icon players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 2,
+      "name": "Heroic",
+      "color": "#280728",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "72"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 8,
+          "minItems": 2
+        },
+        {
+          "bonus": 12,
+          "minItems": 4
+        },
+        {
+          "bonus": 20,
+          "minItems": 6
+        }
+      ],
+      "priority": 13,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires Heroes players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 18,
+      "name": "TOTW",
+      "color": "#1D1707",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "3"
+          ],
+          "attribute": "RARE"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 4,
+          "minItems": 3
+        },
+        {
+          "bonus": 8,
+          "minItems": 6
+        },
+        {
+          "bonus": 15,
+          "minItems": 10
+        }
+      ],
+      "priority": 14,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires TOTW players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 1,
+      "name": "First Owner",
+      "color": "#FFC23B",
+      "rules": [
+        {
+          "type": "COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "1"
+          ],
+          "attribute": "FIRST_OWNED"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 150,
+          "minItems": 5
+        },
+        {
+          "bonus": 300,
+          "minItems": 10
+        },
+        {
+          "bonus": 500,
+          "minItems": 20
+        }
+      ],
+      "priority": 15,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires First Owner players.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 10,
+      "name": "Hands Only",
+      "color": "#296FFF",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "GK"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 6
+        },
+        {
+          "bonus": 15,
+          "minItems": 10
+        }
+      ],
+      "priority": 17,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players that are goalkeepers.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 15,
+      "name": "Multiples!",
+      "color": "#296FFF",
+      "rules": [
+        {
+          "type": "MAX_COUNT_ALL_SAME",
+          "target": "BASE_DEF_ID",
+          "values": [
+            "0"
+          ],
+          "attribute": "BASE_DEF_ID"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 10,
+          "minItems": 2
+        },
+        {
+          "bonus": 15,
+          "minItems": 3
+        },
+        {
+          "bonus": 20,
+          "minItems": 4
+        }
+      ],
+      "priority": 18,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires 2 of the same player.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 20,
+      "name": "Ambidextrous",
+      "color": "#20A844",
+      "rules": [
+        {
+          "type": "MIN_COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "5"
+          ],
+          "attribute": "WEAK_FOOT"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 5
+        },
+        {
+          "bonus": 12,
+          "minItems": 10
+        }
+      ],
+      "priority": 19,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players who have 5 star weak foot.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 5,
+      "name": "Skilled",
+      "color": "#20A844",
+      "rules": [
+        {
+          "type": "MIN_COUNT",
+          "target": "ATTRIBUTE",
+          "values": [
+            "4"
+          ],
+          "attribute": "SKILL_MOVES"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 3
+        },
+        {
+          "bonus": 6,
+          "minItems": 5
+        },
+        {
+          "bonus": 12,
+          "minItems": 10
+        }
+      ],
+      "priority": 20,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players who have 5 star skill moves.",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 21,
+      "name": "Defensive Wall",
+      "color": "#20A844",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "RB",
+            "CB",
+            "LB"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ],
+      "priority": 21,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from defensive positions (CB, LB, RB).",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 22,
+      "name": "Midfield Control",
+      "color": "#20A844",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "CDM",
+            "RM",
+            "CM",
+            "LM",
+            "CAM"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ],
+      "priority": 22,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from midfield positions (CDM, CM, CAM, LM, RM).",
+      "thresholdType": "ITEM_COUNT"
+    },
+    {
+      "id": 23,
+      "name": "All out Attack",
+      "color": "#20A844",
+      "rules": [
+        {
+          "type": "COUNT_ANY",
+          "target": "ATTRIBUTE",
+          "values": [
+            "ST",
+            "LW",
+            "RW"
+          ],
+          "attribute": "POSSIBLE_POSITIONS"
+        }
+      ],
+      "tiers": [
+        {
+          "bonus": 3,
+          "minItems": 5
+        },
+        {
+          "bonus": 6,
+          "minItems": 10
+        },
+        {
+          "bonus": 10,
+          "minItems": 15
+        }
+      ],
+      "priority": 23,
+      "bonusType": "ITEM_SCORE_PERCENTAGE",
+      "description": "Requires players from attacking positions (ST, RW, LW).",
+      "thresholdType": "ITEM_COUNT"
+    }
+  ],
+  "expected": {
+    "base": 105922,
+    "bonus": 183099,
+    "total": 289021
+  }
+}

@@ -2,6 +2,17 @@ import { expect, it } from 'vitest';
 import { normalizeGalleryCatalog, diffGalleryCatalog, galleryCachePayload } from '../../src/gallery/catalog.js';
 import { futggGallery, fodderGallery } from '../fixtures/fc27-gallery.js';
 
+it('preserves source category and set presentation order through normalization and persistence', () => {
+  const input = futggGallery(), category = input.data.categories[0], set = category.sets[0];
+  category.id = 6;
+  category.sets = [108, 100, 111, 115, 109, 121, 103, 122, 120, 155, 173, 193].map(id => ({ ...structuredClone(set), id, categoryId: 6, slug: `league-${id}` }));
+  input.data.categories = [category, { ...structuredClone(category), id: 1, slug: 'first-id', sets: [{ ...structuredClone(set), id: 999, categoryId: 1 }] }];
+  const result = normalizeGalleryCatalog('futgg', input);
+  expect(result.categories.map(c => c.id)).toEqual(input.data.categories.map(c => `futgg:${c.id}`));
+  expect(result.categories[0].sets.map(s => s.id)).toEqual(category.sets.map(s => `futgg:${s.id}`));
+  expect(normalizeGalleryCatalog('futgg', galleryCachePayload(result))).toEqual(result);
+});
+
 it('normalizes both observed shapes without inventing non-token rewards or account state', () => {
   const gg = normalizeGalleryCatalog('futgg', futggGallery());
   const ff = normalizeGalleryCatalog('fodder', fodderGallery());

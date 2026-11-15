@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.109
+// @version      27.0.110
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.109", at: Date.now(), status: 'started',
+    state = { version: "27.0.110", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -15423,7 +15423,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     .section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}.eyebrow{font-size:12px;color:#9cabb7}
     .badge{display:inline-block;flex-shrink:0;font-size:12px;border:1px solid #517368;color:#a7efd2;background:#203c35;border-radius:20px;padding:4px 10px}.badge.planned{border-color:#53616b;color:#bac7d0;background:#25313a}
     .feature-grid,.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.settings-bottom{margin-top:16px}.card{padding:20px;background:#22323d;border:1px solid #3a4b57;border-radius:12px;min-width:0}.card p,.module-note{color:#bdcbd3}.card p+p{margin-top:10px}.module-note{font-size:13px;margin-top:18px}
-    .gallery-toolbar{align-items:center;margin-top:0}.gallery-toolbar #gallery-status{color:#bdcbd3;font-size:13px}.gallery-background-progress{display:block;width:100%;height:6px;margin-top:12px;accent-color:#9df3d5}.gallery-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.gallery-categories button{display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;min-height:126px;padding:14px;text-align:left;border-radius:10px;background:#22323d;border-color:#455a66}.gallery-categories button:hover,.gallery-categories button[aria-pressed=true]{border-color:#9df3d5;background:#273f38;color:#b3ffe3}.gallery-category-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px}.gallery-category-icons{display:flex;align-items:center;gap:3px;min-width:44px}.gallery-category-icon{width:34px;height:34px;object-fit:contain}.gallery-category-count{color:#aabac3;font-size:11px;white-space:nowrap}.gallery-category-name{display:block;margin-top:14px;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gallery-set-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.gallery-set{display:flex;flex-direction:column;padding:0;background:#22323d;border:1px solid #455a66;border-radius:10px;cursor:pointer;overflow:hidden}.gallery-set:hover{border-color:#7abfa8}.gallery-set h4{font-size:15px;margin:0}.gallery-set button{min-height:34px;padding:6px 10px}.gallery-set-title{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 12px;background:#304451;border-bottom:1px solid #455a66}.gallery-set-title h4{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gallery-set-title .gallery-set-icons{grid-column:1;grid-row:1}.gallery-set-title .gallery-watch{grid-column:3;grid-row:1}.gallery-set-icons{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;min-height:24px}.gallery-set-icon{width:22px;height:22px;object-fit:contain}.gallery-set-metrics{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 12px 0;color:#c1ced5;font-size:12px}.gallery-set-metrics .gallery-collected{font-weight:700;color:#b3ffe3}.gallery-set-metrics .gallery-summary{color:#d9e5ec}.gallery-grades{margin:12px 12px 0}.gallery-grade-track{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;width:100%;min-width:0}.gallery-grade-cell{display:grid;justify-items:center;gap:3px;min-width:0}.gallery-grade-diamond{display:grid;place-items:center;width:24px;height:24px;transform:rotate(45deg);border:1px solid #667681;background:#26353e;color:#c0cbd1;font-size:11px}.gallery-grade-diamond::first-letter{transform:rotate(-45deg)}.gallery-grade-diamond.is-reached{color:#17251f;background:#b1f5d7;border-color:#d4fff0}.gallery-grade-diamond.is-current{transform:rotate(45deg) scale(1.25)}.gallery-grade-bar{display:block;width:100%;height:3px;border-radius:3px;background:#52616a;overflow:hidden}.gallery-grade-bar i{display:block;height:100%;background:#9df3d5}.gallery-grade-threshold{font-size:9px;color:#aabac3;white-space:nowrap}.gallery-unknown{color:#e7dbad}.gallery-set-detail{margin-top:18px;padding:16px;background:#22323d;border:1px solid #3a4b57;border-radius:10px}.gallery-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.gallery-identity{min-width:0}.gallery-emblems,.gallery-player-logos{display:flex;gap:6px;align-items:center}.gallery-emblem{width:34px;height:34px;object-fit:contain}.gallery-overview{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:4px 10px;margin-top:14px;padding:12px;background:#304451;border-radius:8px}.gallery-big-count{font-size:25px;color:#b3ffe3}.gallery-muted{font-size:11px;color:#c1ced5}.gallery-overview .gallery-grade-track{grid-column:1/-1}.gallery-facts{margin-top:8px}.gallery-facts>summary{padding:6px 0;font-size:12px}.gallery-reward-row{display:grid;grid-template-columns:32px 72px minmax(0,1fr);gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #455a66;font-size:12px}.gallery-player-card{display:grid;grid-template-columns:72px 1fr;gap:10px;padding:10px;background:#304451;border-radius:7px;font-size:12px;min-width:0;overflow:hidden}.gallery-card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:8px;margin-top:12px}.gallery-player-art{display:grid;place-items:center;min-height:94px;border-radius:6px;background:linear-gradient(145deg,#b1f5d7,#427e70);overflow:hidden}.gallery-player-meta{display:grid;align-content:start;gap:4px;min-width:0}.gallery-player-meta strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gallery-player-version,.gallery-player-score{color:#c1ced5;font-size:11px}.gallery-mini-emblem{width:16px;height:16px;object-fit:contain}.gallery-player-flags{display:flex;gap:4px;align-items:center}.gallery-status-icon{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%;font-size:12px;font-weight:700;border:1px solid currentColor}.gallery-status-icon.is-yes{color:#b1f5d7}.gallery-status-icon.is-no{color:#aabac3}.gallery-status-icon.is-unknown{color:#e7dbad}.gallery-set-detail h3{margin-top:14px}.gallery-set-detail button{min-height:44px}.gallery-set-detail button[aria-pressed=true]{border-color:#9df3d5;color:#b3ffe3}.gallery-set-detail:empty{display:none}
+    .gallery-toolbar{align-items:center;margin-top:0}.gallery-toolbar #gallery-status{color:#bdcbd3;font-size:13px}.gallery-background-progress{display:block;width:100%;height:6px;margin-top:12px;accent-color:#9df3d5}.gallery-categories{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.gallery-categories button{display:flex;flex-direction:column;justify-content:space-between;align-items:stretch;min-height:126px;padding:14px;text-align:left;border-radius:10px;background:#22323d;border-color:#455a66}.gallery-categories button:hover,.gallery-categories button[aria-pressed=true]{border-color:#9df3d5;background:#273f38;color:#b3ffe3}.gallery-category-top{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px}.gallery-category-icons{display:flex;align-items:center;gap:3px;min-width:44px}.gallery-category-icon{width:34px;height:34px;object-fit:contain}.gallery-category-count{color:#aabac3;font-size:11px;white-space:nowrap}.gallery-category-name{display:block;margin-top:14px;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gallery-set-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.gallery-set{position:relative;display:flex;flex-direction:column;padding:0;background:#22323d;border:1px solid #455a66;border-radius:10px;cursor:pointer;overflow:hidden}.gallery-set:hover{border-color:#7abfa8}.gallery-set h4{font-size:15px;margin:0}.gallery-set button{min-height:34px;padding:6px 10px}.gallery-set-title{display:grid;min-height:60px;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 16px;background:#304451;border-bottom:0}.gallery-set-title h4{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gallery-set-title .gallery-set-icons{grid-column:1;grid-row:1}.gallery-set-title .gallery-watch{grid-column:3;grid-row:1}.gallery-set-icons{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;min-height:24px}.gallery-set-icon{width:22px;height:22px;object-fit:contain}.gallery-set-metrics{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin:12px 16px 0;padding:12px 0 16px;border-top:1px solid #455a66;color:#c1ced5;font-size:12px}.gallery-set-metrics .gallery-summary{display:inline-flex;align-items:center;flex-wrap:wrap;gap:5px;font-variant-numeric:tabular-nums}.gallery-set-total{color:#edf1f4;font-size:13px}.gallery-set-bonus{color:#aabac3;white-space:nowrap}.gallery-score-gem{width:8px;height:8px;flex:0 0 8px;background:linear-gradient(135deg,#d4fff0 0 50%,#33b6a6 50%);transform:rotate(45deg)}.gallery-set-metrics .gallery-collected{padding:1px 7px;border:1px solid #78858d;border-radius:999px;font-weight:600;font-size:11px;line-height:1.4;white-space:nowrap;color:#edf1f4}.gallery-set-metrics .gallery-summary{color:#d9e5ec}.gallery-grades{margin:16px 16px 0}.gallery-grade-track{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;width:100%;min-width:0}.gallery-grade-cell{display:grid;justify-items:center;gap:9px;min-width:0}.gallery-grade-diamond{display:grid;place-items:center;width:24px;height:24px;transform:rotate(45deg);border:1px solid #667681;background:#26353e;color:#c0cbd1;font-size:11px}.gallery-grade-diamond::first-letter{transform:rotate(-45deg)}.gallery-grade-diamond.is-reached{color:#17251f;background:#b1f5d7;border-color:#d4fff0}.gallery-grade-diamond.is-current{transform:rotate(45deg) scale(1.25)}.gallery-grade-bar{display:block;width:100%;height:3px;border-radius:3px;background:#52616a;overflow:hidden}.gallery-grade-bar i{display:block;height:100%;background:#9df3d5}.gallery-grade-threshold{font-size:11px;color:#aabac3;white-space:nowrap}.gallery-unknown{color:#e7dbad}.gallery-set-detail{margin-top:18px;padding:16px;background:#22323d;border:1px solid #3a4b57;border-radius:10px}.gallery-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.gallery-identity{min-width:0}.gallery-emblems,.gallery-player-logos{display:flex;gap:6px;align-items:center}.gallery-emblem{width:34px;height:34px;object-fit:contain}.gallery-overview{display:grid;grid-template-columns:auto auto 1fr;align-items:center;gap:4px 10px;margin-top:14px;padding:12px;background:#304451;border-radius:8px}.gallery-big-count{font-size:25px;color:#b3ffe3}.gallery-muted{font-size:11px;color:#c1ced5}.gallery-overview .gallery-grade-track{grid-column:1/-1}.gallery-facts{margin-top:8px}.gallery-facts>summary{padding:6px 0;font-size:12px}.gallery-reward-row{display:grid;grid-template-columns:32px 72px minmax(0,1fr);gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #455a66;font-size:12px}.gallery-player-card{display:grid;grid-template-columns:72px 1fr;gap:10px;padding:10px;background:#304451;border-radius:7px;font-size:12px;min-width:0;overflow:hidden}.gallery-card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:8px;margin-top:12px}.gallery-player-art{display:grid;place-items:center;min-height:94px;border-radius:6px;background:linear-gradient(145deg,#b1f5d7,#427e70);overflow:hidden}.gallery-player-meta{display:grid;align-content:start;gap:4px;min-width:0}.gallery-player-meta strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gallery-player-version,.gallery-player-score{color:#c1ced5;font-size:11px}.gallery-mini-emblem{width:16px;height:16px;object-fit:contain}.gallery-player-flags{display:flex;gap:4px;align-items:center}.gallery-status-icon{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%;font-size:12px;font-weight:700;border:1px solid currentColor}.gallery-status-icon.is-yes{color:#b1f5d7}.gallery-status-icon.is-no{color:#aabac3}.gallery-status-icon.is-unknown{color:#e7dbad}.gallery-set-detail h3{margin-top:14px}.gallery-set-detail button{min-height:44px}.gallery-set-detail button[aria-pressed=true]{border-color:#9df3d5;color:#b3ffe3}.gallery-set-detail:empty{display:none}
     .gallery-score{margin-top:16px;padding:14px;border:1px solid #517368;border-radius:8px;overflow-wrap:anywhere}.gallery-score>strong{font-size:17px;color:#b3ffe3}.gallery-score>p{margin-top:8px}.gallery-score summary{padding:12px 0;color:#c6e8dc}.gallery-lineup,.gallery-bonuses{font-size:12px}.gallery-grade[data-reached=true]{background:#32554a;color:#b3ffe3;border:1px solid #678e7c}.gallery-first-owner-toggle{min-height:30px!important;padding:4px 8px;font-size:11px;color:#c6e8dc;border-color:#637d78}.gallery-first-owner-toggle:hover{border-color:#9df3d5;color:#b3ffe3}
     .gallery-plan{margin-top:16px;padding:14px;border:1px solid #53616b;border-radius:8px}.gallery-plan>strong{display:block;color:#b3ffe3}.gallery-plan>.row{align-items:center}.gallery-plan select{min-width:170px;width:auto}.gallery-plan-output{margin-top:8px}.gallery-plan-output details{margin-top:6px}.gallery-plan-output summary{padding:7px 0;color:#c6e8dc}.gallery-plan-output ul{margin:6px 0 0}
     .gallery-modes{display:flex;gap:0;margin:16px 0}.gallery-modes button{border-radius:0}.gallery-modes button:first-child{border-radius:5px 0 0 5px}.gallery-modes button:last-child{border-radius:0 5px 5px 0}.gallery-modes button[aria-pressed=true]{border-color:#9df3d5;color:#b3ffe3;background:#273f38}
@@ -15442,10 +15442,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     @media(max-width:650px){.body{padding:16px}.module-tabs{padding:10px 16px;gap:6px}.feature-grid,.settings-grid,.gallery-set-list,.gallery-categories{grid-template-columns:1fr}.section-heading{align-items:flex-start;flex-direction:column;gap:10px}h2{font-size:20px}.card{padding:16px}.operation-status{margin:16px 16px 0}#squad ol{grid-template-columns:repeat(2,minmax(0,1fr))}.gallery-browse-nav{top:60px}.gallery-header{align-items:flex-start}.gallery-header .gallery-toolbar{margin-top:-4px}}
     .gallery-player-card{isolation:isolate}
     .gallery-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.gallery-header h2{margin:0}.gallery-header .gallery-toolbar{margin:0;align-items:center}.gallery-header .gallery-toolbar button{min-width:40px;padding-inline:10px}.gallery-source-details{margin:0 0 12px;color:#9dabb7}.gallery-source-details summary{padding:4px 0}.gallery-source-details [role=status]{margin-left:4px}.gallery-browse-nav{position:sticky;top:68px;z-index:3;display:flex;align-items:center;gap:10px;margin:0 -2px 12px;padding:8px 2px;background:#17212c;border-bottom:1px solid #36444e}.gallery-browse-nav button{width:40px;min-height:40px;padding:0;font-size:22px;line-height:1}.gallery-browse-nav strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .gallery-set>.gallery-open-set{align-self:flex-end;margin:12px}.gallery-set>.gallery-unknown,.gallery-set>.badge{margin:10px 12px}.gallery-set-title{min-width:0}.gallery-set-icon{width:32px;height:42px}
+    .gallery-set>.gallery-open-set{position:absolute;inset:0;width:100%;height:100%;margin:0;border:0;border-radius:inherit;background:transparent;color:transparent;font-size:0;z-index:1}.gallery-set>.gallery-open-set:focus-visible{outline:2px solid #9df3d5;outline-offset:-3px}.gallery-set-title .gallery-watch{position:relative;z-index:2}.gallery-set>.gallery-unknown,.gallery-set>.badge{margin:10px 12px}.gallery-set-title{min-width:0}.gallery-set-icon{width:40px;height:46px}.gallery-set-icon-fallback{display:grid;place-items:center;width:40px;height:46px;font-size:24px;color:#a3acb6}
     @media(min-width:651px) and (max-width:1023px){.gallery-categories,.gallery-set-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:650px){.gallery-browse-nav{top:64px}.gallery-set>.gallery-open-set{align-self:stretch}}
-    .gallery-grade-letter{display:block;transform:rotate(-45deg)}
+    .gallery-grade-letter{display:block;transform:rotate(-45deg)}.gallery-grade-cell.grade-d{--grade-color:#b9703f}.gallery-grade-cell.grade-c{--grade-color:#a3acb6}.gallery-grade-cell.grade-b{--grade-color:#d8a93f}.gallery-grade-cell.grade-a{--grade-color:#33b6a6}.gallery-grade-cell.grade-s{--grade-color:#9b72ff}.gallery-grade-cell .gallery-grade-bar i{background:var(--grade-color)}.gallery-grade-cell .gallery-grade-diamond:not(.is-reached){color:var(--grade-color)}.gallery-grade-cell.is-current .gallery-grade-threshold{font-weight:700;color:#edf1f4}
     .gallery-category-score{display:grid;gap:5px;width:100%;font-size:11px;color:#b9c8d0;text-align:left}.gallery-category-score progress{display:block;width:100%;height:4px;accent-color:#9df3d5;border:0;border-radius:3px;overflow:hidden;background:#455a66}.gallery-category-score progress::-webkit-progress-bar{background:#455a66}.gallery-category-score progress::-webkit-progress-value{background:#9df3d5}
     .gallery-category-top{flex-wrap:wrap}.gallery-category-icons{margin-right:auto}.gallery-category-rewards,.gallery-reward-summary{display:inline-flex;align-items:center;flex-wrap:wrap;gap:8px;max-width:100%;font-size:12px;color:#b9c8d0}.gallery-reward-token{display:inline-flex;align-items:center;gap:5px;min-width:0}.gallery-reward-token-icon{width:16px;height:16px;object-fit:contain}.gallery-reward-label{overflow-wrap:anywhere}.gallery-reward-token-value{font-variant-numeric:tabular-nums;font-weight:600}.gallery-set-metrics .gallery-reward-summary{margin-left:auto}.gallery-score-caption{font-size:11px;color:#9dabb5}.gallery-collection-flag{color:#e7dbad}.gallery-browse-tools{margin-bottom:12px}.gallery-browse-tools>summary{padding:6px 0;font-size:12px;color:#9dabb5}.gallery-categories button,.gallery-set,.gallery-set-detail{border-radius:8px}
     .gallery-grade-diamond.grade-d{border-color:#b9703f}.gallery-grade-diamond.grade-c{border-color:#a3acb6}.gallery-grade-diamond.grade-b{border-color:#d8a93f}.gallery-grade-diamond.grade-a{border-color:#33b6a6}.gallery-grade-diamond.grade-s{border-color:#9b72ff}.gallery-grade-diamond.grade-d.is-reached{background:#b9703f;color:#fff}.gallery-grade-diamond.grade-c.is-reached{background:#a3acb6;color:#17212c}.gallery-grade-diamond.grade-b.is-reached{background:#d8a93f;color:#17212c}.gallery-grade-diamond.grade-a.is-reached{background:#33b6a6;color:#17212c}.gallery-grade-diamond.grade-s.is-reached{background:#9b72ff;color:#fff}
@@ -15652,10 +15652,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
           conditions,
           grades: grades(set.grades, source)
         };
-      }).sort((a, b) => a.id.localeCompare(b.id));
+      });
       unique(sets2.map((set) => set.slug));
       return { id: id15, name: category.name, slug: category.slug, sets: sets2 };
-    }).sort((a, b) => a.id.localeCompare(b.id));
+    });
     unique(categoryIds);
     unique(setIds);
     unique(categories.map((category) => category.slug));
@@ -16112,7 +16112,14 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         for (const row of saved.entries.slice(0, 2)) try {
           if (!Number.isSafeInteger(row.fetchedAt) || row.fetchedAt < 0 || row.fetchedAt > now()) continue;
           const catalog = normalizeGalleryCatalog(row.source, row.payload, season);
-          entries2.set(row.source, { source: row.source, catalog, fetchedAt: row.fetchedAt, etag: validator(row.etag), modified: validator(row.modified) });
+          entries2.set(row.source, {
+            source: row.source,
+            catalog,
+            fetchedAt: row.fetchedAt,
+            orderVerified: row.orderVerified === true,
+            etag: validator(row.etag),
+            modified: validator(row.modified)
+          });
         } catch {
         }
         active = entries2.get(saved.active) ?? null;
@@ -16218,8 +16225,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       record("catalog-request", { source, phase: "request", status: "started", cached: entries2.has(source) });
       const previous = entries2.get(source);
       const headers = {};
-      if (previous?.etag) headers["If-None-Match"] = previous.etag;
-      else if (previous?.modified) headers["If-Modified-Since"] = previous.modified;
+      if (previous?.orderVerified && previous.etag) headers["If-None-Match"] = previous.etag;
+      else if (previous?.orderVerified && previous.modified) headers["If-Modified-Since"] = previous.modified;
       const response = await http.get(source, headers);
       const h = response.headers ?? {};
       if (response.status !== 200 && response.status !== 304) {
@@ -16238,6 +16245,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         source,
         catalog,
         fetchedAt: now(),
+        orderVerified: response.status === 200 || previous?.orderVerified === true,
         etag: validator(h.etag) ?? (response.status === 304 ? previous.etag : null),
         modified: validator(h["last-modified"]) ?? (response.status === 304 ? previous.modified : null)
       };
@@ -16548,7 +16556,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     const refresh = async (force) => {
       await read();
       const previous = active;
-      if (!force && active && now() - active.fetchedAt < ttlMs) {
+      if (!force && active?.orderVerified && now() - active.fetchedAt < ttlMs) {
         record("catalog-cache", { source: active.source, status: "success", cached: true });
         return observe(active, "FC27_GALLERY_CATALOG_CACHE", { cached: true });
       }
@@ -16592,6 +16600,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
   });
 
   // src/gallery/scoring.js
+  var GALLERY_SCORE_ENGINE = 2;
   var fields4 = Object.freeze({
     NATION: "nationEaId",
     CLUB: "clubEaId",
@@ -16710,7 +16719,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     return [...groups.values()];
   }
-  function matchTag(rows, tag, { unknown = "low", groupMode = "fodder" } = {}) {
+  function matchTag(rows, tag, { unknown = "low", groupMode = tag.fodder ? "fodder" : "enhancer" } = {}) {
     const unknownRows = rows.filter((row) => attribute(row, tag.field) == null);
     if (!["same", "different"].includes(tag.mode)) {
       const cards = rows.filter((row) => matches(row, tag) ?? unknown === "high");
@@ -16720,7 +16729,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (unknown === "high" && unknownRows.length) return { count: rows.length, cards: rows, unknown: unknownRows.length };
     if (tag.mode === "different") return {
       count: groups.length,
-      cards: groups.map((group) => group.slice().sort(order)[0]),
+      cards: groups.map((group) => groupMode === "enhancer" ? group.reduce((best, row) => row.gradingScore > best.gradingScore ? row : best) : group.slice().sort(order)[0]),
       unknown: unknownRows.length
     };
     if (tag.field === "playerEaId" && groupMode === "fodder" && !tag.fodder) {
@@ -16805,13 +16814,13 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     const totals2 = memo?.totals ?? /* @__PURE__ */ new Map();
     const rowKeys = /* @__PURE__ */ new Map();
-    if (memo) for (const row of rows) {
+    if (memo?.fields) for (const row of rows) {
       const signature3 = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map((field) => row[field] ?? null)]);
       if (!memo.signatures.has(signature3)) memo.signatures.set(signature3, memo.signatures.size);
       rowKeys.set(row, memo.signatures.get(signature3));
     }
     const score2 = (cards) => {
-      const identity5 = cards.map((row) => memo ? rowKeys.get(row) : row.eaId).join(",");
+      const identity5 = cards.map((row) => memo?.fields ? rowKeys.get(row) : row.eaId).join(",");
       if (totals2.has(identity5)) return totals2.get(identity5);
       const total = memo?.fastTotals ? lineupTotal(cards, compiled) : evaluateGalleryLineup(cards, compiled).total;
       if (totals2.size >= 8192) totals2.clear();
@@ -16852,6 +16861,22 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     }
     return best.cards.slice().sort(order);
   }
+  function* chooseDisplayLineupSteps(rows, required2, compiled) {
+    const ranked = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore);
+    let best = null, bestTotal = -1;
+    for (const tag of [null, ...compiled.tags]) {
+      const matched = tag ? matchTag(ranked, tag, { groupMode: "enhancer" }).cards : [];
+      const members = new Set(matched);
+      const cards = [...matched, ...ranked.filter((row) => !members.has(row))].slice(0, required2);
+      const total = evaluateGalleryLineup(cards, compiled, { groupMode: "enhancer" }).total;
+      if (total > bestTotal) {
+        best = cards;
+        bestTotal = total;
+      }
+      yield;
+    }
+    return best ?? [];
+  }
   function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = null) {
     if (!set || !progress || !Array.isArray(progress.rows) || !["futgg", "fodder"].includes(catalog?.source) || set.id !== (catalog.source === "fodder" ? progress.setId : `futgg:${progress.setId}`) || progress.season !== "27" || !Number.isSafeInteger(set.requiredCards) || set.requiredCards < 1) return fail25("input-invalid");
     const compiled = memo?.compiled ?? compileGalleryScoringRules(catalog);
@@ -16862,8 +16887,10 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     if (scoreUnknown) return { status: "partial", reason: "base-score-unknown", full: false, grade: null };
     if (new Set(progress.rows.map((row) => row.eaId)).size !== progress.rows.length) return fail25("duplicate-version");
     const rows = collected.filter((row) => row.gradingScore > 0);
-    const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled, memo), full = lineup.length >= set.requiredCards;
-    const low = evaluateGalleryLineup(lineup, compiled), high = evaluateGalleryLineup(lineup, compiled, { unknown: "high" });
+    const display = memo?.selectionMode === "enhancer" && catalog.source === "futgg";
+    const lineup = yield* display ? chooseDisplayLineupSteps(rows, set.requiredCards, compiled) : chooseLineupSteps(rows, set.requiredCards, compiled, memo), full = lineup.length >= set.requiredCards;
+    const options = display ? { groupMode: "enhancer" } : {};
+    const low = evaluateGalleryLineup(lineup, compiled, options), high = evaluateGalleryLineup(lineup, compiled, { ...options, unknown: "high" });
     const comparison = evaluateGalleryLineup(lineup, compiled, { groupMode: "futgg" });
     const comparisonHigh = evaluateGalleryLineup(lineup, compiled, { groupMode: "futgg", unknown: "high" });
     const ruleDifference = catalog.source !== "fodder" && (comparison.total !== low.total || comparisonHigh.total !== high.total);
@@ -16876,7 +16903,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
       status: collectionUnknown ? "partial" : uncertain2 ? "uncertain" : "calculated",
       full,
       lineup,
-      selection: rows.length > set.requiredCards ? "bounded-search" : "all-collected",
+      selection: display ? "enhancer-seeds" : rows.length > set.requiredCards ? "bounded-search" : "all-collected",
       low,
       high,
       grade: uncertain2 ? null : gradeFor(low.total),
@@ -17062,6 +17089,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
     },
     now = () => performance.now(),
     cache = null,
+    selectionMode = "bounded-search",
     schedule = () => new Promise((resolve2) => setTimeout(resolve2, 0))
   } = {}) {
     const entries2 = /* @__PURE__ */ new Map();
@@ -17089,7 +17117,7 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
               if (summary3.lineup.every((row) => rows.has(row.eaId))) summary3.lineup = summary3.lineup.map((row) => rows.get(row.eaId));
               else summary3 = null;
             }
-            summary3 ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input), {
+            summary3 ??= await runGalleryPlan(summarizeGalleryScoreSteps(entry.input, { selectionMode }), {
               current: current2,
               now,
               schedule,
@@ -17145,6 +17173,8 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
         const catalog = input.catalog;
         const tags = (catalog.tags ?? []).map((tag) => pick3(tag, catalog.source === "fodder" ? ["id", "match", "steps"] : ["id", "rules", "tiers", "bonusType", "thresholdType"]));
         const key2 = JSON.stringify(stable([
+          GALLERY_SCORE_ENGINE,
+          selectionMode,
           pick3(input.set, ["id", "requiredCards"]),
           input.set?.grades?.map((grade) => pick3(grade, ["name", "threshold"])),
           catalog.source,
@@ -21282,7 +21312,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     "held",
     "firstOwned",
     "observedFirstOwned",
-    "firstOwnedSource"
+    "enhancerFirstOwned",
+    "firstOwnedSource",
+    "firstOwnedHistoryUnverified"
   ];
   var accountFacts = ["collected", "inClub", "held", "firstOwned", "gradingScore"];
   function buildGalleryAnalysisSnapshot({
@@ -22508,6 +22540,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function galleryRoadmapTargetKey(target) {
     return JSON.stringify([
+      GALLERY_SCORE_ENGINE,
       target.set,
       target.catalog?.revision,
       target.catalog?.tags,
@@ -24184,6 +24217,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     while (remaining.length && selected.length < 3) selected.push(remaining.splice(Math.floor(random() * remaining.length), 1)[0]);
     return selected;
   }
+  function formatGalleryThreshold(value) {
+    return Number.isFinite(value) ? value > 0 && value % 1e3 === 0 ? new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value) : value.toLocaleString() : "\u672A\u77E5";
+  }
   function galleryGradeSegments(grades3, summary3) {
     const score2 = Number.isFinite(summary3?.low?.total) ? summary3.low.total : null;
     return grades3.map((grade, index) => {
@@ -24227,6 +24263,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const expired = detail?.priceSnapshot?.expiresAt != null && Date.now() >= detail.priceSnapshot.expiresAt;
     const quotes = detail?.priceSnapshot ? expired ? {} : detail.priceSnapshot.freshPrices : detail?.prices;
     return JSON.stringify([
+      GALLERY_SCORE_ENGINE,
       detail?.status,
       detail?.scope,
       detail?.stale === true,
@@ -24868,6 +24905,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       parent.append(img);
       return img;
     };
+    const setEmblem = (parent, src, name2) => {
+      const fallback = add3(parent, "span", "\u25A7", "gallery-set-icon-fallback");
+      fallback.setAttribute("aria-label", `${name2} \u56FE\u6807\u6682\u7F3A`);
+      fallback.setAttribute("role", "img");
+      const img = image(parent, src, name2, "gallery-set-icon");
+      if (img) {
+        fallback.hidden = true;
+        img.addEventListener("error", () => {
+          img.hidden = true;
+          fallback.hidden = false;
+        }, { once: true });
+      }
+    };
     const nativeCards = /* @__PURE__ */ new Set();
     let cardSequence = 0, disposed = false;
     const disposeNativeCards = () => {
@@ -24967,19 +25017,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const gradeTrack = (parent, grades3, summary3 = null) => {
       const state2 = summary3?.status ?? "";
+      const uncertain2 = ["uncertain", "partial"].includes(state2);
       const track2 = add3(parent, "div", "", `gallery-grade-track ${state2}`);
       track2.setAttribute("role", "list");
+      if (uncertain2) track2.title = "\u8FDB\u5EA6\u6309\u5DF2\u786E\u8BA4\u8D21\u732E\u4E0B\u9650\u663E\u793A\uFF0CEA \u7B49\u7EA7\u4ECD\u5F85\u6838\u5B9E\u3002";
       for (const { grade, reached, current: current2, fraction } of galleryGradeSegments(grades3, summary3)) {
-        const cell = add3(track2, "span", "", "gallery-grade-cell");
+        const cell = add3(track2, "span", "", `gallery-grade-cell grade-${String(grade.name).toLowerCase()} ${current2 && !uncertain2 ? "is-current" : ""}`);
         cell.setAttribute("role", "listitem");
         const bar = add3(cell, "span", "", "gallery-grade-bar");
         const fill = add3(bar, "i");
         fill.style.width = `${Math.round(fraction * 100)}%`;
-        const diamond = add3(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 ? "is-current" : ""}`);
+        const diamond = add3(cell, "span", "", `gallery-grade-diamond grade-${String(grade.name).toLowerCase()} ${reached ? "is-reached" : ""} ${current2 && !uncertain2 ? "is-current" : ""}`);
         add3(diamond, "span", grade.name, "gallery-grade-letter");
         diamond.title = `${grade.name} \xB7 ${count3(grade.threshold)} \u5206 \xB7 ${grade.rewards.map((reward) => reward.label).join("\u3001") || "\u65E0\u5956\u52B1"}${grade.rewardsComplete ? "" : " \xB7 \u672A\u63D0\u4F9B\u975E\u4EE3\u5E01\u5956\u52B1"}`;
-        diamond.setAttribute("aria-label", `${grade.name} \u6863\uFF0C${count3(grade.threshold)} \u5206${reached ? "\uFF0C\u5DF2\u8FBE\u5230" : ""}`);
-        add3(cell, "small", count3(grade.threshold), "gallery-grade-threshold");
+        diamond.setAttribute("aria-label", `${grade.name} \u6863\uFF0C${count3(grade.threshold)} \u5206${reached ? uncertain2 ? "\uFF0C\u5DF2\u786E\u8BA4\u8D21\u732E\u4E0B\u9650\u5DF2\u8FBE\u5230\uFF0CEA \u7B49\u7EA7\u5F85\u6838\u5B9E" : "\uFF0C\u5DF2\u8FBE\u5230" : ""}`);
+        const threshold = add3(cell, "small", formatGalleryThreshold(grade.threshold), "gallery-grade-threshold");
+        threshold.title = `${count3(grade.threshold)} \u5206`;
       }
       return track2;
     };
@@ -25004,8 +25057,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       for (const reward of rewards2) {
         const item2 = add3(summary3, "span", "", "gallery-reward-token");
         item2.dataset.rewardType = reward.type;
-        image(item2, reward.icon, reward.type, "gallery-reward-token-icon");
         add3(item2, "span", count3(reward.value), "gallery-reward-token-value");
+        image(item2, reward.icon, reward.type, "gallery-reward-token-icon");
         item2.title = `${reward.type} ${count3(reward.value)}`;
         item2.setAttribute("aria-label", item2.title);
       }
@@ -25013,7 +25066,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     let scoreRenderTimer = null;
     const scoredSets = /* @__PURE__ */ new Set();
-    const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, onUpdate: (setId) => {
+    const scoreQueue = createGalleryScoreQueue({ cache: scoreCache, selectionMode: "enhancer", onUpdate: (setId) => {
       scoredSets.add(setId);
       if (disposed || !active || scoreRenderTimer !== null) return;
       scoreRenderTimer = setTimeout(() => {
@@ -25029,9 +25082,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           const summary3 = set && scoreSummary(detail, set, 3);
           const label = card.querySelector(".gallery-summary"), grades3 = card.querySelector(".gallery-grades");
           if (!summary3 || !label || !grades3) continue;
-          label.textContent = compactScore(summary3);
-          label.title = `Base score \xB7 ${scoreText(summary3)}`;
-          label.setAttribute("aria-label", `Base score ${scoreText(summary3)}`);
+          renderSetScore(label, summary3);
           grades3.replaceChildren();
           gradeTrack(grades3, set.grades, summary3);
         }
@@ -25098,9 +25149,29 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return `${points} \u5206 \xB7 \u8BA1\u7B97\u7B49\u7EA7 ${summary3.grade ?? "\u672A\u8FBE D"}`;
     };
     const compactScore = (summary3) => !summary3?.low ? summary3?.status === "calculating" ? "\u8BA1\u5206\u4E2D\u2026" : "\u8BA1\u5206\u5F85\u540C\u6B65" : `${count3(summary3.low.total)}${summary3.low.total !== summary3.high?.total ? `\u2013${count3(summary3.high?.total)}` : ""} \u5206`;
+    const renderSetScore = (label, summary3) => {
+      label.replaceChildren();
+      label.title = `\u5019\u9009\u9635\u5BB9\u4F30\u5206 \xB7 ${scoreText(summary3)}`;
+      label.setAttribute("aria-label", label.title);
+      if (!summary3?.low) {
+        label.textContent = compactScore(summary3);
+        return;
+      }
+      const range = summary3.low.total !== summary3.high?.total;
+      add3(label, "strong", `${count3(summary3.low.total)}${range ? `\u2013${count3(summary3.high.total)}` : ""}`, "gallery-set-total");
+      const gem = add3(label, "span", "", "gallery-score-gem");
+      gem.setAttribute("aria-hidden", "true");
+      if (summary3.low.bonus > 0 || range && summary3.high.bonus > 0) {
+        const bonus = add3(label, "span", `(+${count3(summary3.low.bonus)}${range ? `\u2013${count3(summary3.high.bonus)}` : ""})`, "gallery-set-bonus");
+        bonus.title = `\u52A0\u6210 ${count3(summary3.low.bonus)}${range ? `\u2013${count3(summary3.high.bonus)}` : ""} \u5206`;
+      }
+      if (["uncertain", "partial"].includes(summary3.status)) add3(label, "span", "\u5F85\u6838", "gallery-unknown");
+    };
     const renderScoring = (target, summary3, value) => {
       const section = add3(target, "section", "", "gallery-score");
-      add3(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167" : "\u5F53\u524D"}\u8BA1\u5206\uFF1A${scoreText(summary3)}`);
+      const uncertain2 = ["uncertain", "partial"].includes(summary3?.status);
+      const heading = uncertain2 ? "\u672C\u5730\u4F30\u7B97\u533A\u95F4" : "\u5019\u9009\u9635\u5BB9\u4F30\u5206";
+      add3(section, "strong", `${value.stale || value.poolStale || result?.stale ? "\u5FEB\u7167 \xB7 " : ""}${heading}\uFF1A${scoreText(summary3)}`);
       if (!summary3?.low) {
         if (summary3?.status === "calculating") {
           add3(section, "small", "\u6B63\u5728\u540E\u53F0\u8BA1\u7B97\uFF0C\u53EF\u7EE7\u7EED\u6D4F\u89C8\u6216\u5207\u6362\u9875\u9762\u3002");
@@ -25110,9 +25181,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return;
       }
       add3(section, "small", `\u57FA\u7840\u5206 ${count3(summary3.low.base)} \uFF0B \u5DF2\u77E5\u52A0\u6210 ${count3(summary3.low.bonus)} \xB7 \u8BA1\u5206 ${summary3.lineup.length} \u5F20`);
+      add3(section, "small", "EA \u5F53\u524D\u5206\u6570\u53D6\u51B3\u4E8E\u4E3B\u673A\u5DF2\u9009\u5361\u7247\uFF1B\u53EF\u6309\u201C\u8BA1\u5206\u9635\u5BB9\u201D\u6362\u5361\u540E Regrade \u6838\u5BF9\u3002\u6B64\u5019\u9009\u4E0D\u4FDD\u8BC1\u6700\u9AD8\u5206\u3002");
+      if (uncertain2) add3(section, "small", `${count3(summary3.low.total)} \u662F\u5DF2\u786E\u8BA4\u8D21\u732E\u4E0B\u9650\uFF0C\u4E0D\u662F EA \u5F53\u524D\u5206\u6570\u3002\u7F3A\u5931\u7684\u9996\u4EFB\u5386\u53F2\u6216\u89C4\u5219\u5DEE\u5F02\u672A\u6838\u5B9E\u524D\uFF0C\u4E0D\u80FD\u636E\u6B64\u5224\u65AD\u8FD8\u9700\u591A\u5C11\u5206\u624D\u80FD\u5347\u6863\u3002`, "gallery-unknown");
       if (summary3.zeroScoreCards) add3(section, "small", `${summary3.zeroScoreCards} \u5F20\u5DF2\u6536\u96C6\u7248\u672C\u7684 EA \u57FA\u7840\u5206\u4E3A 0\uFF0C\u6309\u53C2\u8003\u89C4\u5219\u4E0D\u8BA1\u5165\u8BA1\u5206\u4EBA\u6570\u3002`);
-      if (summary3.full && summary3.nextGrade) add3(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count3(summary3.pointsToNext)} \u5206`);
-      else if (summary3.full) add3(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
+      if (summary3.full && !uncertain2 && summary3.nextGrade) add3(section, "p", `\u4E0B\u4E00\u6863 ${summary3.nextGrade}\uFF1A\u6309\u5DF2\u77E5\u8D21\u732E\u8FD8\u5DEE ${count3(summary3.pointsToNext)} \u5206`);
+      else if (summary3.full && !uncertain2) add3(section, "p", "\u6309\u5DF2\u77E5\u8D21\u732E\u8FBE\u5230\u6700\u9AD8\u6863\u95E8\u69DB");
       if (summary3.full && summary3.low.total !== summary3.high.total) {
         add3(section, "small", `\u540C\u4E00\u8BA1\u5206\u7EC4\u5408\u7684\u6761\u4EF6\u7B49\u7EA7\uFF1A${summary3.lowGrade ?? "\u672A\u8FBE D"}\u2013${summary3.highGrade ?? "\u672A\u8FBE D"}\u3002\u533A\u95F4\u4EC5\u9488\u5BF9\u5DF2\u9009\u7EC4\u5408\uFF0C\u4E0D\u4EE3\u8868\u6240\u6709\u7EC4\u5408\u7684\u6700\u9AD8\u5206\u3002`, "gallery-unknown");
       }
@@ -25130,9 +25203,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         rarityEaId: "\u5361\u79CD"
       };
       if (summary3.unknownFields.length) add3(section, "small", `\u672A\u77E5\uFF1A${summary3.unknownFields.map((field) => names[field] ?? field).join("\u3001")}\u3002\u5DF2\u77E5\u8D21\u732E\u4E0D\u8BA1\u672A\u77E5\u9879\uFF0C\u533A\u95F4\u53E6\u4E00\u7AEF\u6309\u672A\u77E5\u9879\u6EE1\u8DB3\u6761\u4EF6\u8BA1\u7B97\uFF1B\u91CD\u65B0\u540C\u6B65\u672A\u5FC5\u80FD\u627E\u56DE\u5DF2\u79BB\u961F\u5361\u7684\u9996\u4EFB\u5386\u53F2\u3002`, "gallery-unknown");
+      if (summary3.unknownFields.includes("firstOwned")) add3(section, "small", `\u9996\u4EFB\u8BC1\u636E\uFF1A${summary3.lineup.filter((row) => row.firstOwned === true).length} \u5F20\u5DF2\u786E\u8BA4\uFF0C${summary3.lineup.filter((row) => row.firstOwned == null).length} \u5F20\u5F85\u6838\u5B9E\u3002`, "gallery-unknown");
+      if (summary3.lineup.some((row) => row.firstOwnedHistoryUnverified)) add3(section, "small", "Some first-owner history needs verification. Previous records are preserved, but are not counted as confirmed bonuses. Current Club cards or your explicit first-owner declarations can resolve these entries.", "gallery-unknown");
       if (summary3.ruleDifference) add3(section, "small", `\u5206\u7EC4\u89C4\u5219\u6709\u5DEE\u5F02\uFF1A\u540C\u7EC4\u5408 Fodder ${count3(summary3.low.total)}\u2013${count3(summary3.high.total)}\uFF0CFUT.GG ${count3(summary3.comparison.low.total)}\u2013${count3(summary3.comparison.high.total)}\uFF1BEA \u89C4\u5219\u4ECD\u5F85\u5BF9\u7167\u3002`, "gallery-unknown");
       if (summary3.collectionUnknown) add3(section, "small", "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u5B8C\u6574\uFF0C\u5F53\u524D\u4EC5\u8BA1\u7B97\u5DF2\u786E\u8BA4\u6536\u96C6\u5361\u3002", "gallery-unknown");
-      add3(section, "small", `${summary3.selection === "bounded-search" ? "\u6309\u53C2\u8003\u63D2\u4EF6\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club \u7F13\u5B58\u3002`);
+      if (summary3.lineup.some((row) => row.firstOwnedSource === "enhancer-history")) add3(
+        section,
+        "small",
+        "\u5DF2\u590D\u7528\u6B64\u8D26\u53F7\u5728\u672C\u673A Enhancer \u4E2D\u4FDD\u5B58\u7684\u9996\u4EFB\u5386\u53F2\uFF1B\u8BE5\u8BB0\u5F55\u53EF\u80FD\u5305\u542B\u624B\u5DE5\u6807\u8BB0\u3002",
+        "gallery-history-source"
+      );
+      add3(section, "small", `${summary3.selection === "enhancer-seeds" ? "\u6309 Enhancer \u7684\u57FA\u7840\u5206\u4E0E\u6807\u7B7E\u5019\u9009\u65B9\u5F0F\u9009\u51FA\u8BA1\u5206\u9635\u5BB9\u3002" : summary3.selection === "bounded-search" ? "\u6709\u754C\u6362\u9635\u9009\u51FA\u7EC4\u5408\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5C40\u6700\u4F18\u3002" : ""}\u672C\u5730\u8BA1\u7B97\u53C2\u8003\u7B49\u7EA7\uFF0C\u4E0D\u4EE3\u8868 EA \u5DF2\u786E\u8BA4\u7B49\u7EA7\u6216\u5956\u52B1\u53EF\u9886\u53D6\uFF1B\u9996\u4EFB\u8BC1\u636E\u6765\u81EA\u5F53\u524D Club\u3001\u5386\u53F2\u89C2\u6D4B\u6216\u672C\u5730\u6807\u8BB0\u3002`);
       const explanation = add3(section, "details");
       add3(explanation, "summary", "\u8BA1\u5206\u5361\u7247\u4E0E\u52A0\u6210\u660E\u7EC6");
       const selected = add3(explanation, "ul", "", "gallery-lineup");
@@ -26569,11 +26650,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 const rows = detail.progress.rows.map((item2) => {
                   if (item2.eaId !== row.eaId) return item2;
                   const observed = item2.observedFirstOwned ?? (item2.firstOwnedSource === "ea-observed" ? item2.firstOwned : null);
+                  const automatic = observed ?? item2.enhancerFirstOwned ?? null;
                   return {
                     ...item2,
                     observedFirstOwned: observed,
-                    firstOwned: localFirstOwner ? observed : true,
-                    firstOwnedSource: localFirstOwner ? observed === null ? null : "ea-observed" : "local-history"
+                    firstOwned: localFirstOwner ? automatic : true,
+                    firstOwnedSource: localFirstOwner ? observed !== null ? "ea-observed" : automatic !== null ? "enhancer-history" : null : "local-history"
                   };
                 });
                 details.set(id15, { ...detail, progress: { ...detail.progress, rows, totals: {
@@ -26755,8 +26837,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           chosen = { key: JSON.stringify(candidates), src: selectGallerySetIcon(candidates) };
           setIconSelections.set(set.id, chosen);
         }
-        if (chosen.src) image(iconBox, chosen.src, set.name, "gallery-set-icon");
-        add3(title, "h4", set.name);
+        setEmblem(iconBox, chosen.src, set.name);
+        add3(title, "h4", set.name).title = set.name;
         const watch = add3(title, "button", jointTargets.has(set.id) ? "\u2605" : "\u2606", "gallery-watch");
         watch.type = "button";
         watch.title = jointTargets.has(set.id) ? "\u53D6\u6D88\u5173\u6CE8" : "\u5173\u6CE8\u96C6\u5408";
@@ -26780,14 +26862,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const grades3 = add3(card, "div", "", "gallery-grades");
         gradeTrack(grades3, set.grades, summary3);
         const metrics = add3(card, "div", "", "gallery-set-metrics");
-        const collected = add3(metrics, "span", totals2 ? `${totals2.collected} / ${set.requiredCards}` : `? / ${set.requiredCards}`, "gallery-collected");
-        collected.title = totals2 ? `\u5DF2\u6536\u96C6 / \u76EE\u6807 \xB7 ${totals2.unknown} \u5F85\u6838\u5B9E` : "\u6536\u96C6\u8FDB\u5EA6\uFF1A\u672A\u540C\u6B65";
-        if (!totals2 || totals2.total > 0 && totals2.unknown === totals2.total) collected.textContent = `? / ${set.requiredCards}`;
-        const scoreCaption = add3(metrics, "span", "Base score", "gallery-score-caption");
-        scoreCaption.title = "\u96C6\u5408\u57FA\u7840\u5206\uFF08\u672C\u5730\u53C2\u8003\u8BA1\u5206\uFF09";
-        const score2 = add3(metrics, "span", compactScore(summary3), "gallery-summary");
-        score2.title = `Base score \xB7 ${scoreText(summary3)}`;
-        score2.setAttribute("aria-label", `Base score ${scoreText(summary3)}`);
+        const collected = add3(metrics, "span", `\u5DF2\u6536\u96C6 ${totals2 ? Math.min(totals2.collected, set.requiredCards) : "?"} / ${set.requiredCards}`, "gallery-collected");
+        collected.title = totals2 ? `\u5B8C\u6574\u6536\u85CF ${totals2.collected} \u5F20 / \u8BA1\u5206\u9700\u8981 ${set.requiredCards} \u5F20 \xB7 ${totals2.unknown} \u5F85\u6838\u5B9E` : "\u6536\u96C6\u8FDB\u5EA6\uFF1A\u672A\u540C\u6B65";
+        if (!totals2 || totals2.total > 0 && totals2.unknown === totals2.total) collected.textContent = `\u5DF2\u6536\u96C6 ? / ${set.requiredCards}`;
+        const score2 = add3(metrics, "span", "", "gallery-summary");
+        renderSetScore(score2, summary3);
         renderRewardSummary(metrics, [set]);
         if (detail?.progress?.candidateOnly) {
           const candidate = add3(metrics, "span", "\u25A3", "gallery-collection-flag");
@@ -26801,6 +26880,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (typeof loadSet === "function" && ["futgg", "fodder"].includes(result.source)) {
           const button = add3(card, "button", "\u67E5\u770B\u5361\u7247", "gallery-open-set");
+          button.title = `\u67E5\u770B ${set.name} \u5361\u7247`;
           button.type = "button";
           button.addEventListener("click", (event) => {
             if (event.isTrusted) void loadSetDetails(set);
@@ -31288,7 +31368,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const collected = booleanOrUnknown(concept?.isCollected);
     const inClub = club ? true : clubKnown ? false : null;
     const observedFirstOwned = history?.collectedOwners === 1 || club?.some((row) => row.owners === 1) ? true : Number.isSafeInteger(history?.collectedOwners) && history.collectedOwners > 1 ? false : club?.every((row) => Number.isSafeInteger(row.owners) && row.owners > 1) ? false : null;
-    const firstOwned = typeof history?.firstOwned === "boolean" ? history.firstOwned : observedFirstOwned;
+    const enhancerFirstOwned = collected === true ? booleanOrUnknown(history?.enhancerFirstOwned) : null;
+    const firstOwned = typeof history?.firstOwned === "boolean" ? history.firstOwned : observedFirstOwned ?? enhancerFirstOwned;
     return Object.freeze({
       eaId: item2.eaId,
       playerEaId: item2.playerEaId,
@@ -31314,7 +31395,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       held: inClub === true || held === true ? true : null,
       firstOwned,
       observedFirstOwned,
-      firstOwnedSource: typeof history?.firstOwned === "boolean" ? "local-history" : firstOwned !== null ? "ea-observed" : null,
+      enhancerFirstOwned,
+      firstOwnedSource: typeof history?.firstOwned === "boolean" ? "local-history" : observedFirstOwned !== null ? "ea-observed" : enhancerFirstOwned !== null ? "enhancer-history" : null,
+      firstOwnedHistoryUnverified: history?.ownerHistoryUnverified === true && firstOwned === null,
       status: collected === true ? "collected" : collected === false ? "missing" : "unknown"
     });
   }
@@ -31407,6 +31490,73 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       skillMoves: call("getSkillMoves"),
       holographic: Object.keys(item2._hyperCosmeticDTOs || item2.hyperCosmeticDTOs || {}).length > 0
     };
+  }
+
+  // src/adapters/browser/fc27-gallery-enhancer-history.js
+  function parseEnhancerGalleryHistory(value, personaId) {
+    if (typeof value !== "string" || value.length > 4e6 || !/^[1-9]\d*$/.test(String(personaId))) return null;
+    try {
+      const envelope = JSON.parse(value);
+      const rows = envelope?.version === 2 ? envelope.state?.playersByPersonaId?.[personaId] : null;
+      if (!rows || typeof rows !== "object" || Array.isArray(rows)) return null;
+      const entries2 = Object.entries(rows);
+      if (entries2.length > 1e5 || entries2.some(([key2, flag]) => !/^[1-9]\d*$/.test(key2) || !Number.isSafeInteger(Number(key2)) || typeof flag !== "boolean")) return null;
+      return new Map(entries2.map(([key2, flag]) => [Number(key2), flag]));
+    } catch {
+      return null;
+    }
+  }
+  function readEnhancerGalleryHistory(indexedDB, personaId, { timeoutMs = 1500 } = {}) {
+    return new Promise((resolve2) => {
+      let done = false, db = null;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try {
+          db?.close();
+        } catch {
+        }
+        resolve2(value);
+      };
+      const timer = setTimeout(() => finish(null), timeoutMs);
+      (async () => {
+        if (typeof indexedDB?.databases !== "function") return finish(null);
+        const databases = await indexedDB.databases();
+        if (done) return;
+        if (!databases.some((entry) => entry.name === "fce-27")) return finish(null);
+        const request = indexedDB.open("fce-27");
+        request.onerror = request.onblocked = () => finish(null);
+        request.onupgradeneeded = () => {
+          try {
+            request.transaction.abort();
+          } catch {
+          }
+          finish(null);
+        };
+        request.onsuccess = () => {
+          db = request.result;
+          if (done) {
+            db.close();
+            return;
+          }
+          try {
+            if (!db.objectStoreNames.contains("setting")) return finish(null);
+            db.onversionchange = () => finish(null);
+            const transaction = db.transaction("setting", "readonly");
+            const read = transaction.objectStore("setting").get("gallery-collected-players-state");
+            let result = null;
+            read.onsuccess = () => {
+              result = parseEnhancerGalleryHistory(read.result, personaId);
+            };
+            read.onerror = transaction.onerror = transaction.onabort = () => finish(null);
+            transaction.oncomplete = () => finish(result);
+          } catch {
+            finish(null);
+          }
+        };
+      })().catch(() => finish(null));
+    });
   }
 
   // src/adapters/ea/fc27-gallery-progress.js
@@ -31576,23 +31726,42 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         clubSnapshot: null,
         clubSnapshotAt: 0,
         heldSnapshot: null,
-        displayEntities: /* @__PURE__ */ new Map()
+        displayEntities: /* @__PURE__ */ new Map(),
+        enhancerHistory: /* @__PURE__ */ new Map(),
+        enhancerRead: null,
+        enhancerReadAt: null
       });
       return states5.get(key2);
     };
     const assert = (context) => {
       if (disposed || !same26(context, readFc27Context(root))) fail28("FC27_GALLERY_CONTEXT_CHANGED");
     };
+    const restoreEnhancer = (state) => {
+      if (state.enhancerRead) return state.enhancerRead;
+      if (state.enhancerReadAt !== null && now() - state.enhancerReadAt < 5e3) return Promise.resolve();
+      state.enhancerRead = (async () => {
+        const personaId = /^ea:\d+:([1-9]\d*)$/.exec(state.context.accountScope)?.[1];
+        const history = await readEnhancerGalleryHistory(root.indexedDB, personaId);
+        assert(state.context);
+        state.enhancerHistory = history ?? /* @__PURE__ */ new Map();
+        state.enhancerReadAt = now();
+      })().finally(() => {
+        state.enhancerRead = null;
+      });
+      return state.enhancerRead;
+    };
     const merge = (state, rows) => {
       let changed = false;
       for (const row of rows) {
         const previous = state.rows.get(row.definitionId);
         const owners = [previous?.collectedOwners, row.collectedOwners].filter((value) => id11(value));
+        const verifiedOwners = [previous?.verifiedCollectedOwners, row.verifiedCollectedOwners].filter((value) => id11(value));
         const next = {
           ...previous,
           ...row,
           isCollected: previous?.isCollected === true || row.isCollected === true ? true : row.isCollected,
           ...owners.length ? { collectedOwners: Math.min(...owners) } : {},
+          ...verifiedOwners.length ? { verifiedCollectedOwners: Math.min(...verifiedOwners) } : {},
           cardData: row.cardData ?? previous?.cardData
         };
         if (!same26(previous, next)) {
@@ -31621,6 +31790,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const rows = sanitizeRows(saved.concepts, new Set(saved.concepts.map((row) => row.definitionId)));
         for (let i = 0; i < rows.length; i++) {
           if (id11(saved.concepts[i].collectedOwners)) rows[i].collectedOwners = saved.concepts[i].collectedOwners;
+          if (id11(saved.concepts[i].verifiedCollectedOwners)) rows[i].verifiedCollectedOwners = saved.concepts[i].verifiedCollectedOwners;
           const readAt = saved.concepts[i].readAt ?? saved.fetchedAt;
           if (Number.isSafeInteger(readAt) && readAt >= 0 && readAt <= now()) rows[i].readAt = readAt;
         }
@@ -31678,6 +31848,16 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const auction = item2.getAuctionData();
       return !item2.concept && !(auction.isValid() && !auction.tradeOwner) && item2.owners > 0 ? item2.owners : null;
     };
+    const changedState = (state) => {
+      state.clubSnapshot = null;
+      state.heldSnapshot = null;
+      state.fetchedAt = now();
+      if (state.timer === null) state.timer = setTimeout(() => {
+        state.timer = null;
+        void restore(state).then(() => persist(state)).then(notify).catch(() => {
+        });
+      }, 250);
+    };
     const observeItem = (item2, raw, context) => {
       if (!item2) return;
       if (raw?.gradingScore != null) item2.gradingScore = raw.gradingScore;
@@ -31688,23 +31868,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if ([...nativePending].some((pending3) => !same26(context, pending3.context))) return;
       const definitionId = item2.definitionId;
       if (!id11(definitionId)) return;
-      const state = stateFor(context), owners = ownerCount(item2);
+      const state = stateFor(context);
       const changed = merge(state, [{
         definitionId,
         isCollected: true,
         gradingScore: Number.isFinite(item2.gradingScore) ? item2.gradingScore : null,
-        cardData: nativeCardData(raw),
-        ...id11(owners) ? { collectedOwners: owners } : {}
+        cardData: nativeCardData(raw)
       }]);
-      state.clubSnapshot = null;
-      state.heldSnapshot = null;
-      if (!changed) return;
-      state.fetchedAt = now();
-      if (state.timer === null) state.timer = setTimeout(() => {
-        state.timer = null;
-        void restore(state).then(() => persist(state)).then(notify).catch(() => {
-        });
-      }, 250);
+      if (changed) changedState(state);
+      void Promise.resolve().then(() => {
+        assert(context);
+        if (item2.definitionId !== definitionId || !item2.isPlayer() || !item2.isCollected || [...nativePending].some((pending3) => !same26(context, pending3.context))) return;
+        const owners = ownerCount(item2);
+        if (id11(owners) && merge(state, [{ definitionId, verifiedCollectedOwners: owners }])) changedState(state);
+      }).catch(() => {
+      });
     };
     const install = () => {
       if (disposed) return false;
@@ -31737,7 +31915,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const clubItems = state.clubSnapshot.filter((row) => allowed.has(row.definitionId));
       const heldItems = (state.heldSnapshot ?? []).filter((row) => allowed.has(row.definitionId));
-      const collectionHistory = [...state.rows.values(), ...state.firstOwnerHistory];
+      const collectionHistory = concepts.map((row) => ({
+        definitionId: row.definitionId,
+        collectedOwners: row.verifiedCollectedOwners,
+        enhancerFirstOwned: row.isCollected === true ? state.enhancerHistory.get(row.definitionId) : null,
+        ownerHistoryUnverified: id11(row.collectedOwners) && !id11(row.verifiedCollectedOwners)
+      }));
+      collectionHistory.push(...state.firstOwnerHistory.filter((row) => allowed.has(row.definitionId)));
       return {
         status: "observed",
         scope: contextKey(state.context, "gallery-view"),
@@ -31753,7 +31937,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const context = readFc27Context(root);
         validatePool(pool, context);
         const state = stateFor(context);
-        await restore(state);
+        await Promise.all([restore(state), restoreEnhancer(state)]);
         return projectState(pool, state, { cached: true });
       } catch (error2) {
         return { status: "blocked", reason: safeReason8(error2) };
@@ -31858,7 +32042,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           }
         };
         try {
-          await restore(state);
+          await Promise.all([restore(state), restoreEnhancer(state)]);
           assert(context);
           const allIds = definitionIds ?? (pool ? pool.items.map((row) => row.eaId) : root.repositories.Item.getStaticData().map((row) => row.id));
           if (!Array.isArray(allIds) || !allIds.length || allIds.length > 1e5 || allIds.some((value) => !id11(value))) fail28("FC27_GALLERY_CONCEPT_IDS_UNAVAILABLE");
@@ -32050,7 +32234,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       const state = stateFor(context);
       try {
-        await restore(state);
+        await Promise.all([restore(state), restoreEnhancer(state)]);
         assert(context);
         if (!pool.items.every((row) => state.rows.has(row.eaId)) && typeof gmGetValue === "function") {
           try {
@@ -50561,7 +50745,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.109" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.110" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -50632,6 +50816,15 @@ ${detail.join(" \xB7 ")}`;
         return "";
       }
     },
+    tier: (name2) => {
+      try {
+        const rarity = unsafeWindow.repositories?.Rarity?.get?.(1);
+        const tier = unsafeWindow.ItemRatingTier?.[name2];
+        return rarity && tier != null && typeof rarity.getGuid === "function" ? unsafeWindow.AssetLocationUtils?.getShellUri(unsafeWindow.ItemViewSize?.LARGE, 1, 1, tier, rarity.getGuid()) || "" : "";
+      } catch {
+        return "";
+      }
+    },
     nation: (id15) => {
       try {
         const u = unsafeWindow.AssetLocationUtils;
@@ -50644,7 +50837,7 @@ ${detail.join(" \xB7 ")}`;
       const key2 = `${String(slug2 ?? "")} ${String(name2 ?? "")}`.toLocaleLowerCase();
       const rarityCategory = key2.includes("rarit");
       if (rarityCategory) return [...new Set(sets2.flatMap((set) => galleryAssets.set(set.name, { slug: "rarities" }, set)))];
-      const ids2 = key2.includes("england") || key2.includes("premier") || key2.includes("wsl") ? [13, 2216] : key2.includes("spain") || key2.includes("laliga") || key2.includes("liga-f") || key2.includes("la-liga") ? [53, 2222] : key2.includes("germany") || key2.includes("bundesliga") ? [19, 2215] : key2.includes("france") || key2.includes("ligue") || key2.includes("arkema") ? [16, 2218] : key2.includes("italy") || key2.includes("serie-a") || key2.includes("serie a") ? [31] : key2.includes("leagues") || key2 === "league" ? [13, 53, 19, 2215, 16, 31] : [];
+      const ids2 = key2.includes("england") || key2.includes("premier") || key2.includes("wsl") ? [13, 2216] : key2.includes("spain") || key2.includes("laliga") || key2.includes("liga-f") || key2.includes("la-liga") ? [53, 2222] : key2.includes("germany") || key2.includes("bundesliga") ? [19, 2215] : key2.includes("france") || key2.includes("ligue") || key2.includes("arkema") ? [16, 2218] : key2.includes("italy") || key2.includes("serie-a") || key2.includes("serie a") ? [31] : key2.includes("nwsl") || key2.includes("national-women") || key2.includes("national women's") ? [2221] : key2.includes("mls") ? [39] : key2.includes("roshn") || key2.includes("saudi") ? [350] : key2.includes("leagues") || key2 === "league" ? [13, 53, 19, 2215, 16, 31] : [];
       return ids2.map((id15) => rarityCategory ? galleryAssets.rarity(id15) : galleryAssets.league(id15)).filter(Boolean);
     },
     set: (name2, category = {}, set = {}, pool = []) => {
@@ -50655,22 +50848,32 @@ ${detail.join(" \xB7 ")}`;
         if (kind === "RARITY" && (set.slug === "holographics" || set.conditions?.holo === true)) {
           return [galleryAssets.rarity(12)].filter(Boolean);
         }
+        if (kind === "RARITY" && set.slug === "starter-set") return ["BRONZE", "SILVER", "GOLD"].map(galleryAssets.tier).filter(Boolean);
         if (explicit.length) return explicit.map((id15) => kind === "RARITY" ? galleryAssets.rarity(id15) : galleryAssets.filter(kind, id15)).filter(Boolean);
         if (kind !== "CLUB") {
           const leagueIds = {
             "premier-league": [13],
             "barclays-wsl": [2216],
             "ligue-1-mcdonalds": [16],
+            "ligue-1-mcdonald-s": [16],
             "arkema-pl": [2218],
             "laliga-ea-sports": [53],
             "liga-f-moeve": [2222],
             "serie-a-enilive": [31],
             bundesliga: [19],
-            "frauen-bundesliga": [2215]
+            "frauen-bundesliga": [2215],
+            "roshn-saudi-pro-league": [350],
+            mls: [39],
+            nwsl: [2221],
+            "national-women-s-soccer-league": [2221]
           };
           const rarityIds = {
-            totw: [3],
+            totw: [3, 19],
             heroes: [72],
+            icons: [12, 160],
+            potm: [86, 42, 177, 114, 79, 43],
+            "ultimate-scream": [151, 168],
+            "hall-of-fut": [10, 9],
             "squad-foundations": [87],
             "season-1": [150, 22, 71]
           };
@@ -50697,7 +50900,8 @@ ${detail.join(" \xB7 ")}`;
         const needle = normalize2(name2);
         const rows = teams.map((team) => ({ team, value: normalize2(team?.name ?? team?.sortName ?? team?.label) })).filter((row) => row.value && row.value === needle);
         const ids2 = rows.map(({ team }) => Number(team?.id ?? team?.teamId ?? team?.eaId)).filter((value) => Number.isSafeInteger(value) && value > 0).slice(0, 3);
-        return (ids2.length ? [...new Set(ids2)] : idsFor(pool.slice(0, 3).map((item2) => item2.clubEaId))).map((id15) => galleryAssets.club(id15)).filter(Boolean);
+        const badgeIds = idsFor((set.grades ?? []).flatMap((grade) => grade.rewards ?? []).filter((reward) => reward.type === "item" && reward.itemCategory === 1).map((reward) => reward.teamEaId));
+        return (ids2.length ? [...new Set(ids2)] : badgeIds.length ? badgeIds : idsFor(pool.slice(0, 3).map((item2) => item2.clubEaId))).map((id15) => galleryAssets.club(id15)).filter(Boolean);
       } catch {
         return [];
       }
@@ -50955,8 +51159,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.109"}`,
-    version: "27.0.109",
+    title: `FC Automation Tool ${"27.0.110"}`,
+    version: "27.0.110",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

@@ -144,7 +144,8 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
       for (const row of saved.entries.slice(0, 2)) try {
         if (!Number.isSafeInteger(row.fetchedAt) || row.fetchedAt < 0 || row.fetchedAt > now()) continue;
         const catalog = normalizeGalleryCatalog(row.source, row.payload, season);
-        entries.set(row.source, { source: row.source, catalog, fetchedAt: row.fetchedAt, etag: validator(row.etag), modified: validator(row.modified) });
+        entries.set(row.source, { source: row.source, catalog, fetchedAt: row.fetchedAt, orderVerified: row.orderVerified === true,
+          etag: validator(row.etag), modified: validator(row.modified) });
       } catch { /* Invalid public snapshot is discarded only. */ }
       active = entries.get(saved.active) ?? null;
     } catch { /* Cache is optional. */ }
@@ -215,8 +216,10 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     if (now() < (retryAt.get(source) ?? 0)) throw new Error('FC27_GALLERY_BACKOFF');
     record('catalog-request', { source, phase: 'request', status: 'started', cached: entries.has(source) });
     const previous = entries.get(source); const headers = {};
-    if (previous?.etag) headers['If-None-Match'] = previous.etag;
-    else if (previous?.modified) headers['If-Modified-Since'] = previous.modified;
+    // Older normalized snapshots discarded source order. Keep them usable
+    // offline, but fetch the catalogue once without validators to recover it.
+    if (previous?.orderVerified && previous.etag) headers['If-None-Match'] = previous.etag;
+    else if (previous?.orderVerified && previous.modified) headers['If-Modified-Since'] = previous.modified;
     const response = await http.get(source, headers); const h = response.headers ?? {};
     if (response.status !== 200 && response.status !== 304) {
       const retry = /^\d+$/.test(h['retry-after']) ? Number(h['retry-after']) * 1000 : Date.parse(h['retry-after']) - now();
@@ -227,7 +230,7 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
     let catalog;
     try { catalog = response.status === 304 ? previous.catalog : normalizeGalleryCatalog(source, JSON.parse(response.text), season); }
     catch { throw new Error('FC27_GALLERY_PAYLOAD_INVALID'); }
-    const current = { source, catalog, fetchedAt: now(),
+    const current = { source, catalog, fetchedAt: now(), orderVerified: response.status === 200 || previous?.orderVerified === true,
       etag: validator(h.etag) ?? (response.status === 304 ? previous.etag : null),
       modified: validator(h['last-modified']) ?? (response.status === 304 ? previous.modified : null) };
     entries.set(source, current); active = current; await persist();
@@ -440,7 +443,7 @@ export function createFc27GalleryCatalogProvider({ http, gmGetValue, gmSetValue,
   };
   const refresh = async force => {
     await read(); const previous = active;
-    if (!force && active && now() - active.fetchedAt < ttlMs) {
+    if (!force && active?.orderVerified && now() - active.fetchedAt < ttlMs) {
       record('catalog-cache', { source: active.source, status: 'success', cached: true });
       return observe(active, 'FC27_GALLERY_CATALOG_CACHE', { cached: true });
     }

@@ -49,26 +49,26 @@ it('keeps full lineups, ties, bonuses and unknown fields identical with the over
 });
 
 describe('Gallery scoring from public rules and exact EA base scores', () => {
-  it('reproduces the Al Hilal FCAT First Owner screenshot and an EA-total-compatible comparison without inferring EA ownership', () => {
+  it('retains the explicit legacy group mode to reproduce the Al Hilal FCAT First Owner screenshot and an EA-total-compatible comparison without inferring EA ownership', () => {
     const firstOwned = new Set(hilal.scenario.eaTotalCompatibleFirstOwnedIds);
     const rows = hilal.rows.map(values => {
       const raw = Object.fromEntries(hilal.columns.map((key, i) => [key, values[i]]));
       return { ...raw, gradingScore: raw.score, firstOwned: firstOwned.has(raw.eaId) };
     });
-    const compiled = rules(hilal.tags), ea = evaluateGalleryLineup(rows, compiled);
+    const compiled = rules(hilal.tags), ea = evaluateGalleryLineup(rows, compiled, { groupMode: 'fodder' });
     const observed = new Set(hilal.scenario.fcatScreenshotFirstOwnedIds);
     expect(observed.size).toBe(7);
     expect(observed.has(232656)).toBe(true);
     expect(observed.has(201024)).toBe(false);
     expect([...observed].filter(id => !firstOwned.has(id))).toEqual([hilal.scenario.extraFirstOwnedId]);
-    const screenshot = evaluateGalleryLineup(rows.map(row => ({ ...row, firstOwned: observed.has(row.eaId) })), compiled);
+    const screenshot = evaluateGalleryLineup(rows.map(row => ({ ...row, firstOwned: observed.has(row.eaId) })), compiled, { groupMode: 'fodder' });
     expect(screenshot.total).toBe(hilal.expected.fcat.total);
     expect(screenshot.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4465, pct: 150, bonus: 6697 });
     expect({ base: ea.base, bonus: ea.bonus, total: ea.total }).toEqual({ base: 7550, bonus: 7770, total: 15320 });
     expect(ea.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4125, pct: 150, bonus: 6187 });
     for (const id of [hilal.scenario.extraFirstOwnedId, hilal.scenario.equalScoreAlternativeId]) {
       const changed = rows.map(row => row.eaId === id ? { ...row, firstOwned: true } : row);
-      const fcat = evaluateGalleryLineup(changed, compiled);
+      const fcat = evaluateGalleryLineup(changed, compiled, { groupMode: 'fodder' });
       expect({ base: fcat.base, bonus: fcat.bonus, total: fcat.total }).toEqual({ base: 7550, bonus: 8280, total: 15830 });
       expect(fcat.tags.find(tag => tag.id === 1)).toMatchObject({ matched: 4465, pct: 150, bonus: 6697 });
       expect(fcat.tags.filter(tag => tag.id !== 1)).toEqual(ea.tags.filter(tag => tag.id !== 1));
@@ -148,16 +148,16 @@ describe('Gallery scoring from public rules and exact EA base scores', () => {
     expect(result.tags.map(t=>t.count)).toEqual([1,2]);
     expect(result.bonus).toBe(30);
   });
-  it('uses highest-bonus same group, and highest score representative for different groups', () => {
+  it('uses largest same group then score sum, and highest score representative for different groups', () => {
     const cards = [card(1),card(2),card(3),card(4,{nationEaId:2,gradingScore:1000}),card(5,{nationEaId:2,gradingScore:900})];
     const result = evaluateGalleryLineup(cards,rules([tag(1,'NATION','MAX_COUNT_ALL_SAME',['0']),tag(2,'NATION','COUNT_DIFF',['0'])]));
-    expect(result.tags.map(t=>[t.count,t.matched,t.bonus])).toEqual([[2,1900,190],[2,1100,110]]);
+    expect(result.tags.map(t=>[t.count,t.matched,t.bonus])).toEqual([[3,300,30],[2,1100,110]]);
     const alternate = evaluateGalleryLineup(cards,rules([tag(1,'NATION','MAX_COUNT_ALL_SAME',['0'])]),{groupMode:'futgg'});
     expect(alternate.tags[0].matched).toBe(300);
   });
-  it('includes all qualifying footballer groups without duplicating exact versions', () => {
+  it('counts only one qualifying footballer group without duplicating exact versions', () => {
     const cards = [card(1,{playerEaId:10}),card(2,{playerEaId:10}),card(3,{playerEaId:20}),card(4,{playerEaId:20}),card(5)];
-    expect(evaluateGalleryLineup(cards,rules([tag(1,'BASE_DEF_ID','MAX_COUNT_ALL_SAME',['0'])])).bonus).toBe(40);
+    expect(evaluateGalleryLineup(cards,rules([tag(1,'BASE_DEF_ID','MAX_COUNT_ALL_SAME',['0'])])).bonus).toBe(20);
     expect(()=>evaluateGalleryLineup([card(1),card(1)],rules([]))).toThrow(/INPUT/);
   });
   it('keeps unknown rules unavailable, including changed targets or nonmonotonic tiers', () => {
@@ -209,10 +209,10 @@ describe('Gallery scoring from public rules and exact EA base scores', () => {
     expect(summary(rows,current).low.total).toBe(200);
     expect(summary(rows,current).unknownFields).toEqual(['holographic']);
   });
-  it('surfaces reference-source discrepancies instead of claiming one confirmed grade', () => {
+  it('uses the now-verified single-group rule without an obsolete grouping discrepancy', () => {
     const rows=[card(1,{playerEaId:10}),card(2,{playerEaId:10}),card(3,{playerEaId:20}),card(4,{playerEaId:20})];
     const result=summary(rows,[tag(1,'BASE_DEF_ID','MAX_COUNT_ALL_SAME',['0'])],{...set,requiredCards:4});
-    expect(result.ruleDifference).toBe(true); expect(result.grade).toBeNull();
-    expect(result.low.total).toBe(440); expect(result.comparison.low.total).toBe(420);
+    expect(result.ruleDifference).toBe(false); expect(result.grade).toBe('C');
+    expect(result.low.total).toBe(420); expect(result.comparison).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
 import { futggGalleryPool } from '../fixtures/fc27-gallery.js';
+import { enhancerDatabase } from '../helpers/gallery-enhancer-idb.js';
 
 function fixture() {
   const club = { sku: 'test27', year: 2027, platform: 'pc' };
@@ -18,9 +19,47 @@ function fixture() {
   return { root, club, pool, store, context, key, options, reader: () => createFc27GalleryProgressReader(root, options) };
 }
 
+it('recovers exact-version Enhancer history read-only, preserving native collection and local/verified precedence across reload', async () => {
+  const f = fixture();
+  f.root.indexedDB = enhancerDatabase(JSON.stringify({ version: 2, state: { playersByPersonaId: {
+    1002: { 900001: true, 900002: false, 900003: true }, 9999: { 900002: true },
+  } } }));
+  f.store.set(f.key, { schema: 3, context: f.context, fetchedAt: 900, concepts: [
+    { definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: 1 },
+    { definitionId: 900002, isCollected: true, gradingScore: 100 },
+  ] });
+  let reader = f.reader();
+  let result = await reader.project(f.pool);
+  expect(result.progress.rows[0]).toMatchObject({ collected: true, firstOwned: true, observedFirstOwned: null, firstOwnedSource: 'enhancer-history' });
+  expect(result.progress.rows[1]).toMatchObject({ firstOwned: false, firstOwnedSource: 'enhancer-history' });
+  expect(result.progress.rows[2]).toMatchObject({ collected: null, firstOwned: null });
+  await reader.updateFirstOwner(900002, true);
+  expect((await reader.project(f.pool)).progress.rows[1]).toMatchObject({ firstOwned: true, firstOwnedSource: 'local-history' });
+  await reader.updateFirstOwner(900002, null);
+  expect((await reader.project(f.pool)).progress.rows[1].firstOwned).toBe(false);
+  reader.dispose();
+  f.root.repositories.Item.club.items._collection.card = { id: 501, type: 'player', concept: false, definitionId: 900002, owners: 1 };
+  reader = f.reader(); result = await reader.project(f.pool);
+  expect(result.progress.rows[0].firstOwnedSource).toBe('enhancer-history');
+  expect(result.progress.rows[1]).toMatchObject({ firstOwned: true, firstOwnedSource: 'ea-observed' });
+  expect(f.root.indexedDB.calls.filter(c => c[0] === 'transaction')).toEqual([['transaction', 'setting', 'readonly'], ['transaction', 'setting', 'readonly']]);
+  reader.dispose();
+});
+
+it.each(['account', 'dispose'])('discards a late Enhancer read after %s changes', async action => {
+  const f = fixture(); let release;
+  f.root.indexedDB = enhancerDatabase(JSON.stringify({ version: 2, state: { playersByPersonaId: { 1002: { 900001: true } } } }));
+  f.root.indexedDB.databases = () => new Promise(resolve => { release = resolve; });
+  const reader = f.reader(), task = reader.project(f.pool);
+  if (action === 'account') f.club.platform = 'other'; else reader.dispose();
+  release([{ name: 'fce-27' }]);
+  expect(await task).toMatchObject({ status: 'blocked', reason: 'FC27_GALLERY_CONTEXT_CHANGED' });
+  reader.dispose();
+});
+
 it('restores shared historical collection without requesting EA or inventing absent version flags', async () => {
   const f = fixture(); f.store.set(f.key, { schema: 3, context: f.context, fetchedAt: 900, syncedAt: 900,
-    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: 1 }] });
+    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, verifiedCollectedOwners: 1 }] });
   const reader = f.reader(), result = await reader.project(f.pool);
   expect(result.progress.totals).toMatchObject({ collected: 1, unknown: 2 });
   expect(result.progress.rows[0]).toMatchObject({ firstOwned: true, inClub: null });
@@ -80,7 +119,7 @@ it('reads already-cached held piles once and leaves absence unknown', async () =
 
 it('persists local FO by account and restores EA evidence after undo without network reads', async () => {
   const f = fixture(); f.store.set(f.key, { schema: 3, context: f.context, fetchedAt: 900,
-    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: 2 }] });
+    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, verifiedCollectedOwners: 2 }] });
   let reader = f.reader();
   await reader.updateFirstOwner(900001, true);
   expect((await reader.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: true, observedFirstOwned: false, firstOwnedSource: 'local-history', collected: true });
@@ -110,4 +149,29 @@ it('does not report a failed local FO write as saved or leave an optimistic over
   expect(await reader.readFirstOwnerHistory()).toEqual([]);
   expect((await reader.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
   reader.dispose();
+});
+
+it.each([1, 2])('retains legacy owner count %s without treating it as verified account ownership', async owners => {
+  const f = fixture(), saved = { schema: 3, context: f.context, fetchedAt: 900,
+    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: owners }] };
+  f.store.set(f.key, structuredClone(saved)); const r = f.reader();
+  expect((await r.project(f.pool)).progress.rows[0]).toMatchObject({ collected: true, gradingScore: 100,
+    firstOwned: null, observedFirstOwned: null, firstOwnedHistoryUnverified: true });
+  await r.updateFirstOwner(900001, true);
+  expect((await r.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: true, firstOwnedSource: 'local-history' });
+  await r.updateFirstOwner(900001, null);
+  expect((await r.project(f.pool)).progress.rows[0].firstOwned).toBeNull();
+  expect(f.store.get(f.key).concepts[0].collectedOwners).toBe(owners);
+  r.dispose();
+  const reopened = f.reader();
+  expect((await reopened.project(f.pool)).progress.rows[0].firstOwned).toBeNull(); reopened.dispose();
+});
+
+it.each([1, 2])('uses current Club owner count %s instead of unverified legacy minimum, without deleting the original record', async owners => {
+  const f = fixture(); f.store.set(f.key, { schema: 3, context: f.context, fetchedAt: 900,
+    concepts: [{ definitionId: 900001, isCollected: true, gradingScore: 100, collectedOwners: 1 }] });
+  f.root.repositories.Item.club.items._collection.card = { id: 501, type: 'player', concept: false, definitionId: 900001, owners };
+  const r = f.reader();
+  expect((await r.project(f.pool)).progress.rows[0]).toMatchObject({ firstOwned: owners === 1, observedFirstOwned: owners === 1 });
+  expect(f.store.get(f.key).concepts[0].collectedOwners).toBe(1); r.dispose();
 });

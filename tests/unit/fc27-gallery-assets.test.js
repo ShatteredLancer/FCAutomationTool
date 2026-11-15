@@ -11,7 +11,7 @@ const assets = runInNewContext(`${source.slice(start, end)}; galleryAssets`, {
     FILTER: { LEAGUE: 'league', RARITY: 'rarity', CLUB: 'club' },
     getFilterImage: (kind, id) => `https://ea.test/${kind}/${id}.png`,
     getShellUri: (size, type, id, tier, guid) => `https://ea.test/shell/${size}/${type}/${id}/${tier}/${guid}.png`,
-  }, ItemViewSize: { LARGE: 'large' }, ItemRatingTier: { GOLD: 'gold', NONE: 'none' },
+  }, ItemViewSize: { LARGE: 'large' }, ItemRatingTier: { BRONZE: 'bronze', SILVER: 'silver', GOLD: 'gold', NONE: 'none' },
   repositories: { TeamConfig: { getTeams: () => [{ id: 1, name: 'Arsenal' }, { id: 10, name: 'Premier League' }] },
     Rarity: { get: id => id === 404 ? null : ({ id, levels: false, getGuid: () => 'guid' }) } },
   factories: { DataProvider: { getLeagueDP: () => [{ id: 888, label: 'New Local League' }] } } },
@@ -45,6 +45,27 @@ it('uses league icons for league sets before pools load, never a matching team n
   expect(assets.set('Frauen-Bundesliga', { slug: 'leagues' }, { slug: 'frauen-bundesliga' })).toEqual(['https://ea.test/league/2215.png']);
 });
 
+it.each([['NWSL', 'nwsl', 2221], ['MLS', 'mls', 39], ['ROSHN Saudi Pro League', 'roshn-saudi-pro-league', 350],
+  ["Ligue 1 McDonald's", 'ligue-1-mcdonald-s', 16]])('resolves %s before any player pool is read', (name, slug, id) => {
+  expect(assets.set(name, { slug: 'leagues' }, { slug })).toEqual([`https://ea.test/league/${id}.png`]);
+});
+
+it.each([['national-women-s-soccer-league', 2221], ['mls', 39], ['roshn-saudi-league', 350]])(
+  'resolves the %s category emblem before any player pool is read', (slug, id) => {
+    expect(assets.category(slug)).toEqual([`https://ea.test/league/${id}.png`]);
+  });
+
+it('uses the exact public badge team when a club name is not in loaded EA translations', () => {
+  expect(assets.set('Angel City FC', { slug: 'national-women-s-soccer-league' }, {
+    grades: [{ rewards: [{ type: 'item', teamEaId: 116311, itemCategory: 1, label: 'Angel City FC Badge' }] }],
+  })).toEqual(['https://ea.test/club/116311.png']);
+});
+
+it.each([['icons', 12], ['ultimate-scream', 151], ['hall-of-fut', 10], ['potm', 42]])(
+  'supplies a native card shell for %s without requiring a pool read', (slug, id) => {
+    expect(assets.set(slug, { slug: 'rarities' }, { slug })).toContain(`https://ea.test/shell/large/1/${id}/none/guid.png`);
+  });
+
 it('uses Enhancer shell assets for the Rarities category overview', () => {
   const icons = assets.category('rarities', 'Rarities', [
     { name: 'Heroes', slug: 'heroes' }, { name: 'Holographics', slug: 'holographics' },
@@ -56,6 +77,11 @@ it('uses Enhancer shell assets for the Rarities category overview', () => {
   expect(Array.from(assets.category('rarities', 'Rarities'))).toEqual([]);
   expect(Array.from(assets.category('rarities', 'Rarities', [{ name: 'Future', conditions: { rareflags: [180] } }])) )
     .toEqual(['https://ea.test/shell/large/1/180/none/guid.png']);
+});
+
+it('uses bronze, silver and gold native shells for Starter Set', () => {
+  expect(assets.set('Starter Set', { slug: 'rarities' }, { slug: 'starter-set' })).toEqual(
+    ['bronze', 'silver', 'gold'].map(tier => `https://ea.test/shell/large/1/1/${tier}/guid.png`));
 });
 
 it('preserves club sets and uses rarity icons for rarity sets', () => {

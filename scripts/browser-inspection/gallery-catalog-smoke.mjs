@@ -5,8 +5,12 @@ import { normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { normalizeGalleryPool } from '../../src/gallery/pool.js';
 import { mergeGalleryAccountProgress } from '../../src/gallery/progress.js';
 import { futggGallery, fodderGallery, futggGalleryPool, futggTruncatedGalleryPool } from '../../tests/fixtures/fc27-gallery.js';
+import { exerciseGalleryEnhancerHistory } from './gallery-enhancer-history-smoke.mjs';
+import { exerciseGallerySetCards } from './gallery-set-cards-smoke.mjs';
 
 export async function exerciseGalleryCatalog(context, directory) {
+  await exerciseGallerySetCards(context, directory);
+  await exerciseGalleryEnhancerHistory(context);
   const page = await context.newPage();
   const root = path.resolve(import.meta.dirname, '../..');
   const bundle = await build({ absWorkingDir: root, entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'],
@@ -71,8 +75,12 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.match(await host.locator('#gallery-set-list').innerText(), /\? \/ 20/);
     assert.match(await host.locator('[data-set-id="futgg:30"] .gallery-grade-diamond').first().getAttribute('title'), /Club Badge/);
     assert.ok(await host.locator('[data-set-id="futgg:30"] .gallery-summary').count() === 1);
+    assert.equal(await host.locator('[data-set-id="futgg:30"] .gallery-grade-cell').evaluateAll(cells =>
+      new Set(cells.map(cell => globalThis.getComputedStyle(cell.querySelector('.gallery-grade-bar i')).backgroundColor)).size), 5,
+    'Enhancer uses the matching grade color for every progress segment');
     assert.equal(await host.locator('[data-set-id="futgg:30"] .gallery-reward-token').count(), 0);
-    assert.match(await host.locator('[data-set-id="futgg:30"] .gallery-score-caption').innerText(), /Base score/);
+    assert.equal(await host.locator('[data-set-id="futgg:30"] .gallery-score-caption').count(), 0);
+    assert.match(await host.locator('[data-set-id="futgg:30"] .gallery-summary').getAttribute('aria-label'), /候选阵容估分/);
     await host.locator('#gallery-refresh').click();
     await page.waitForFunction(() => !globalThis.document.getElementById('fcat-fc27-acceptance').shadowRoot.getElementById('gallery-refresh').disabled);
     await host.locator('#gallery-categories button').first().click();
@@ -230,6 +238,7 @@ export async function exerciseGalleryCatalog(context, directory) {
     const scoringProgress = mergeGalleryAccountProgress(normalizeGalleryPool('futgg',futggGalleryPool(),30), {
       conceptItems:[{definitionId:900001,isCollected:true,gradingScore:100},{definitionId:900002,isCollected:true,gradingScore:200},
         {definitionId:900003,isCollected:false,gradingScore:300}], clubItems:[{definitionId:900001,owners:1}],
+      collectionHistory:[{definitionId:900002,ownerHistoryUnverified:true}],
     });
     await page.evaluate(({catalog,progress})=>{
       globalThis.scoringState={status:'observed',source:'futgg',catalog,fetchedAt:Date.now()};
@@ -254,6 +263,11 @@ export async function exerciseGalleryCatalog(context, directory) {
     await page.waitForFunction(()=>globalThis.document.getElementById('gallery-score-test').shadowRoot
       .querySelector('.gallery-score')?.textContent.includes('300–1,800'));
     assert.match(await scoringHost.locator('.gallery-score').innerText(),/300–1,800 分 · 等级待核实/);
+    assert.match(await scoringHost.locator('.gallery-score strong').innerText(),/本地估算区间/);
+    assert.match(await scoringHost.locator('.gallery-score').innerText(),/300 是已确认贡献下限，不是 EA 当前分数/);
+    assert.doesNotMatch(await scoringHost.locator('.gallery-score').innerText(),/下一档|达到最高档门槛/);
+    assert.equal(await scoringHost.locator('#gallery-set-detail .gallery-grade-diamond.is-current').count(),0);
+    assert.match(await scoringHost.locator('.gallery-score').innerText(),/first-owner history needs verification/);
     assert.equal(await scoringHost.locator('#gallery-set-detail .gallery-grade-diamond.is-reached').count(),1,'known lower score advances D while the text still marks the grade uncertain');
     assert.equal(await scoringHost.locator('#gallery-set-detail .gallery-grade-bar i').first().evaluate(el=>el.style.width),'100%');
     await scoringHost.locator('.gallery-score summary').click();
@@ -265,6 +279,10 @@ export async function exerciseGalleryCatalog(context, directory) {
     assert.equal(await fo.innerText(), '标记历史 FO');
     await fo.click();
     assert.equal(await fo.innerText(), '清除历史 FO');
+    await page.waitForFunction(()=>globalThis.document.getElementById('gallery-score-test').shadowRoot
+      .querySelector('.gallery-score')?.textContent.includes('计算等级'));
+    assert.match(await scoringHost.locator('.gallery-score').innerText(),/下一档|达到最高档门槛/);
+    assert.doesNotMatch(await scoringHost.locator('.gallery-score').innerText(),/不是 EA 当前分数/);
     assert.equal(await scoringHost.locator('.gallery-player-flags [aria-label="First Owner"]').count(), 2);
     await scoringHost.locator('.gallery-first-owner-toggle').first().click();
     assert.equal(await scoringHost.locator('.gallery-first-owner-toggle').first().innerText(), '标记历史 FO');
@@ -290,9 +308,10 @@ export async function exerciseGalleryCatalog(context, directory) {
       assert.equal(await scoringHost.evaluate(el=>el.scrollWidth>el.clientWidth+1),false,`Score ${width} overflow`);
     }
     await scoringHost.getByRole('button',{name:'返回集合',exact:true}).click();
-    assert.match(await scoringHost.locator('#gallery-set-list').innerText(),/300–600 分/);
+    assert.equal(await scoringHost.locator('#gallery-set-list .gallery-set-total').innerText(), '300–600');
+    assert.equal(await scoringHost.locator('#gallery-set-list .gallery-set-bonus').innerText(), '(+0–300)');
     await page.evaluate(()=>{globalThis.galleryScope='score-next-account';for(const tick of globalThis.galleryTimers.values())tick();});
-    assert.doesNotMatch(await scoringHost.locator('#gallery-set-list').innerText(),/300–600 分/);
+    assert.doesNotMatch(await scoringHost.locator('#gallery-set-list').innerText(),/300–600/);
     assert.deepEqual(requests.filter(url=>!url.startsWith('https://www.ea.com/assets/') && !url.startsWith('https://game-assets.fut.gg/')),[]);
     console.log('Offline Gallery scoring smoke passed: interval, lineup/bonus details, filtering, rule update without EA reread, back, account isolation and narrow viewport.');
 

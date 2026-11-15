@@ -71,7 +71,7 @@ it('does not trust persisted completion when EA coverage is missing or a set is 
   f.catalog.data.categories[0].sets.splice(0, 1, { ...f.catalog.data.categories[0].sets[0], id: 32, slug: 'new' });
   const result = await f.make().sync({ source: 'futgg' });
   expect(f.reader.load.mock.calls.map(([pool]) => pool.setId)).toEqual([32]);
-  expect(result.details.map(row => row.pool.setId)).toEqual([31, 32]);
+  expect(result.details.map(row => row.pool.setId)).toEqual([32, 31]); // Preserve the public catalog's presentation order.
 });
 it('keeps failures pending across reload and never marks an interrupted sweep complete', async () => {
   const f = fixture();

@@ -221,7 +221,15 @@ export async function exerciseProductionLivePanel(context, directory) {
     // Existing cash-first preferences remain visible and unchanged until a trusted save.
     await page.evaluate(() => { globalThis.livePanelSmoke.objective = 'additional-coins'; });
     const reads = await page.evaluate(() => globalThis.livePanelSmoke.policyReads);
-    await page.evaluate(() => { globalThis.livePanelSmoke.panel.close(); globalThis.livePanelSmoke.panel.open(); });
+    await page.evaluate(async () => {
+      // open() reads immediately, and the queued details toggle reads again.
+      // Wait for the real toggle before editing so a late read cannot overwrite
+      // the cleared input. The save/value assertions below remain unchanged.
+      const details = globalThis.document.getElementById('live-smoke').shadowRoot.querySelector('details');
+      const toggled = new Promise(resolve => details.addEventListener('toggle', resolve, { once: true }));
+      globalThis.livePanelSmoke.panel.close(); globalThis.livePanelSmoke.panel.open();
+      await toggled;
+    });
     await page.waitForFunction(before => globalThis.livePanelSmoke.policyReads > before && globalThis.document.getElementById('live-smoke').dataset.busy === 'false', reads);
     assert.equal(await button('puzzle-objective').inputValue(), 'additional-coins');
     assert.match(await button('puzzle-objective-note').innerText(), /库存卡不计新增支出/);

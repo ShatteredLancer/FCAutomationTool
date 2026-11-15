@@ -1,6 +1,8 @@
 // Independent implementation of observed public Gallery scoring behavior.
-// FUT.GG supplies definitions; Fodder supplies lineup/bonus behavior. A local
-// grade and provisional Club evidence do not confirm EA reward state.
+// FUT.GG supplies definitions. Enhancer 27.0.1.8 supplies the verified single
+// group rules and fast display selection; bounded search remains for plans.
+// A local grade and provisional Club evidence do not confirm EA reward state.
+export const GALLERY_SCORE_ENGINE = 2;
 const fields = Object.freeze({ NATION: 'nationEaId', CLUB: 'clubEaId', LEAGUEID: 'leagueEaId',
   BASE_DEF_ID: 'playerEaId', LEVEL: 'overall', RARE: 'rarityEaId', HYPER_COSMETIC_TYPE: 'holographic',
   FIRST_OWNED: 'firstOwned', POSSIBLE_POSITIONS: 'positions', WEAK_FOOT: 'weakFoot', SKILL_MOVES: 'skillMoves' });
@@ -99,7 +101,7 @@ function groupsOf(rows, field) {
   }
   return [...groups.values()];
 }
-function matchTag(rows, tag, { unknown = 'low', groupMode = 'fodder' } = {}) {
+function matchTag(rows, tag, { unknown = 'low', groupMode = tag.fodder ? 'fodder' : 'enhancer' } = {}) {
   const unknownRows = rows.filter(row => attribute(row, tag.field) == null);
   if (!['same', 'different'].includes(tag.mode)) {
     const cards = rows.filter(row => matches(row, tag) ?? unknown === 'high');
@@ -109,7 +111,9 @@ function matchTag(rows, tag, { unknown = 'low', groupMode = 'fodder' } = {}) {
   // A loose high scenario for unknown grouping fields, never an invented ID.
   if (unknown === 'high' && unknownRows.length) return { count: rows.length, cards: rows, unknown: unknownRows.length };
   if (tag.mode === 'different') return { count: groups.length,
-    cards: groups.map(group => group.slice().sort(order)[0]), unknown: unknownRows.length };
+    cards: groups.map(group => groupMode === 'enhancer'
+      ? group.reduce((best, row) => row.gradingScore > best.gradingScore ? row : best)
+      : group.slice().sort(order)[0]), unknown: unknownRows.length };
   if (tag.field === 'playerEaId' && groupMode === 'fodder' && !tag.fodder) {
     const qualifying = groups.filter(group => group.length >= tag.tiers[0].at);
     if (qualifying.length) return { count: Math.max(...qualifying.map(group => group.length)), cards: qualifying.flat(), unknown: unknownRows.length };
@@ -189,13 +193,13 @@ function* chooseLineupSteps(rows, required, compiled, memo = null) {
   // even reference tie-breaking is unchanged.
   const totals = memo?.totals ?? new Map();
   const rowKeys = new Map();
-  if (memo) for (const row of rows) {
+  if (memo?.fields) for (const row of rows) {
     const signature = JSON.stringify([row.eaId, row.gradingScore, ...memo.fields.map(field => row[field] ?? null)]);
     if (!memo.signatures.has(signature)) memo.signatures.set(signature, memo.signatures.size);
     rowKeys.set(row, memo.signatures.get(signature));
   }
   const score = cards => {
-    const identity = cards.map(row => memo ? rowKeys.get(row) : row.eaId).join(',');
+    const identity = cards.map(row => memo?.fields ? rowKeys.get(row) : row.eaId).join(',');
     if (totals.has(identity)) return totals.get(identity);
     const total = memo?.fastTotals ? lineupTotal(cards,compiled) : evaluateGalleryLineup(cards, compiled).total;
     if (totals.size >= 8192) totals.clear();
@@ -222,6 +226,23 @@ function* chooseLineupSteps(rows, required, compiled, memo = null) {
   return best.cards.slice().sort(order);
 }
 
+// Enhancer 27.0.1.8 Uoe/S3: stable descending base order, then one seed
+// per tag with its matching cards first; evaluate once and keep the first
+// best seed. Display parity must not run the planner's swap optimization.
+function* chooseDisplayLineupSteps(rows, required, compiled) {
+  const ranked = rows.slice().sort((a, b) => b.gradingScore - a.gradingScore);
+  let best = null, bestTotal = -1;
+  for (const tag of [null, ...compiled.tags]) {
+    const matched = tag ? matchTag(ranked, tag, { groupMode: 'enhancer' }).cards : [];
+    const members = new Set(matched);
+    const cards = [...matched, ...ranked.filter(row => !members.has(row))].slice(0, required);
+    const total = evaluateGalleryLineup(cards, compiled, { groupMode: 'enhancer' }).total;
+    if (total > bestTotal) { best = cards; bestTotal = total; }
+    yield;
+  }
+  return best ?? [];
+}
+
 export function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = null) {
   if (!set || !progress || !Array.isArray(progress.rows) || !['futgg', 'fodder'].includes(catalog?.source)
       || set.id !== (catalog.source === 'fodder' ? progress.setId : `futgg:${progress.setId}`) || progress.season !== '27'
@@ -236,8 +257,11 @@ export function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = n
   // The reference excludes collected versions with zero gradingScore from
   // scoring lineups. Keep them in collection progress, not in grade fullness.
   const rows = collected.filter(row => row.gradingScore > 0);
-  const lineup = yield* chooseLineupSteps(rows, set.requiredCards, compiled, memo), full = lineup.length >= set.requiredCards;
-  const low = evaluateGalleryLineup(lineup, compiled), high = evaluateGalleryLineup(lineup, compiled, { unknown: 'high' });
+  const display = memo?.selectionMode === 'enhancer' && catalog.source === 'futgg';
+  const lineup = yield* (display ? chooseDisplayLineupSteps(rows, set.requiredCards, compiled)
+    : chooseLineupSteps(rows, set.requiredCards, compiled, memo)), full = lineup.length >= set.requiredCards;
+  const options = display ? { groupMode: 'enhancer' } : {};
+  const low = evaluateGalleryLineup(lineup, compiled, options), high = evaluateGalleryLineup(lineup, compiled, { ...options, unknown: 'high' });
   const comparison = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg' });
   const comparisonHigh = evaluateGalleryLineup(lineup, compiled, { groupMode: 'futgg', unknown: 'high' });
   const ruleDifference = catalog.source !== 'fodder' && (comparison.total !== low.total || comparisonHigh.total !== high.total);
@@ -247,7 +271,7 @@ export function* summarizeGalleryScoreSteps({ set, catalog, progress }, memo = n
   const next = grades.find(g => low.total < g.threshold) ?? null;
   const uncertain = collectionUnknown || low.total !== high.total || ruleDifference;
   return { status: collectionUnknown ? 'partial' : uncertain ? 'uncertain' : 'calculated', full,
-    lineup, selection: rows.length > set.requiredCards ? 'bounded-search' : 'all-collected', low, high,
+    lineup, selection: display ? 'enhancer-seeds' : rows.length > set.requiredCards ? 'bounded-search' : 'all-collected', low, high,
     grade: uncertain ? null : gradeFor(low.total), lowGrade: gradeFor(low.total), highGrade: gradeFor(high.total),
     nextGrade: next?.name ?? null, pointsToNext: next ? next.threshold - low.total : null,
     missingCards: Math.max(0, set.requiredCards - rows.length), zeroScoreCards: collected.length - rows.length, unknownFields, collectionUnknown,
