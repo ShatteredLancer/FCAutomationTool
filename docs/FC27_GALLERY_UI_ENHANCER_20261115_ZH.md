@@ -1,5 +1,19 @@
 # Gallery 大类与 Set 展示对齐 Enhancer（2026-11-15）
 
+## 追加：大类首页顺序纠正
+
+提交授权补记：用户随后明确要求提交并合并本次首页排序修正。fetch后origin/main与本地均为08c0faf；本轮在独立fix分支提交并快进整合到本地main，范围仅以下Gallery排序实现、回归、文档与生成脚本。版本保持27.0.110，保留已提交Trading及两个私人.tmp；不push/tag/Release，未安装到浏览器。下文“未提交”描述的是授权前验收状态；合并后按仓库规范复跑verify。
+
+用户对照“捕获.PNG”和“捕获1.PNG”：FCAT将Rarities放首位，Enhancer依次为Premier League、LALIGA、Bundesliga、Ligue 1、Serie A、Leagues、Rarities、ROSHN、MLS、NWSL。当前FUT.GG原目录确实以Rarities开头；上轮验证了Leagues内部12个Set的排列，却错误地把两个来源的大类顺序也视为相同，现撤回该结论。
+
+参考Enhancer27.0.1.8的M5t→Dy→o4e调用链：大类直接展示其categories接口返回的顺序，没有前端额外排序。当前截图是这10类的直接顺序证据；FCAT继续使用既有公共目录，不请求其私有接口。
+
+计划：仅在首页展示层按已确认分类slug排列这10类，未知新分类在后方保留源序；不修改原目录、revision、内部Set顺序、计分或规划输入，不清缓存/加请求。旧缓存亦立即适用。先用截图顺序建立失败控制，再检查缓存与刷新源序变化、未知分类/不同来源、点击进入与返回、桌面/390px；最后完整verify与prelaunch/browser。现基于08c0faf/27.0.110，保留已提交Trading后台执行及两个私人.tmp，不自动升版或提交本次修正。
+
+实现与专项已完成：`browse.js`增加纯展示排序函数，view仅在构建首页按钮时调用。截图顺序的浏览器控制先红复现Rarities首位，修后10类顺序、旧缓存/新源逆序、进入NWSL16个Set/返回、内部Set原序、1280/390px与零请求检查通过。原Gallery整套专项亦通过；27项相关单元测试验证未知分类源序、跨来源slug及冻结输入不被修改。证据 `artifacts/gallery-category-order-browser-red.log`、`gallery-category-order-browser-green.log`；离线首页截图仅用公开名称/数量与合成Set，不包含图标/账号进度，不冒充实机验收。
+
+最终完整检查：verify504文件/6504项、prelaunch103文件/1941项及完整离线Chrome全部通过，日志 `artifacts/gallery-category-order-verify.log`、`gallery-category-order-prelaunch.log`；无重试或放宽断言。root/dist均2932261字节，SHA256 `556c78ee61025fdc8de18e4855a1451239aa0c0973ad30d28781f8ec97696209`，FCAT27.0.110/FSU26.09.10，构建一致性与发布资产检查通过。未安装、升版提交或EA写；安装新版脚本后旧缓存即可显示修正顺序。08c0faf的Trading后台执行源码未改，私人.tmp保留。
+
 用户随后授权升版提交并合并，明确只纳入Gallery，Trading留本地。已在独立worktree准备27.0.110，以下27.0.109记录属于先前组合工作区的实现验收；正式提交范围与最终产物以[27.0.110发布说明](releases/27.0.110.md)为准。
 
 ## 已确认需求与边界

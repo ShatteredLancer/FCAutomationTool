@@ -3,6 +3,7 @@ import path from 'node:path';
 import { build } from 'esbuild';
 import { normalizeGalleryCatalog } from '../../src/gallery/catalog.js';
 import { futggGallery } from '../../tests/fixtures/fc27-gallery.js';
+import { exerciseGalleryCategoryOrder } from './gallery-category-order-smoke.mjs';
 
 // Public league presentation order; scores and collection below are synthetic.
 const leagues = [
@@ -30,6 +31,7 @@ export async function exerciseGallerySetCards(context, directory) {
   const bundle = await build({ absWorkingDir: path.resolve(import.meta.dirname, '../..'),
     entryPoints: ['src/adapters/browser/fc27-acceptance-panel.js'], bundle: true, write: false,
     format: 'iife', globalName: 'GalleryCardsSmoke', target: 'chrome120' });
+  await exerciseGalleryCategoryOrder(context, directory, bundle.outputFiles[0].text);
   try {
     // Deterministic local emblem stand-ins: mapping to actual EA IDs is tested
     // against production-entry separately. This smoke never uses the network.

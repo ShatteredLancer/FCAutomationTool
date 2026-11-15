@@ -9,7 +9,7 @@ import { planGalleryJointSteps } from '../../gallery/joint-planner.js';
 import { galleryRewardOptions } from '../../gallery/catalog-rewards.js';
 import { runGalleryPlan } from '../../gallery/cooperative-plan.js';
 import { reconcileGalleryTargets } from '../../gallery/targets.js';
-import { browseGallerySets } from '../../gallery/browse.js';
+import { browseGallerySets, orderGalleryCategories } from '../../gallery/browse.js';
 import { filterGalleryCards, paginateGalleryCards, reconcileGallerySelection, selectCheapestGalleryCards, summarizeGallerySelection } from '../../gallery/selection.js';
 import { previewGallerySelectionSteps, runGalleryGradeOverview } from '../../gallery/preview.js';
 import { benchmarkGalleryPlans, planGallerySequentialSteps } from '../../gallery/benchmark.js';
@@ -2144,7 +2144,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       ? sync ? '收集状态尚未同步' : '选择集合后读取该集合卡池和账号收集状态；未读取的集合不会触发 EA 查询。'
       : '账号收集进度尚未接入。';
     const buttons = node('gallery-categories'); buttons.replaceChildren();
-    for (const row of catalog.categories) {
+    for (const row of orderGalleryCategories(catalog.categories)) {
       const button = add(buttons, 'button');
       const top = add(button, 'span', '', 'gallery-category-top');
       const iconsBox = add(top, 'span', '', 'gallery-category-icons');

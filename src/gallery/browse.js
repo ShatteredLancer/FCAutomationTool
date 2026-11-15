@@ -1,5 +1,17 @@
 const text = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase().trim();
 
+// Enhancer 27.0.1.8 home order, confirmed by the category screenshot. Its
+// categories endpoint differs from FUT.GG (which puts Rarities first).
+// Keep this presentation-only: source snapshots, set order and plans stay intact.
+const categoryOrder = new Map(['premier-league', 'laliga', 'bundesliga', 'ligue-1', 'serie-a',
+  'leagues', 'rarities', 'roshn-saudi-league', 'mls', 'national-women-s-soccer-league']
+  .map((slug, index) => [slug, index]));
+
+export function orderGalleryCategories(categories) {
+  return categories.slice().sort((a, b) => (categoryOrder.get(a.slug) ?? categoryOrder.size)
+    - (categoryOrder.get(b.slug) ?? categoryOrder.size));
+}
+
 // Search and sorting use only the already displayed catalogue and summaries.
 // Unsynced collections remain unknown and are sorted after known progress.
 export function browseGallerySets(catalog, { categoryId = null, query = '', order = 'catalog',

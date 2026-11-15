@@ -18847,6 +18847,21 @@ dialog.fcat-purchase-dialog::backdrop{background:#0009}
 
   // src/gallery/browse.js
   var text5 = (value) => String(value ?? "").normalize("NFKC").toLocaleLowerCase().trim();
+  var categoryOrder = new Map([
+    "premier-league",
+    "laliga",
+    "bundesliga",
+    "ligue-1",
+    "serie-a",
+    "leagues",
+    "rarities",
+    "roshn-saudi-league",
+    "mls",
+    "national-women-s-soccer-league"
+  ].map((slug2, index) => [slug2, index]));
+  function orderGalleryCategories(categories) {
+    return categories.slice().sort((a, b) => (categoryOrder.get(a.slug) ?? categoryOrder.size) - (categoryOrder.get(b.slug) ?? categoryOrder.size));
+  }
   function browseGallerySets(catalog, {
     categoryId = null,
     query = "",
@@ -27102,7 +27117,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!sync || !sync.state().syncedAt) note.textContent = typeof loadSet === "function" ? sync ? "\u6536\u96C6\u72B6\u6001\u5C1A\u672A\u540C\u6B65" : "\u9009\u62E9\u96C6\u5408\u540E\u8BFB\u53D6\u8BE5\u96C6\u5408\u5361\u6C60\u548C\u8D26\u53F7\u6536\u96C6\u72B6\u6001\uFF1B\u672A\u8BFB\u53D6\u7684\u96C6\u5408\u4E0D\u4F1A\u89E6\u53D1 EA \u67E5\u8BE2\u3002" : "\u8D26\u53F7\u6536\u96C6\u8FDB\u5EA6\u5C1A\u672A\u63A5\u5165\u3002";
       const buttons = node("gallery-categories");
       buttons.replaceChildren();
-      for (const row of catalog.categories) {
+      for (const row of orderGalleryCategories(catalog.categories)) {
         const button = add3(buttons, "button");
         const top = add3(button, "span", "", "gallery-category-top");
         const iconsBox = add3(top, "span", "", "gallery-category-icons");

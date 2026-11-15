@@ -1,5 +1,9 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-15 用户授权提交并合并Gallery首页排序纠正：fetch后origin/main与本地均08c0faf，无上游新增。本轮仅纳入首页分类顺序、对应单元/离线浏览器回归、文档和已验证生成脚本；版本保持27.0.110，保留既有Trading提交，两个私人.tmp不入Git。按独立fix分支提交并快进合并本地main，不push/tag/Release；此前verify504/6504与完整离线Chrome通过，合并后按规范复跑verify，实机安装仍待用户。本段覆盖下段本轮尚未提交状态。
+
+2026-11-15 Gallery首页排序纠正本地27.0.110：用户双截图确认FUT.GG源序Rarities首位不同于Enhancer首页第七位，上轮仅核12联赛Set却外推大类源序一致的结论撤回。仅view构建首页时按已确认10类slug排列，未知类别后置且保留源序；原目录/revision/内部Set/计分与规划输入不动，旧缓存直接适用，无新请求。截图10类顺序浏览器先红后绿，缓存/新源逆序/NWSL进入返回/桌面390px及冻结输入回归通过。verify504/6504、prelaunch103/1941与完整Chrome通过；root/dist2932261字节/SHA556c78ee61025fdc8de18e4855a1451239aa0c0973ad30d28781f8ec97696209，FSU26.09.10。保留08c0faf Trading后台执行及私人.tmp，未安装/升版提交/EA写。见docs/FC27_GALLERY_UI_ENHANCER_20261115_ZH.md追加大类首页段。
+
 2026-11-15 Trading后台实机只读补记：用户进入后确认34Set/669Club缓存，最终.110源码哈希未变。首次health online、任务0；检查器误用acceptance而非production host ID已纠正，常驻条mounted/connected且无任务hidden，切SBC往返仍在，0任务保存启动/设置写/EA变更。第二次health401，停止后续请求并补检查器非online早退；不得把缓存UI正常视为认证成功。真实后台买卖/长时定时需用户重登后手动测试。见docs/FC27_TRADING_BACKGROUND_20261115_ZH.md最后段。
 
 2026-11-15 Trading后台执行本地27.0.110：用户批准切页/关闭面板不暂停，去掉交易view隐藏时pauseAll，保留原页面runtime、取消草稿确认并重开只读回显；常驻独立状态条/可信Pause all、初始化失败显示、pagehide销毁及幂等teardown。原账号/任务/限流/锁/价格/未知回执保护不变，旧投资模块离页语义不改；无新请求/GM。先红切页后任务暂停，Chrome验证延迟初始化/移除重开面板/隐藏时搜索/在途购买暂停保留回执且无后续move/390px通过。verify504/6502、prelaunch103/1941及完整Chrome、最终定向76通过；root/dist2931771字节/SHA a3d46926af9a4be4f8a16eabdaff7299f1472502ec3a14834ac1da888785efc4已专用安装回读一致。EA仍主机占用Club/Set0，等用户进入后只读核验；无真实交易或本轮升版提交，保留a094d23 Gallery与私人.tmp。见docs/FC27_TRADING_BACKGROUND_20261115_ZH.md，覆盖旧“离开交易页暂停”规定。
