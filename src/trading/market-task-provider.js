@@ -27,15 +27,15 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
   };
   const price = (task, settings, definitionId, side, quotes) => marketTaskPrice({ task, source: settings.source,
     player: task.mode === 'fixed' ? task.players.find(p => p.definitionId === definitionId) : null, quotes, definitionId, side,
-    context, now: now(), priceTiers: native.priceTiers() });
+    context, now: now(), priceTiers: native.priceTiers(), rating:cursors.get(task.id)?.catalog?.find(definitionId)?.rating });
   const priceFor = async (task, settings, definitionId, side) => {
     const player = task.mode === 'fixed' ? task.players.find(p => p.definitionId === definitionId) : null;
-    const fixed = side === 'buy' ? player?.cap != null || task.settings.buyRule === 'fixed' : task.settings.sellRule === 'fixed';
+    const fixed = task.ratingPrices || (side === 'buy' ? player?.cap != null || task.settings.buyRule === 'fixed' : task.settings.sellRule === 'fixed');
     const quotes = fixed ? null : await loadQuotes([definitionId], { source: settings.source, context }); check();
     return { ...price(task, settings, definitionId, side, quotes?.[definitionId]), quotes: quotes?.[definitionId] ?? null };
   };
   const remember = (task, settings, action) => {
-    const result = { ...action, taskId: task.id, token: id(), expiresAt: Math.min(action.expiresAt ?? Infinity,
+    const result = { ...action, ...(task.ratingPrices&&['search','buy','list'].includes(action.kind)?{rating:cursors.get(task.id)?.catalog?.find(action.definitionId)?.rating}:{}), taskId: task.id, token: id(), expiresAt: Math.min(action.expiresAt ?? Infinity,
       now() + (action.kind === 'search' ? 300000 : 30000)) };
     prepared.set(task.id, { task: structuredClone(task), settings: structuredClone(settings), action: structuredClone(result) });
     return result;
@@ -139,7 +139,7 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
         }
         const eligible = c.rows.slice(c.index).filter(row => task.settings.perVersion === null
           || held.filter(h => h.definitionId === row.definitionId && h.phase !== 'sold').length < task.settings.perVersion);
-        if (task.settings.buyRule !== 'fixed' && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 30000
+        if (!task.ratingPrices && task.settings.buyRule !== 'fixed' && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 30000
           && eligible.some(row => { try { price(task, settings, row.definitionId, 'buy', c.quotes[row.definitionId]); return false; } catch { return true; } }))) {
           c.quotes = await loadQuotes(eligible.map(row => row.definitionId), { source: settings.source, context, rows: eligible, isCurrent: c.isCurrent }); check();
           if (!c.isCurrent()) fail('USER_STOP');
@@ -235,6 +235,8 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
     inspectHolding: async holding => { check(); const result = await native.inspectOwned(holding); check(); return result; },
     readHoldings: async holdings => { check(); const result = await native.readSales(holdings); check(); return result; },
     verifySession: () => { check(); return native.verifySession(); },
+    sessionHealth: () => native.sessionHealth?.() ?? null,
+    ...(typeof native.maintainSession === 'function' ? { maintainSession: args => { check(); return native.maintainSession(args); } } : {}),
   };
   return Object.freeze(api);
 }

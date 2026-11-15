@@ -53,6 +53,7 @@ import { createMarketCoordinator } from '../adapters/browser/fc27-market-coordin
 import { createFc27MarketTaskExecution } from '../adapters/browser/fc27-market-task-execution.js';
 import { marketTaskEvidence } from '../trading/market-coordination.js';
 import { readTradingTaskInventory, readTradingTaskCatalog } from '../adapters/ea/fc27-trading-task-catalog.js';
+import { createFc27MarketPlayerPicker } from '../adapters/ea/fc27-market-player-picker.js';
 import { createMarketTaskCatalog } from '../trading/market-task-catalog.js';
 import { createFc27TradingExecution } from '../adapters/browser/fc27-trading-execution.js';
 import { createFc27TradingIntel } from '../adapters/browser/fc27-trading-intel.js';
@@ -212,13 +213,14 @@ const tradingDesk=createFc27TradingDesk({prices:publicPrices,get:GM_getValue,set
   intel:createFc27TradingIntel({gmRequest:GM_xmlhttpRequest,get:GM_getValue,set:GM_setValue}),
   readCandidates:()=>readFc27TradingCandidates(unsafeWindow)});
 const marketCoordinator=createMarketCoordinator({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks});
+const marketPlayerPicker=createFc27MarketPlayerPicker({root:unsafeWindow,context:()=>publicPrices.context()});
 const marketTaskCatalog=createMarketTaskCatalog({context:()=>publicPrices.context(),
-  readRows:async options=>[...await readTradingTaskCatalog(unsafeWindow,options),...publicPrices.knownTaskPlayers()]});
+  readRows:async options=>[...await readTradingTaskCatalog(unsafeWindow,options),...publicPrices.knownTaskPlayers(),...marketPlayerPicker.known()]});
 const tradingTasks={service:createTradingTaskStore({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
     readEvidence:async taskId=>marketTaskEvidence((await marketCoordinator.inspect()).ledger,taskId)}),
   readCoordination:()=>marketCoordinator.inspect(),
   readCatalog:async ids=>ids?marketTaskCatalog.lookup(ids):(await marketTaskCatalog.read()).rows,
-  readInventory:()=>readTradingTaskInventory(unsafeWindow)};
+  readInventory:()=>readTradingTaskInventory(unsafeWindow),playerPicker:marketPlayerPicker};
 const marketTraffic=createFc27MarketTraffic({context:()=>publicPrices.context(),get:GM_getValue,set:GM_setValue,locks:unsafeWindow.navigator.locks,
   readSettings:async()=>(await tradingTasks.service.read()).store.settings});
 registerFc27MarketTraffic(unsafeWindow,marketTraffic);

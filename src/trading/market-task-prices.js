@@ -1,5 +1,6 @@
 import { purchasePriceCap, validPublicPrice } from '../gallery/public-price-policy.js';
 import { roundGalleryListingPrice } from '../gallery/listing-candidates.js';
+import { marketRatingRow, completeMarketRatingRow } from './market-rating-prices.js';
 
 const fail = reason => { throw Error(`MARKET_${reason}`); };
 
@@ -26,13 +27,15 @@ export function marketTaskReference({ quotes, source, definitionId, context, now
 // Fixed rules do not require a public quote. Explicit invalid fixed EA prices
 // fail rather than silently changing the price the user saved.
 export function marketTaskPrice({ side, task, player = null, quotes, source, definitionId,
-  context, now, priceTiers, limits = null }) {
+  context, now, priceTiers, limits = null, rating = null }) {
   if (!['buy', 'sell'].includes(side)) fail('PRICE_INVALID');
   const buy = side === 'buy', settings = task.settings;
+  const ratingRow=marketRatingRow(task,rating);
+  if(task.ratingPrices&&!completeMarketRatingRow(ratingRow))fail('RATING_PRICE_UNAVAILABLE');
   const override = buy && player?.cap != null ? player.cap : null;
-  const fixed = override !== null || (buy ? settings.buyRule : settings.sellRule) === 'fixed';
+  const fixed = Boolean(ratingRow) || override !== null || (buy ? settings.buyRule : settings.sellRule) === 'fixed';
   const reference = fixed ? null : marketTaskReference({ quotes, source, definitionId, context, now });
-  const value = override ?? (buy ? settings.buyValue : settings.sellValue);
+  const value = ratingRow?.[buy?'buy':'sell'] ?? override ?? (buy ? settings.buyValue : settings.sellValue);
   const raw = fixed ? value : reference.price * value / 100;
   if (!Number.isFinite(raw) || raw < 150) fail('PRICE_INVALID');
   let price;

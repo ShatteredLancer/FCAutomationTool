@@ -42,6 +42,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       const state = { released: false, pendingBuy: false, data, calls, coordinator, service, queues };
       globalThis.marketSchedulerUI = state;
       const provider = {
+        maintainSession: async ({ beforeDispatch }) => { beforeDispatch(); state.healthChecks=(state.healthChecks??0)+1; return { status: 'online' }; },
         prepare: async ({ task }) => state.released ? { ...(queues.get(task.id)[0] ?? { kind: 'done' }), taskId: task.id, expiresAt: Date.now() + 60000 }
           : { kind: 'wait', until: Date.now() + 500 },
         preflight: async () => ({ ready: true, balance: 10000, freeSlots: 10 }),
@@ -69,16 +70,20 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     assert.match(await view.locator('#market-coordination-status').innerText(), /搜索 1h 0/);
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), 0);
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.factoryCalls ?? 0), 0);
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.healthChecks ?? 0), 0);
     const start = async taskId => {
       await view.locator(`[data-action=start][data-id="${taskId}"]`).click();
       assert.match(await view.locator('#confirmBody').innerText(), /按已保存/); await view.locator('#confirmYes').click();
     };
     await start('task-1'); await view.locator('[data-action=pause][data-id="task-1"]').waitFor();
     await start('task-2'); await view.locator('[data-action=pause][data-id="task-2"]').waitFor();
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.healthChecks), 1);
+    assert.match(await view.locator('#market-session-status').innerText(), /Session maintenance active.*Last online/);
     await view.locator('[data-action=pause][data-id="task-1"]').click();
     await page.waitForFunction(() => globalThis.marketSchedulerUI.runtime.inspect().tasks.find(t => t.id === 'task-1')?.state === 'paused');
     await page.evaluate(() => { globalThis.marketSchedulerUI.released = true; });
     await page.waitForFunction(() => !globalThis.marketSchedulerUI.runtime.inspect().busy);
+    assert.match(await view.locator('#market-session-status').innerText(), /Session maintenance stopped/);
     assert.deepEqual(await page.evaluate(() => globalThis.marketSchedulerUI.calls), [{ taskId: 'task-2', kind: 'search' }]);
     await start('task-1'); await page.waitForFunction(() => globalThis.marketSchedulerUI.pendingBuy);
     await view.locator('[data-action=stop][data-id="task-1"]').click();

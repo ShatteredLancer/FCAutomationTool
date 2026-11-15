@@ -1,4 +1,5 @@
 import { advanceMarketSchedule, marketScheduleGate, marketScheduleWake } from './market-task-schedule.js';
+import { marketRatingRow, completeMarketRatingRow } from './market-rating-prices.js';
 import { readTradingTasks } from './task-model.js';
 import { reserveMarketClock, closeMarketClock, marketElapsed } from './market-task-clock.js';
 import { marketTaskFailureReason } from './market-task-messages.js';
@@ -34,8 +35,11 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   let tasks = new Map(), phase = 'idle', currentTask = null, lastReason = null, errorCounts = new Map();
   const listeners = new Set();
   let traffic=null;
+  // One maintenance check for the approved account owner, never one per task.
+  // Successful native reads postpone it; this is not a promise of EA renewal.
+  let sessionHealth = { state: 'idle', lastOnlineAt: null };
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
-    reason: lastReason, traffic, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
+    reason: lastReason, traffic, sessionHealth: { ...sessionHealth }, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
     tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
       startedAt: row.startedAt, elapsedMs: elapsed(row), candidateScope: provider?.describe?.(row.id) ?? null, schedule: row.schedule ?? null })) });
   const publish = () => { for (const listener of [onStatus, ...listeners]) { try { listener(inspect()); } catch { /* Presentation is not authorization. */ } } };
@@ -200,6 +204,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       || taskIds.some(taskId => !store.tasks.some(t => t.id === taskId && supportedModes.includes(t.mode) && ['ready', 'paused'].includes(t.state) && !t.stopRequested && !t.activity.unresolved))) throw Error('MARKET_TASK_SELECTION_INVALID');
     snapshot = { context: structuredClone(requested.context), store }; runContext = snapshot.context; current();
     wallSample=monoSample=null;busy = true; executing = true; lastReason = null; errorCounts = new Map(); evidence = []; policyRead = null;
+    sessionHealth = { state: 'idle', lastOnlineAt: null };
     const startedAt = now();
     tasks = new Map(taskIds.map(taskId => [taskId, { id: taskId, state: 'queued', reason: null, nextAt: 0, startedAt }])); publish();
     try {
@@ -232,6 +237,44 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             const duration = taskConfig(row.id).settings.runMinutes;
             row.elapsedMs = elapsed(row);
             if (duration !== null && row.elapsedMs >= duration * 60000 && actionable(row)) stateOf(row.id, 'stopped', 'MARKET_TIME_LIMIT');
+          }
+          if (provider.maintainSession && [...tasks.values()].some(actionable)) {
+            const observed = provider.sessionHealth?.()?.lastOnlineAt;
+            if (Number.isFinite(observed) && observed <= now() && (sessionHealth.lastOnlineAt === null || observed > sessionHealth.lastOnlineAt))
+              sessionHealth = { state: 'online', lastOnlineAt: observed };
+            if (sessionHealth.lastOnlineAt === null || now() < sessionHealth.lastOnlineAt || now() - sessionHealth.lastOnlineAt >= 180000) {
+              const ticket = controlGeneration, selected = [...tasks.values()].find(actionable).id;
+              const check = () => {
+                current();
+                if (disposed || ticket !== controlGeneration || !allowed(selected)) throw Error('MARKET_USER_STOP');
+              };
+              const maintained = await session.control(async turn => {
+                if (turn.inspect().stopped || turn.inspect().intents.some(i => i.phase === 'pending')) return { status: 'busy' };
+                try {
+                  await bound(selected, async () => {
+                    check();
+                    const shared = await provider.traffic?.(); check();
+                    if (shared?.ledger.stopped) throw Error('MARKET_TRAFFIC_STOPPED');
+                    phase = 'session-check'; sessionHealth.state = 'checking'; publish();
+                    const result = await provider.maintainSession({ beforeDispatch: check });
+                    check();
+                    if (result?.status !== 'online') throw Error('MARKET_SESSION_UNVERIFIED');
+                    sessionHealth = { state: 'online', lastOnlineAt: now() };
+                    diagnostic(turn.inspect()); publish();
+                  });
+                } catch (error) {
+                  if (ticket !== controlGeneration || !allowed(selected)) return;
+                  sessionHealth.state = 'failed';
+                  if (!await applyError(turn, error)) {
+                    lastReason = safeReason(error);
+                    for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, 'paused', lastReason);
+                    diagnostic(turn.inspect(), lastReason, codeOf(error));
+                  }
+                }
+              });
+              if (maintained?.status === 'busy') { await delay(1000); continue; }
+              if (![...tasks.values()].some(actionable)) break;
+            }
           }
           const ready = [...tasks.values()].filter(row => actionable(row) && row.nextAt <= now()).map(row => row.id);
           if (!ready.length) {
@@ -315,11 +358,15 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   const row = fresh.mode === 'fixed' ? fresh.players.find(p => p.definitionId === command.definitionId) : null;
                   if (fresh.mode === 'sell' || fresh.mode === 'fixed' && !row
                     || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap
-                    || row?.cap == null && fresh.settings.buyRule === 'fixed' && command.coins > fresh.settings.buyValue
+                    || !fresh.ratingPrices && row?.cap == null && fresh.settings.buyRule === 'fixed' && command.coins > fresh.settings.buyValue
                     || row?.cap != null && command.coins > row.cap) throw Error('MARKET_BUY_RULE_CHANGED');
                 }
                 if (command?.kind === 'list' && !(action.previousTradeId && fresh.settings.relist === 'original')
-                  && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
+                  && !fresh.ratingPrices && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
+                if(fresh.ratingPrices&&['search','buy','list'].includes(action.kind)&&!(action.previousTradeId&&fresh.settings.relist==='original')){
+                  const prices=marketRatingRow(fresh,action.rating);
+                  if(!completeMarketRatingRow(prices)||action.kind==='search'&&action.maxBuy>prices.buy||action.kind==='buy'&&command.coins>prices.buy||action.kind==='list'&&command.coins!==prices.sell)throw Error('MARKET_RATING_PRICE_UNAVAILABLE');
+                }
                 phase = action.kind; publish();
                 if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
                 else await turn.checkpoint(state => reserveMarketWrite(state, command, {
@@ -393,6 +440,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       reportFailure(lastReason);
       for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, 'paused', lastReason);
     } finally {
+      if (sessionHealth.state !== 'failed') sessionHealth.state = 'idle';
       busy = false; executing = false; phase = 'idle'; currentTask = null; wake?.abort(); publish();
     }
     return inspect();

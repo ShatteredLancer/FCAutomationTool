@@ -179,7 +179,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
   assertRuntime();
   let busy = false; let stopped = false; let requests = 0; let lastRequestAt = null;
 
-  async function request(kind, query, project) {
+  async function request(kind, query, project, beforeDispatch = () => {}) {
     if (busy || stopped || requests >= maxRequests) throw error('READ_BLOCKED');
     busy = true;
     let failureDetails = null;
@@ -193,14 +193,14 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
       for (const [key, path] of [['send', 'UTHttpRequest.prototype.send'], ['setPath', 'UTHttpRequest.prototype.setPath'],
         ['abort', 'EAHttpRequest.prototype.abort']]) if (method(req, key) !== reviewed.get(path)) throw error('RUNTIME_CHANGED');
       req.doRetry = false; req.doReauth = false; req.timeout = 15000; req.cache = false; req.requestType = 'GET';
-      const endpoint = `/ut/game/fc27/${kind === 'catalog' ? 'defid' : 'transfermarket'}`;
+      const endpoint = `/ut/game/fc27/${kind === 'session' ? 'user/credits' : kind === 'catalog' ? 'defid' : 'transfermarket'}`;
       req.setPath(endpoint);
       const url = new URL(ownData(req, 'url'));
       if (url.protocol !== 'https:' || !/(^|\.)ea\.com$/i.test(url.hostname)
           || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) throw error('ENDPOINT_UNVERIFIED');
-      req.urlVariables = `?${new URLSearchParams(query).toString()}`;
+      req.urlVariables = kind === 'session' ? '' : `?${new URLSearchParams(query).toString()}`;
       // Preserve EA's native request identification; never inspect or export it.
-      if (kind === 'quotes') {
+      if (kind === 'quotes' || kind === 'session') {
         failurePhase = 'identification-request';
         reviewed.get('Identification.prototype.handleRequest').call(identifier, req);
       }
@@ -219,7 +219,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
             if (done) return;
             if (sender !== req) { finish(error('RESPONSE_OWNER_MISMATCH')); return; }
             try {
-              if (kind === 'quotes') {
+              if (kind === 'quotes' || kind === 'session') {
                 failurePhase = 'identification-response';
                 reviewed.get('Identification.prototype.handleResponse').call(identifier, req);
               }
@@ -227,7 +227,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
               finish(null, value);
             } catch { finish(error('RESPONSE_UNVERIFIED')); }
           });
-          assertRuntime();mark();lastRequestAt = Date.now(); requests++;req.send();
+          assertRuntime();beforeDispatch();mark();lastRequestAt = Date.now(); requests++;req.send();
         } catch { finish(error('REQUEST_FAILED')); }
       });
       const dto=await (kind==='quotes'?runFc27MarketRequest(root,'search',assertRuntime,dispatch,{exactDispatch:true}):dispatch());
@@ -282,6 +282,33 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
   }
   return Object.freeze({
     getRequestCount: () => requests,
+    // Reviewed UTUserDAO.getCurrencies uses this authenticated GET. No balance,
+    // account data, tokens, repositories or market-search counters are exported.
+    readSessionHealth: async ({ beforeDispatch } = {}) => {
+      if (typeof beforeDispatch !== 'function') throw error('QUERY_INVALID');
+      return request('session', {}, body => {
+        const currencies = ownData(body, 'currencies');
+        if (!Array.isArray(currencies) || !currencies.length || currencies.length > 20
+          || !currencies.every(row => typeof ownData(row, 'name') === 'string'
+            && Number.isSafeInteger(ownData(row, 'funds')) && ownData(row, 'funds') >= 0)) throw error('RESPONSE_UNVERIFIED');
+        return { status: 'online', observedAt: Date.now() };
+      }, beforeDispatch);
+    },
+    // Native concept picker: setPlayerData sets defId=[base player id].
+    // Separate from Puzzle's quality queries; never broaden their contract.
+    readPlayerVersions: async ({playerId,start=0,count=20}={}) => {
+      if(quotesOnly)throw error('CATALOG_DISABLED');
+      const mask=at(root,'ItemIdMask.DATABASE');
+      if(mask!==0xffffff||!valid(playerId,1,mask)||!valid(start,0,80)||start%20!==0||count!==20)throw error('QUERY_INVALID');
+      return request('catalog',{type:'player',sort:'asc',defId:[playerId],start,count},body=>{
+        const raw=ownData(body,'itemData');
+        if(!Array.isArray(raw)||raw.length>count)throw error('PAYLOAD_UNVERIFIED');
+        const entries=raw.map(materialize);
+        if(entries.some(p=>!valid(p.definitionId,1,0x7fffffff)||(p.definitionId&mask)!==playerId))throw error('DEFINITION_MISMATCH');
+        if(new Set(entries.map(p=>p.definitionId)).size!==entries.length)throw error('DUPLICATE_DEFINITION');
+        return {entries,pageEndObserved:raw.length<count};
+      });
+    },
     readCatalogPage: async (query = {}) => {
       if (quotesOnly) throw error('CATALOG_DISABLED');
       if (!query || Object.keys(query).some(k => !['start', 'count', 'level', 'nation', 'league', 'team'].includes(k))

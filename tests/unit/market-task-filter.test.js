@@ -23,6 +23,14 @@ async function fixture() {
 }
 
 describe('bounded filter execution on frozen public definitions', () => {
+  it('skips incomplete rating rows and sells held cards with the same rating rule after restart without quotes',async()=>{
+    const f=await fixture();f.task.ratingPrices={83:{buy:null,sell:1000},84:{buy:1100,sell:1400}};
+    f.replace([{definitionId:1,playerId:1,rating:83,rarity:1},{definitionId:2,playerId:2,rating:84,rarity:1}]);f.task.settings.ratingMin=83;f.task.settings.ratingMax=84;await f.begin();
+    expect(await f.prepare()).toMatchObject({kind:'search',definitionId:2,maxBuy:1100,rating:84});
+    claimMarketHolding(f.ledger,{taskId:'t',itemId:'held',definitionId:2,cost:600});f.ledger.holdings[0].phase='transfer';await f.begin();
+    const list=await f.prepare();expect(list).toMatchObject({kind:'list',coins:1400,rating:84});
+    await f.provider.preflight({task:f.task,settings:f.settings,action:list,ledger:f.ledger});expect(f.loadQuotes).not.toHaveBeenCalled();
+  });
   it('quotes only one 20-card page and continues the frozen directory without repeating prior searches', async () => {
     const f = await fixture();
     for (let i = 1; i <= 21; i++) {

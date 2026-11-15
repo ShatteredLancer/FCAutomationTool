@@ -52,6 +52,57 @@ async function fixture(options = {}) {
 const search = { kind: 'search' };
 const buy = (itemId = '100') => ({ kind: 'buy', definitionId: 1001, itemId, tradeId: 'offer-' + itemId, coins: 800 });
 
+describe('shared session maintenance during approved scheduled waiting', () => {
+  async function waiting() {
+    const f = await fixture(); let snapshot = f.snapshot;
+    for (const id of f.ids) snapshot = await f.taskStore.saveTask({ ...snapshot, id, input: {
+      ...f.input('Future'), schedule: { repeat: 'once', zone: 'UTC', start: '2026-11-16T08:00', end: null, sell: '2026-11-16T14:00' }
+    } });
+    f.provider.maintainSession = vi.fn(async ({ beforeDispatch }) => { beforeDispatch(); return { status: 'online' }; });
+    return { ...f, run: () => f.scheduler.run({ approved: true, snapshot, taskIds: f.ids }) };
+  }
+  it('checks once per account every three minutes while two future tasks wait, with zero trading', async () => {
+    const f = await waiting(), start = f.now();
+    f.hooks.wait = () => { if (f.now() - start >= 361000) f.scheduler.pauseAll(); };
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(3);
+    expect(f.provider.prepare).not.toHaveBeenCalled(); expect(f.provider.send).not.toHaveBeenCalled();
+    expect(f.scheduler.inspect().sessionHealth).toEqual({ state: 'idle', lastOnlineAt: start + 360000 });
+    expect((await f.coordinator.inspect()).ledger.intents).toHaveLength(0);
+    expect(f.data.get('old-journal')).toEqual({ unknown: true });
+  });
+  it('uses recent verified activity and never issues catch-up bursts after a long suspension', async () => {
+    const f = await waiting(), start = f.now();
+    f.provider.sessionHealth = () => ({ lastOnlineAt: start });
+    let waits = 0;
+    f.hooks.wait = () => { if (++waits === 1) f.advance(3600000); else f.scheduler.pauseAll(); };
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
+  });
+  it.each([401, 429, 500])('pauses on %s without retries or altering old journals', async code => {
+    const f = await waiting(); f.provider.maintainSession.mockRejectedValue(Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code }));
+    f.provider.stopTraffic = vi.fn();
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
+    expect(f.scheduler.inspect().tasks.every(t => t.state === 'paused')).toBe(true);
+    expect(f.scheduler.inspect().sessionHealth.state).toBe('failed');
+    expect((await f.coordinator.inspect()).ledger.stopped).toBe(code === 401 ? 'authentication' : code === 429 ? 'throttle' : null);
+    expect(f.provider.prepare).not.toHaveBeenCalled(); expect(f.data.get('old-journal')).toEqual({ unknown: true });
+  });
+  it('cancels before dispatch and does not undo a user stop after an awaited check', async () => {
+    const f = await waiting(), sent = vi.fn();
+    f.provider.maintainSession.mockImplementation(async ({ beforeDispatch }) => { await Promise.resolve(); f.scheduler.pauseAll(); beforeDispatch(); sent(); });
+    await f.run(); expect(sent).not.toHaveBeenCalled(); expect(f.provider.send).not.toHaveBeenCalled();
+    expect(f.scheduler.inspect().tasks.every(t => t.reason === 'MARKET_USER_STOP')).toBe(true);
+  });
+  it('does not probe when settings were edited or shared traffic already stopped', async () => {
+    for (const shared of [false, true]) {
+      const f = await waiting();
+      if (shared) f.provider.traffic = async () => ({ ledger: { stopped: 'authentication' } });
+      else await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[0], input: f.input('Changed') });
+      if (!shared) await f.taskStore.saveTask({ ...await f.taskStore.read(), id: f.ids[1], input: f.input('Changed') });
+      await f.run(); expect(f.provider.maintainSession).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('approved task scheduler with simulated providers', () => {
   it('persists elapsed time across a normal pause and a new scheduler; the original duration still applies', async () => {
     const f = await fixture(); const input = f.input('Limited'); input.settings.runMinutes = 1;

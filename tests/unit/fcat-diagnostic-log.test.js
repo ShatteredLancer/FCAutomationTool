@@ -22,6 +22,15 @@ function harness(options = {}) {
   return { log, store, get, set, advance: value => { time += value; } };
 }
 
+it('retains session-check failure codes without balance, authentication or task payloads', async () => {
+  const t = harness();
+  await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'session-check', status: 'blocked',
+    reason: 'MARKET_SESSION_UNVERIFIED', errorCode: 500, currencies: [{ funds: 12345 }], token: 'private-token', taskId: 'private-task' });
+  const result = await t.log.exportPayload();
+  expect(result.entries[0]).toMatchObject({ phase: 'session-check', reason: 'MARKET_SESSION_UNVERIFIED', errorCode: 500 });
+  expect(JSON.stringify(result)).not.toMatch(/12345|private|currencies|token|taskId/);
+});
+
 it('retains only known scheduler reasons and numeric occupancy, never its private task or receipt objects', async () => {
   const t = harness();
   await t.log.record({ area: 'trading', event: 'task-scheduler', phase: 'buy', status: 'blocked',

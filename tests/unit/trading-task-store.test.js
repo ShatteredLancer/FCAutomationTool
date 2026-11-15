@@ -8,6 +8,15 @@ function fixture(){let account={...context},serial=0;const data=new Map([['legac
  const contextFn=()=>({...account});const store=createTradingTaskStore({context:contextFn,get:async(k,f)=>structuredClone(data.get(k)??f),set,locks:{request:async(_k,_o,fn)=>fn()},id:()=>`task-${++serial}`,now:()=>100});
  return {store,data,set,switchAccount:v=>{account={...context,...v}}};}
 describe('market task configuration and isolated persistence',()=>{
+ it('roundtrips and copies per-rating rules, and explicitly removes them when switched off',async()=>{
+  const f=fixture(),ratingPrices={84:{buy:1100,sell:1400}};
+  let s=await f.store.saveTask({...await f.store.read(),input:input({ratingPrices})});
+  s=await f.store.action({...s,id:'task-1',action:'copy'});
+  expect(s.store.tasks.map(t=>t.ratingPrices)).toEqual([ratingPrices,ratingPrices]);
+  expect((await f.store.read()).store.tasks[1].activity).toEqual({receipts:[],unresolved:false});
+  s=await f.store.saveTask({...s,id:'task-1',input:input()});
+  expect(s.store.tasks[0]).not.toHaveProperty('ratingPrices');expect(s.store.tasks[1].ratingPrices).toEqual(ratingPrices);
+ });
  it('has independent prices and nullable limits, without a minimum profit rule',()=>{const settings=defaultTradingTaskSettings();expect(settings).not.toHaveProperty('minProfit');for(const key of ['perVersion','taskCap','spendCap','runMinutes','hardCap','relistTimes'])expect(settings[key]).toBeNull();
   expect(normalizeTradingTaskInput(input({settings:{...settings,buyRule:'fixed',buyValue:800,sellRule:'fixed',sellValue:700}})).settings).toMatchObject({buyValue:800,sellValue:700});});
  it('distinguishes zero relists from unlimited and rejects malformed configurations',()=>{expect(normalizeTradingTaskInput(input({settings:{...defaultTradingTaskSettings(),relistTimes:0}})).settings.relistTimes).toBe(0);

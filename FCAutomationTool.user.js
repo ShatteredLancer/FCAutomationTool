@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.108
+// @version      27.0.109
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.108", at: Date.now(), status: 'started',
+    state = { version: "27.0.109", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -552,6 +552,27 @@
     };
   }
 
+  // src/trading/market-rating-prices.js
+  var marketRatingStep = (value) => value < 1e3 ? 50 : value < 1e4 ? 100 : value < 5e4 ? 250 : value < 1e5 ? 500 : 1e3;
+  var validMarketRatingPrice = (value) => Number.isSafeInteger(value) && value >= 150 && value <= 15e6 && value % marketRatingStep(value) === 0;
+  var marketRatingRow = (task, rating) => task.mode === "filter" && task.ratingPrices ? task.ratingPrices[String(rating)] ?? null : null;
+  var completeMarketRatingRow = (row) => validMarketRatingPrice(row?.buy) && validMarketRatingPrice(row?.sell);
+  function normalizeMarketRatingPrices(input, mode, settings) {
+    if (input == null) return null;
+    const fail39 = () => {
+      throw Error("TASKS_RATING_PRICES_INVALID");
+    };
+    if (mode !== "filter" || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length > 99) fail39();
+    const result = {};
+    for (const [key2, row] of Object.entries(input)) {
+      if (!/^[1-9]\d?$/.test(key2) || !row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).length !== 2 || !Object.hasOwn(row, "buy") || !Object.hasOwn(row, "sell")) fail39();
+      for (const side of ["buy", "sell"]) if (row[side] !== null && !validMarketRatingPrice(row[side])) fail39();
+      result[key2] = { buy: row.buy, sell: row.sell };
+    }
+    if (!Object.entries(result).some(([r, row]) => Number(r) >= settings.ratingMin && Number(r) <= settings.ratingMax && completeMarketRatingRow(row))) fail39();
+    return result;
+  }
+
   // src/trading/task-model.js
   var own2 = (value, keys2) => {
     if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((k) => !keys2.includes(k))) throw Error("TASKS_INVALID");
@@ -612,7 +633,7 @@
     return s;
   }
   function normalizeTradingTaskInput(value) {
-    own2(value, ["name", "mode", "settings", "players", "owned", "excluded", "schedule"]);
+    own2(value, ["name", "mode", "settings", "players", "owned", "excluded", "schedule", "ratingPrices"]);
     const name2 = text(value.name, 60), mode = one(value.mode, ["fixed", "filter", "sell"]);
     own2(value.settings, Object.keys(defaultTradingTaskSettings()));
     const s = { ...defaultTradingTaskSettings(), ...value.settings };
@@ -647,8 +668,8 @@
     });
     for (const [rows, key2] of [[players, (p) => p.definitionId], [owned2, (p) => p.itemId], [excluded, (p) => `${p.type}:${p.id}`]]) if (new Set(rows.map(key2)).size !== rows.length) throw Error("TASKS_INVALID");
     if (mode === "fixed" && !players.length || mode === "sell" && !owned2.length) throw Error("TASKS_SELECTION_EMPTY");
-    const schedule = normalizeMarketSchedule(value.schedule, mode);
-    return { name: name2, mode, settings: s, players, owned: owned2, excluded, ...schedule ? { schedule } : {} };
+    const schedule = normalizeMarketSchedule(value.schedule, mode), ratingPrices = normalizeMarketRatingPrices(value.ratingPrices, mode, s);
+    return { name: name2, mode, settings: s, players, owned: owned2, excluded, ...schedule ? { schedule } : {}, ...ratingPrices ? { ratingPrices } : {} };
   }
   var emptyTaskActivity = () => ({ receipts: [], unresolved: false });
   var emptyTradingTasks = (context) => ({ schema: 1, context: tradingTaskContext(context), revision: 0, settings: defaultTradingPublicSettings(), tasks: [] });
@@ -658,8 +679,8 @@
     own2(input, ["schema", "context", "revision", "settings", "tasks"]);
     if (input.schema !== 1 || JSON.stringify(tradingTaskContext(input.context)) !== JSON.stringify(tradingTaskContext(context))) throw Error("TASKS_CONTEXT_INVALID");
     const store = { schema: 1, context: tradingTaskContext(context), revision: integer2(input.revision), settings: tradingPublicSettings(input.settings), tasks: list(input.tasks, 100).map((t) => {
-      own2(t, ["id", "revision", "name", "mode", "settings", "players", "owned", "excluded", "state", "createdAt", "updatedAt", "activity", "stopRequested", "schedule"]);
-      const { name: name2, mode, settings, players, owned: owned2, excluded, schedule } = t;
+      own2(t, ["id", "revision", "name", "mode", "settings", "players", "owned", "excluded", "state", "createdAt", "updatedAt", "activity", "stopRequested", "schedule", "ratingPrices"]);
+      const { name: name2, mode, settings, players, owned: owned2, excluded, schedule, ratingPrices } = t;
       if (t.stopRequested !== void 0 && t.stopRequested !== true) throw Error("TASKS_INVALID");
       own2(t.activity, ["receipts", "unresolved"]);
       if (typeof t.activity.unresolved !== "boolean") throw Error("TASKS_INVALID");
@@ -667,7 +688,7 @@
         own2(r, ["kind", "itemId", "definitionId", "coins", "at"]);
         return { kind: one(r.kind, ["bought", "moved", "listed", "sold"]), itemId: text(r.itemId, 30), definitionId: integer2(r.definitionId, 1), coins: optional(r.coins), at: integer2(r.at) };
       });
-      return { id: text(t.id, 100), revision: integer2(t.revision ?? 0), ...normalizeTradingTaskInput({ name: name2, mode, settings, players, owned: owned2, excluded, schedule }), state: one(t.state, ["ready", "queued", "running", "paused", "stopped", "archived", "review"]), createdAt: integer2(t.createdAt), updatedAt: integer2(t.updatedAt), activity: { receipts, unresolved: t.activity.unresolved }, ...t.stopRequested ? { stopRequested: true } : {} };
+      return { id: text(t.id, 100), revision: integer2(t.revision ?? 0), ...normalizeTradingTaskInput({ name: name2, mode, settings, players, owned: owned2, excluded, schedule, ratingPrices }), state: one(t.state, ["ready", "queued", "running", "paused", "stopped", "archived", "review"]), createdAt: integer2(t.createdAt), updatedAt: integer2(t.updatedAt), activity: { receipts, unresolved: t.activity.unresolved }, ...t.stopRequested ? { stopRequested: true } : {} };
     }) };
     if (new Set(store.tasks.map((t) => t.id)).size !== store.tasks.length) throw Error("TASKS_INVALID");
     return store;
@@ -10289,7 +10310,8 @@
     let stopped = false;
     let requests = 0;
     let lastRequestAt = null;
-    async function request(kind, query, project3) {
+    async function request(kind, query, project3, beforeDispatch = () => {
+    }) {
       if (busy || stopped || requests >= maxRequests) throw error("READ_BLOCKED");
       busy = true;
       let failureDetails2 = null;
@@ -10310,12 +10332,12 @@
         req.timeout = 15e3;
         req.cache = false;
         req.requestType = "GET";
-        const endpoint = `/ut/game/fc27/${kind === "catalog" ? "defid" : "transfermarket"}`;
+        const endpoint = `/ut/game/fc27/${kind === "session" ? "user/credits" : kind === "catalog" ? "defid" : "transfermarket"}`;
         req.setPath(endpoint);
         const url = new URL(ownData(req, "url"));
         if (url.protocol !== "https:" || !/(^|\.)ea\.com$/i.test(url.hostname) || url.pathname !== endpoint || url.search || url.hash || url.username || url.password) throw error("ENDPOINT_UNVERIFIED");
-        req.urlVariables = `?${new URLSearchParams(query).toString()}`;
-        if (kind === "quotes") {
+        req.urlVariables = kind === "session" ? "" : `?${new URLSearchParams(query).toString()}`;
+        if (kind === "quotes" || kind === "session") {
           failurePhase = "identification-request";
           reviewed.get("Identification.prototype.handleRequest").call(identifier, req);
         }
@@ -10349,7 +10371,7 @@
                 return;
               }
               try {
-                if (kind === "quotes") {
+                if (kind === "quotes" || kind === "session") {
                   failurePhase = "identification-response";
                   reviewed.get("Identification.prototype.handleResponse").call(identifier, req);
                 }
@@ -10360,6 +10382,7 @@
               }
             });
             assertRuntime();
+            beforeDispatch();
             mark();
             lastRequestAt = Date.now();
             requests++;
@@ -10415,6 +10438,31 @@
     }
     return Object.freeze({
       getRequestCount: () => requests,
+      // Reviewed UTUserDAO.getCurrencies uses this authenticated GET. No balance,
+      // account data, tokens, repositories or market-search counters are exported.
+      readSessionHealth: async ({ beforeDispatch } = {}) => {
+        if (typeof beforeDispatch !== "function") throw error("QUERY_INVALID");
+        return request("session", {}, (body) => {
+          const currencies = ownData(body, "currencies");
+          if (!Array.isArray(currencies) || !currencies.length || currencies.length > 20 || !currencies.every((row) => typeof ownData(row, "name") === "string" && Number.isSafeInteger(ownData(row, "funds")) && ownData(row, "funds") >= 0)) throw error("RESPONSE_UNVERIFIED");
+          return { status: "online", observedAt: Date.now() };
+        }, beforeDispatch);
+      },
+      // Native concept picker: setPlayerData sets defId=[base player id].
+      // Separate from Puzzle's quality queries; never broaden their contract.
+      readPlayerVersions: async ({ playerId, start = 0, count: count3 = 20 } = {}) => {
+        if (quotesOnly) throw error("CATALOG_DISABLED");
+        const mask = at6(root, "ItemIdMask.DATABASE");
+        if (mask !== 16777215 || !valid(playerId, 1, mask) || !valid(start, 0, 80) || start % 20 !== 0 || count3 !== 20) throw error("QUERY_INVALID");
+        return request("catalog", { type: "player", sort: "asc", defId: [playerId], start, count: count3 }, (body) => {
+          const raw = ownData(body, "itemData");
+          if (!Array.isArray(raw) || raw.length > count3) throw error("PAYLOAD_UNVERIFIED");
+          const entries2 = raw.map(materialize3);
+          if (entries2.some((p) => !valid(p.definitionId, 1, 2147483647) || (p.definitionId & mask) !== playerId)) throw error("DEFINITION_MISMATCH");
+          if (new Set(entries2.map((p) => p.definitionId)).size !== entries2.length) throw error("DUPLICATE_DEFINITION");
+          return { entries: entries2, pageEndObserved: raw.length < count3 };
+        });
+      },
       readCatalogPage: async (query = {}) => {
         if (quotesOnly) throw error("CATALOG_DISABLED");
         if (!query || Object.keys(query).some((k) => !["start", "count", "level", "nation", "league", "team"].includes(k)) || !valid(query.start, 0, 1e3) || !valid(query.count, 1, 50) || !["bronze", "silver", "gold"].includes(query.level) || ["nation", "league", "team"].some((k) => query[k] !== void 0 && !valid(query[k], 1, 1e9))) throw error("QUERY_INVALID");
@@ -28976,13 +29024,123 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     } };
   }
 
+  // src/adapters/browser/fc27-market-rating-view.js
+  function marketRatingSummary(task) {
+    const rows = Object.entries(task.ratingPrices ?? {}).filter(([rating, row]) => Number(rating) >= task.settings.ratingMin && Number(rating) <= task.settings.ratingMax && completeMarketRatingRow(row));
+    return `\u6309\u8BC4\u5206\u56FA\u5B9A\u4EF7 \xB7 \u5DF2\u914D\u7F6E ${rows.length} \u6863`;
+  }
+  function mountMarketRatingEditor({ document, $, onChange }) {
+    const host = document.createElement("section");
+    host.className = "box";
+    host.id = "rating-prices";
+    host.innerHTML = '<label>\u5B9A\u4EF7\u65B9\u5F0F<select id="rating-price-mode"><option value="reference">\u6BCF\u5361\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="rating">\u6309\u8BC4\u5206\u56FA\u5B9A\u4EF7</option><option value="uniform">\u7EDF\u4E00\u56FA\u5B9A\u4EF7</option><option value="mixed">\u5206\u522B\u8BBE\u7F6E\u4E70\u5356\u89C4\u5219</option></select></label><div id="rating-price-body"><p id="rating-price-summary" class="hint" role="status"></p><div class="rating-grid"><b>\u8BC4\u5206</b><b>\u4E70\u5165\u4E0A\u9650</b><b>\u6302\u724C\u4EF7</b></div><div id="rating-price-rows"></div><button type="button" id="rating-price-expand"></button><p id="rating-price-warning" class="hint"></p><div id="rating-price-duration" class="fields"></div></div>';
+    $("buyFields").before(host);
+    const style = document.createElement("style");
+    style.textContent = ".rating-grid{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;margin:8px 0}.rating-grid>small{grid-column:1/-1}.rating-grid input{width:100%;min-width:0}#rating-prices[hidden],#rating-price-body[hidden]{display:none}";
+    host.append(style);
+    const get = (id15) => host.querySelector("#" + id15), select = get("rating-price-mode"), body = get("rating-price-body"), rowsHost = get("rating-price-rows");
+    const sellFields = $("sellRule").closest(".fields"), duration = $("duration").closest("label"), anchor = document.createComment("duration");
+    duration.before(anchor);
+    let mode = "reference", rows = {}, expanded = false, current2 = null, renderKey = null;
+    const readRows = () => {
+      for (const input of rowsHost.querySelectorAll("input")) {
+        const key2 = input.dataset.rating;
+        rows[key2] ??= { buy: null, sell: null };
+        rows[key2][input.dataset.side] = input.value === "" ? null : Number(input.value);
+      }
+    };
+    const derived = (task) => task.ratingPrices ? "rating" : task.settings.buyRule === "fixed" && task.settings.sellRule === "fixed" ? "uniform" : task.settings.buyRule === "percent" && task.settings.sellRule === "reference" ? "reference" : "mixed";
+    const refresh = (task) => {
+      current2 = task;
+      host.hidden = task.mode !== "filter";
+      const active = task.mode === "filter" && mode === "rating";
+      body.hidden = !active;
+      $("buyFields").classList.toggle("hidden", task.mode === "sell" || active);
+      sellFields.classList.toggle("hidden", active);
+      if (active) get("rating-price-duration").append(duration);
+      else anchor.after(duration);
+      if (task.mode === "filter" && mode !== "rating") mode = derived(task);
+      select.value = mode;
+      if (!active) return;
+      const min = Math.max(1, Math.min(99, task.settings.ratingMin)), max = Math.min(99, task.settings.ratingMax), ratings = Array.from({ length: Math.max(0, max - min + 1) }, (_, i) => min + i);
+      const count3 = ratings.filter((r) => completeMarketRatingRow(rows[r])).length;
+      get("rating-price-summary").textContent = `\u5DF2\u914D\u7F6E ${count3} / ${ratings.length} \u6863 \xB7 \u7A7A\u767D\u6216\u672A\u586B\u5B8C\u6574\u7684\u6863\u4F4D\u8DF3\u8FC7${count3 ? "" : "\uFF1B\u81F3\u5C11\u586B\u5B8C\u6574\u4E00\u6863\u624D\u80FD\u4FDD\u5B58"}`;
+      get("rating-price-warning").textContent = task.settings.quality === "all" || task.settings.quality === "special" ? "\u5305\u542B\u7279\u6B8A\u5361\uFF1A\u540C\u8BC4\u5206\u7684\u7279\u6B8A\u5361\u4E5F\u4F7F\u7528\u672C\u884C\u4EF7\u683C\uFF0C\u8BF7\u786E\u8BA4\u7B5B\u9009\u8303\u56F4\u3002" : "\u4E70\u5356\u72EC\u7ACB\u5B9A\u4EF7\uFF1B\u4E0D\u4F1A\u7531\u4E70\u5165\u6210\u672C\u53CD\u63A8\u5356\u4EF7\u3002";
+      const expand = get("rating-price-expand");
+      expand.hidden = ratings.length <= 5;
+      expand.textContent = expanded ? "\u6536\u8D77\u5176\u4F59\u8BC4\u5206" : `\u5C55\u5F00\u5176\u4F59 ${Math.max(0, ratings.length - 5)} \u6863`;
+      const nextKey = JSON.stringify([min, max, expanded]);
+      if (nextKey === renderKey) return;
+      renderKey = nextKey;
+      rowsHost.replaceChildren();
+      for (const r of ratings.slice(0, expanded ? 99 : 5)) {
+        const row = document.createElement("div");
+        row.className = "rating-grid";
+        const label = document.createElement("b");
+        label.textContent = String(r);
+        row.append(label);
+        for (const side of ["buy", "sell"]) {
+          const input = document.createElement("input");
+          input.type = "number";
+          input.min = "150";
+          input.max = "15000000";
+          input.placeholder = "\u672A\u914D\u7F6E";
+          input.value = rows[r]?.[side] ?? "";
+          input.dataset.rating = String(r);
+          input.dataset.side = side;
+          input.setAttribute("aria-label", `${r} ${side === "buy" ? "\u4E70\u5165\u4E0A\u9650" : "\u6302\u724C\u4EF7"}`);
+          row.append(input);
+          bindCurrencyArrows({ document, input, label: input.getAttribute("aria-label"), onStep: (value) => {
+            input.value = String(value);
+            readRows();
+            onChange();
+          } });
+        }
+        rowsHost.append(row);
+      }
+    };
+    select.onchange = () => {
+      readRows();
+      mode = select.value;
+      if (mode === "reference" || mode === "uniform") {
+        const fixed = mode === "uniform";
+        for (const [rule, value, next, fallback] of [["buyRule", "buyValue", fixed ? "fixed" : "percent", fixed ? "800" : "85"], ["sellRule", "sellValue", fixed ? "fixed" : "reference", fixed ? "1000" : "100"]]) {
+          if ($(rule).value !== next) $(value).value = fallback;
+          $(rule).value = next;
+        }
+      }
+      onChange();
+    };
+    get("rating-price-expand").onclick = (event) => {
+      if (event.isTrusted) {
+        readRows();
+        expanded = !expanded;
+        refresh(current2);
+      }
+    };
+    return {
+      open(task) {
+        rows = structuredClone(task.ratingPrices ?? {});
+        mode = derived(task);
+        expanded = false;
+        renderKey = null;
+        rowsHost.replaceChildren();
+      },
+      refresh,
+      read(taskMode) {
+        readRows();
+        return taskMode === "filter" && mode === "rating" ? structuredClone(rows) : null;
+      }
+    };
+  }
+
   // src/trading/task-catalog.js
   var yieldTaskCatalog = () => yieldStreamlinedTask(typeof globalThis.MessageChannel === "function" ? { MessageChannel: globalThis.MessageChannel } : globalThis);
   function taskMatches(card, settings) {
     return Number.isSafeInteger(card.rating) && card.rating >= settings.ratingMin && card.rating <= settings.ratingMax && (settings.quality === "all" || card.quality === settings.quality) && [["league", "leagueId"], ["nation", "nationId"], ["club", "teamId"], ["position", "preferredPosition"]].every(([key2, field]) => settings[key2] === null || card[field] === settings[key2]);
   }
   var taskExclusion = (card, excluded) => excluded.find((e) => e.type === "version" ? e.id === card.definitionId : card.playerId != null && e.id === card.playerId);
-  var taskCandidateAllowed = (card, task) => taskMatches(card, task.settings) && !taskExclusion(card, task.excluded) && (!task.excluded.some((e) => e.type === "player") || Number.isSafeInteger(card.playerId) && card.playerId > 0);
+  var taskCandidateAllowed = (card, task) => taskMatches(card, task.settings) && (!task.ratingPrices || completeMarketRatingRow(marketRatingRow(task, card.rating))) && !taskExclusion(card, task.excluded) && (!task.excluded.some((e) => e.type === "player") || Number.isSafeInteger(card.playerId) && card.playerId > 0);
   async function readTaskCatalogPage({ rows, settings = null, query = "", cursor = 0, isCurrent = () => true, yieldControl = yieldTaskCatalog }) {
     const search = query.trim().toLocaleLowerCase(), page = [];
     let next = cursor, scanned = 0;
@@ -29001,44 +29159,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return { rows: page, next, more: false, scanned };
   }
 
-  // src/adapters/browser/fc27-market-task-markup.js
-  var marketTaskMarkup = `<style>
-:host{color-scheme:dark;--bg:#17232d;--panel:#20323d;--line:#354a56;--muted:#a9bbc6;--mint:#a1edda;--yellow:#e5c489}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#edf4f9;font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif}button,input,select{font:inherit;color:inherit;background:#253945;border:1px solid #48606d;border-radius:7px;padding:8px 12px;min-width:0}button{cursor:pointer;white-space:nowrap}button:hover{border-color:var(--mint)}button:disabled{opacity:.4;cursor:default}.primary{background:var(--mint);color:#12372e;border-color:var(--mint);font-weight:700}.danger{color:#ffb7ad}.quiet{border-color:transparent;background:transparent}.muted,small{color:var(--muted)}small{font-size:12px}h1,h2,h3,p{margin:0}h1{font-size:23px}h2{font-size:18px}h3{font-size:14px}.row{display:flex;align-items:center;gap:12px}.between{justify-content:space-between}.wrap{flex-wrap:wrap}.badge{font-size:11px;padding:3px 8px;border:1px solid #52636b;border-radius:5px;white-space:nowrap}.positive{color:var(--mint)}.warning{color:var(--yellow)}.hidden{display:none!important}.layout{display:grid;grid-template-columns:72px minmax(0,1fr);min-height:100vh}.rail{background:#14202b;border-right:1px solid #283b48;display:flex;flex-direction:column;align-items:center;gap:25px;padding:20px 6px;color:#b7c5cd}.rail span{text-align:center;font-size:11px}.rail b{display:block;font-size:21px}.rail .selected{color:var(--mint)}main{min-width:0}.brand{height:55px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;background:#14202b}.brand strong{font-size:19px}.nav{display:flex;gap:8px;padding:12px 24px;border-bottom:1px solid var(--line);overflow-x:auto}.nav button{min-width:84px;background:#1c2b34;font-size:13px}.nav .active{border-color:var(--mint);color:var(--mint);background:#273b40}.content{padding:27px 30px;max-width:1450px;margin:0 auto}.lead{margin-bottom:20px}.usage{font-size:12px;text-align:right;line-height:1.8}.usage strong{font-size:14px;color:var(--mint)}.summary{display:flex;align-items:center;gap:30px;padding:14px 18px;border:1px solid var(--line);background:#1c2d38;border-radius:9px;margin-bottom:22px;flex-wrap:wrap}.summary b{margin-left:7px;font-size:18px}.toolbar{margin-bottom:12px}.panel{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1b2b36}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:12px;color:var(--muted);font-weight:500;padding:12px 16px;background:#1e303b}td{padding:17px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}td small{display:block}.task-name{padding:0;border:0;background:transparent;font-weight:700;font-size:15px;text-align:left;color:#f0f7fa}.task-name:hover{color:var(--mint)}.state{font-size:12px;padding:4px 9px;border-radius:5px;display:inline-block;background:#30414b}.state.running{background:#254f45;color:#abf3da}.state.queued{color:#afc8ff;background:#293b59}.state.paused{background:#4b402d;color:#efcf9a}.state.stopped,.state.archived{color:#a9bac5}.actions{display:flex;gap:6px;align-items:center;justify-content:flex-end}.actions button{font-size:12px;padding:6px 10px}.menu{position:relative}.menu>summary{cursor:pointer;list-style:none;padding:5px 11px;border:1px solid #48606d;border-radius:6px;min-width:34px}.menu[open]>div{position:absolute;right:0;top:35px;width:145px;background:#233a46;box-shadow:0 8px 24px #0009;border:1px solid #57727d;border-radius:8px;z-index:4;padding:5px}.menu button{display:block;width:100%;text-align:left;background:transparent;border:0}.global{margin-top:22px;border:1px solid var(--line);border-radius:9px;background:#1b2c37}.global>summary{padding:15px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}.global>summary:after{content:'\u5C55\u5F00 \u25BE';color:var(--mint);font-size:12px}.global[open]>summary:after{content:'\u6536\u8D77 \u25B4'}.global-body{padding:2px 18px 18px}.fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.fields.three{grid-template-columns:repeat(3,minmax(0,1fr))}.fields.two{grid-template-columns:repeat(2,minmax(0,1fr))}label{display:grid;gap:5px;font-size:12px;color:var(--muted);min-width:0}label input,label select{width:100%;color:#edf4f9;font-size:14px}.range{display:flex;align-items:center;gap:6px}.range input{width:100%;min-width:0}.check{display:flex;align-items:center;gap:7px}input[type=checkbox]{accent-color:var(--mint);width:16px;height:16px}.line{height:1px;background:var(--line);margin:17px 0}.hint{font-size:12px;color:var(--muted);margin-top:13px}.note{font-size:12px;color:#b9cbd6;background:#172832;border-left:2px solid #6e9b9b;padding:9px 12px;margin-top:12px}.section-head{margin-bottom:12px}.end-note{margin-top:18px;display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}dialog{border:1px solid #607983;border-radius:12px;padding:0;background:#192a35;color:inherit;width:min(830px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:hidden}dialog::backdrop{background:#07111bc9;backdrop-filter:blur(2px)}.dialog-layout{display:flex;flex-direction:column;max-height:calc(100dvh - 44px)}.dialog-head,.dialog-foot{padding:16px 21px;flex-shrink:0;background:#1f323d}.dialog-head{border-bottom:1px solid var(--line)}.dialog-foot{border-top:1px solid var(--line)}.dialog-body{padding:20px 21px;overflow-y:auto;min-height:0}.dialog-head button{padding:4px 10px}.templates{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:15px 0}.templates button{text-align:left;padding:11px 12px;background:#1e303b}.templates button b{display:block;font-size:13px}.templates button small{font-size:11px}.templates .active{border-color:var(--mint);background:#29413f}.box{background:#1e303a;border:1px solid var(--line);padding:14px;border-radius:8px;margin:14px 0}.compact th,.compact td{padding:9px 8px}.compact input[type=number]{width:85px;padding:6px}.compact button{padding:3px 8px}.player{display:flex;gap:9px;align-items:center;min-width:140px}.card{width:32px;height:42px;background:#544b37;border:1px solid #ae985e;border-radius:4px 4px 10px 10px;color:#f8e7b6;font-size:17px;font-weight:750;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}.card.special{background:#242a35}.card small{font-size:8px;color:inherit}.player b{font-size:12px}.player small{font-size:10px}.advanced>summary{cursor:pointer;color:var(--mint);font-size:12px;margin:12px 0}.picker-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;gap:12px;border-bottom:1px solid var(--line)}#picker{width:min(620px,calc(100vw - 32px))}#confirm{width:min(470px,calc(100vw - 32px))}.search{width:100%;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stats>div{padding:10px;background:#213641;border-radius:7px}.stats strong{display:block;font-size:20px;margin-top:3px}.log{white-space:pre-wrap;font:12px/1.9 ui-monospace,monospace;color:#b4d5d2;max-height:140px;overflow:auto}.toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;background:#264e44;border:1px solid var(--mint);border-radius:8px;z-index:20;max-width:calc(100vw - 48px)}:focus-visible{outline:2px solid var(--mint);outline-offset:3px}@media(max-width:1000px){.content{padding:22px 18px}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}td,th{padding:12px 10px}.usage{max-width:320px}.summary{gap:18px}}@media(max-width:650px){.layout{grid-template-columns:minmax(0,1fr)}.rail{display:none}.brand{padding:0 12px}.brand strong{font-size:16px}.brand small{display:none}.nav{padding:10px 12px}.content{padding:20px 12px}.lead{flex-wrap:wrap}.usage{text-align:left;width:100%;max-width:none}.summary{gap:12px;font-size:12px}.summary b{font-size:15px}.toolbar{flex-wrap:wrap}.global>summary{align-items:flex-start}.global>summary small{display:none}.fields,.fields.three{grid-template-columns:repeat(2,minmax(0,1fr))}.templates button{padding:9px 7px}.templates small{display:none}dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}.dialog-layout{max-height:calc(100dvh - 20px)}.dialog-head,.dialog-foot,.dialog-body{padding:13px}.dialog-foot{flex-wrap:wrap}.dialog-foot small{width:100%}.end-note{flex-wrap:wrap}.task-table thead{display:none}.task-table,.task-table tbody,.task-table tr,.task-table td{display:block}.task-table tr{padding:14px;border-top:1px solid var(--line)}.task-table td{border:0;padding:3px 0}.task-table td:nth-child(2){display:inline-block;margin:6px 8px 6px 0}.task-table td:nth-child(3){display:inline-block}.task-table td:nth-child(4),.task-table td:nth-child(5){display:inline-block;margin:6px 20px 5px 0}.task-table td:nth-child(4):before{content:'\u6301\u4ED3\u6210\u672C ';color:var(--muted)}.task-table td:nth-child(5):before{content:'\u5DF2\u5B9E\u73B0 ';color:var(--muted)}.actions{margin-top:7px}.task-table .menu[open]>div{top:auto;bottom:35px}.stats{gap:6px}.stats strong{font-size:17px}.dialog-head h2{font-size:16px}}
-.menu[open]>div{position:fixed;top:auto;bottom:auto;max-height:220px;overflow:auto}
-
-:host{display:block;color:#edf4f9;font:14px/1.5 Arial,sans-serif}.content{padding:0}.dialog-body{overflow:auto}#toast{display:block;margin-top:12px;color:#e5c489}.hint{margin:12px 0}.player small{display:block}.task-table td{padding:12px}.actions{flex-wrap:wrap}.search{width:100%}</style><section class="content"><div class="row between wrap"><h2>\u5E02\u573A\u4EA4\u6613</h2><div class="row"><button id="reloadTasks">\u5237\u65B0\u4EFB\u52A1</button><button id="newTask" class="primary">\uFF0B \u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</button></div></div><p class="hint">\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002</p><div class="row between toolbar"><select id="taskFilter" aria-label="\u4EFB\u52A1\u7B5B\u9009"><option value="active">\u5F53\u524D\u4EFB\u52A1</option><option value="archived">\u5DF2\u5F52\u6863</option></select><button id="pauseAll">\u6682\u505C\u5168\u90E8</button></div><div class="panel scroll"><table class="task-table"><thead><tr><th>\u4EFB\u52A1 / \u89C4\u5219</th><th>\u72B6\u6001</th><th>\u4E70 / \u6302 / \u552E</th><th>\u64CD\u4F5C</th></tr></thead><tbody id="tasks"></tbody></table><p id="empty" class="hint">\u5C1A\u65E0\u4EFB\u52A1</p></div><details class="global" id="globalSettings"><summary><span><b>\u516C\u5171\u4EA4\u6613\u8BBE\u7F6E</b>\u3000<small id="settingsBrief">FUTBIN \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 7\u201315 \u79D2</small></span></summary><div class="global-body"><div class="fields"><label>\u516C\u5171\u62A5\u4EF7\u6E90<select id="source"><option value="futbin">FUTBIN</option><option value="futgg">FUT.GG</option><option value="both">Both \xB7 \u8F83\u4F4E\u6709\u6548\u4EF7</option></select></label><label>\u4EA4\u6613\u62A5\u4EF7\u5E73\u53F0<select disabled><option>\u8DDF\u968F\u5F53\u524D EA \u8D26\u53F7</option></select></label><label>\u8D26\u53F7\u6700\u4F4E\u7559\u5B58\u91D1\u5E01<input id="reserve" type="number" placeholder="\u4E0D\u8BBE\u6700\u4F4E\u7559\u5B58" min="0"></label><label>\u6240\u6709\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="totalCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u641C\u7D22\u95F4\u9694 / \u79D2<div class="range"><input id="gapMin" type="number" min="1" value="7">\u2013<input id="gapMax" type="number" min="1" value="15"></div></label><label>\u6BCF\u591A\u5C11\u6B21\u641C\u7D22\u4F11\u606F<div class="range"><input id="cycleMin" type="number" min="1" value="10">\u2013<input id="cycleMax" type="number" min="1" value="15"></div></label><label>\u4F11\u606F / \u79D2<div class="range"><input id="restMin" type="number" min="0" value="5">\u2013<input id="restMax" type="number" min="0" value="8"></div></label><label>\u6BCF\u6B21\u641C\u7D22\u6700\u591A\u4E70\u5165<input id="perSearch" type="number" min="1" value="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 1 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="hourLimit" type="number" value="1000" min="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 24 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="dayLimit" type="number" value="5000" min="1"></label></div><p class="hint">\u641C\u7D22\u8282\u594F\u53C2\u8003 Enhancer\uFF1B\u505C\u6B62\u9608\u503C\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6\u3002\u767B\u5F55\u3001\u9650\u6D41\u53CA\u672A\u77E5\u56DE\u6267\u5904\u7406\u5C06\u5728\u7EDF\u4E00\u8C03\u5EA6\u9636\u6BB5\u63A5\u5165\u3002</p><div class="row between wrap"><small>\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E\u4F1A\u6682\u505C\u8FD0\u884C\u53CA\u6392\u961F\u4EFB\u52A1\uFF1B\u4E0B\u6B21\u542F\u52A8\u4F7F\u7528\u65B0\u8BBE\u7F6E\u3002</small><button id="saveGlobal">\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E</button></div></div></details>
-</section><dialog id="editor"><form class="dialog-layout" id="taskForm"><header class="dialog-head row between"><h2 id="editTitle">\u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</h2><button type="button" data-close="editor" aria-label="\u5173\u95ED\u4EFB\u52A1\u7F16\u8F91">\u2715</button></header><div class="dialog-body"><label>\u4EFB\u52A1\u540D\u79F0<input id="taskName" maxlength="60" required placeholder="\u4F8B\u5982\uFF1A84 \u5206\u666E\u901A\u91D1\u4F4E\u4E70\u9AD8\u5356"></label><div class="templates" aria-label="\u4EFB\u52A1\u6A21\u677F"><button type="button" data-mode="fixed" class="active"><b>\u56FA\u5B9A\u540D\u5355</b><small>\u9009\u5B9A\u7403\u5458\u7248\u672C</small></button><button type="button" data-mode="filter"><b>\u6761\u4EF6\u9009\u5361</b><small>\u6309\u6761\u4EF6\u751F\u6210\u540D\u5355</small></button><button type="button" data-mode="sell"><b>\u6301\u4ED3\u51FA\u552E</b><small>\u53EA\u5356\u9009\u4E2D\u7684\u5361</small></button></div>
-<section id="fixedBox" class="box"><div class="row between section-head"><h3>\u76EE\u6807\u5361\u7247</h3><button type="button" id="addPlayer">\uFF0B \u6DFB\u52A0\u7403\u5458</button></div><div class="scroll"><table class="compact"><thead><tr><th>\u7CBE\u786E\u7248\u672C</th><th>\u4E70\u5165\u4E0A\u9650</th><th>\u6700\u591A\u6301\u6709</th><th></th></tr></thead><tbody id="selectedRows"></tbody></table></div><small>\u7CBE\u786E\u7248\u672C\u5206\u522B\u9009\u62E9\uFF1B\u6570\u91CF\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002</small></section>
-<section id="filterBox" class="box hidden"><div class="fields three"><label>\u6700\u4F4E\u8BC4\u5206<input id="ratingMin" type="number" value="83" min="1" max="99"></label><label>\u6700\u9AD8\u8BC4\u5206<input id="ratingMax" type="number" value="85" min="1" max="99"></label><label title="\u540C\u4E00\u5177\u4F53\u7248\u672C\u7684\u540C\u65F6\u6301\u4ED3\u4E0A\u9650\uFF1B\u552E\u51FA\u540E\u53EF\u8865\u4ED3\u3002\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002">\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650<input id="perVersion" type="number" min="1" step="1" placeholder="\u4E0D\u9650" aria-label="\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650"></label></div><details class="advanced" id="extraFilters"><summary id="extraFiltersLabel">\u66F4\u591A\u7B5B\u9009</summary><div class="fields three"><label>\u54C1\u8D28<select id="quality"><option value="all">\u5168\u90E8\u53EF\u4EA4\u6613\u7248\u672C</option><option value="gold">\u666E\u901A\u91D1</option><option value="silver">\u666E\u901A\u94F6</option><option value="bronze">\u666E\u901A\u94DC</option><option value="special">\u7279\u6B8A\u7248\u672C</option></select></label><label>\u8054\u8D5B<select id="league"><option value="">\u5168\u90E8</option></select></label><label>\u4F4D\u7F6E<select id="position"><option value="">\u5168\u90E8</option></select></label><label>\u56FD\u7C4D<select id="nation"><option value="">\u5168\u90E8</option></select></label><label>\u4FF1\u4E50\u90E8<select id="club"><option value="">\u5168\u90E8</option></select></label><div><small>\u6392\u9664\u7403\u5458</small><button type="button" id="editExclusions" style="display:block;margin-top:6px">\u641C\u7D22\u6DFB\u52A0\u6392\u9664</button></div></div><div id="exclusionList" class="row wrap" style="margin-top:10px"></div></details><div class="row between"><small id="filterCount">\u6309\u6761\u4EF6\u5339\u914D \xB7 \u5C55\u5F00\u9884\u89C8\u540E\u8BFB\u53D6</small><button type="button" id="previewPool">\u9884\u89C8\u5339\u914D\u7403\u5458</button></div><div id="poolPreview" class="hidden"><input id="poolSearch" class="search" placeholder="\u641C\u7D22\u5339\u914D\u7403\u5458" aria-label="\u641C\u7D22\u5339\u914D\u7403\u5458"><div id="pool"></div><div class="row between"><button type="button" id="poolPrev">\u4E0A\u4E00\u9875</button><small id="poolPage"></small><button type="button" id="poolNext">\u4E0B\u4E00\u9875</button></div></div></section>
-<section id="sellBox" class="box hidden"><div class="row between section-head"><h3>\u9009\u62E9\u53EF\u552E\u5361</h3><select id="pile" style="width:170px"><option value="all">\u5168\u90E8\u6765\u6E90</option><option value="transfer">Transfer</option><option value="unassigned">Unassigned</option><option value="club">Club</option></select></div><div id="sellRows"></div><small>\u4EC5\u7F13\u5B58\u6301\u4ED3\u5F15\u7528\uFF0C\u6267\u884C\u524D\u9700\u91CD\u65B0\u6838\u9A8C\u5B9E\u4F53\u548C\u4FDD\u62A4\u72B6\u6001\uFF1B\u4E0D\u51FA\u552E\u672A\u5BFC\u5165\u7684\u5361\u3002</small></section>
-<div class="fields two" id="buyFields"><label>\u7EDF\u4E00\u4E70\u5165\u89C4\u5219<select id="buyRule"><option value="percent">\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="fixed">\u56FA\u5B9A\u91D1\u5E01\u4E0A\u9650</option></select></label><label><span id="buyLabel">\u4E70\u5165\u6BD4\u4F8B %</span><input id="buyValue" type="number" value="85" min="1"></label></div><div class="fields three" style="margin-top:13px"><label>\u5356\u51FA\u5B9A\u4EF7<select id="sellRule"><option value="reference">\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="fixed">\u56FA\u5B9A\u552E\u4EF7</option></select></label><label><span id="sellLabel">\u6302\u724C\u6BD4\u4F8B %</span><input id="sellValue" type="number" value="100" min="1"></label><label>\u6302\u724C\u65F6\u957F<select id="duration"><option value="3600">1 \u5C0F\u65F6</option><option value="10800">3 \u5C0F\u65F6</option><option value="21600">6 \u5C0F\u65F6</option><option value="43200">12 \u5C0F\u65F6</option><option value="86400">1 \u5929</option><option value="259200">3 \u5929</option></select></label></div>
-<details class="advanced" id="moreRules"><summary>\u9884\u7B97\u3001\u8FD0\u884C\u65F6\u957F\u4E0E\u91CD\u6302</summary><div class="fields three"><label>\u672C\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="taskCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u7D2F\u8BA1\u91C7\u8D2D\u4E0A\u9650<input id="spendCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u8FD0\u884C\u4E0A\u9650 / \u5206\u949F<input id="runMinutes" type="number" placeholder="\u4E0D\u9650" min="1"></label><label>\u5355\u5361\u7EDD\u5BF9\u4E70\u5165\u4E0A\u9650<input id="hardCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u672A\u552E\u51FA\u5904\u7406<select id="relist"><option value="original">\u539F\u4EF7\u91CD\u6302</option><option value="reference">\u6309\u6700\u65B0\u53C2\u8003\u4EF7\u91CD\u7B97</option><option value="pause">\u6682\u505C\u6B64\u5361</option></select></label><label>\u6700\u591A\u91CD\u6302\u6B21\u6570<input id="relistTimes" type="number" placeholder="\u4E0D\u9650" min="0"></label></div><p class="hint">\u4E0A\u9650\u7559\u7A7A\u8868\u793A\u4E0D\u9650\uFF1B\u91CD\u6302\u6B21\u6570\u586B 0 \u8868\u793A\u4E0D\u91CD\u6302\u3002\u4E70\u5165\u4E0E\u5356\u51FA\u72EC\u7ACB\u5B9A\u4EF7\uFF0C\u5171\u7528\u8D26\u53F7\u8D44\u91D1\u548C\u8BF7\u6C42\u9650\u5236\u3002</p></details><div id="taskPreview" class="note"></div><p class="hint">\u4FDD\u5B58\u89C4\u5219\u4E0D\u4F1A\u4E70\u5356\uFF1B\u542F\u52A8\u5C06\u5728\u6267\u884C\u5668\u63A5\u5165\u540E\u5F00\u653E\u3002</p></div><footer class="dialog-foot row between"><small>\u516C\u5171\u4EF7\u6E90\u4E0E\u8BF7\u6C42\u9650\u5236\u5728\u4E3B\u9875\u9762\u8BBE\u7F6E\u3002</small><div class="row"><button type="button" data-close="editor">\u53D6\u6D88</button><button type="submit" class="primary">\u4FDD\u5B58\u4EFB\u52A1</button></div></footer></form></dialog>
-<dialog id="picker"><div class="dialog-layout"><header class="dialog-head row between"><h2 id="pickerTitle">\u6DFB\u52A0\u7CBE\u786E\u7403\u5458\u7248\u672C</h2><button data-close="picker" aria-label="\u5173\u95ED\u9009\u5361">\u2715</button></header><div class="dialog-body"><input id="playerSearch" class="search" placeholder="\u8F93\u5165\u7403\u5458\u540D\u5B57\uFF0C\u4F8B\u5982 Raya" aria-label="\u641C\u7D22\u7403\u5458"><div id="pickerRows"></div></div></div></dialog>
-<dialog id="taskDetail"><div class="dialog-layout"><header class="dialog-head row between"><h2>\u4EFB\u52A1\u8BE6\u60C5</h2><button data-close="taskDetail" type="button">\u5173\u95ED</button></header><div class="dialog-body" id="taskDetailBody"></div></div></dialog><dialog id="confirm"><div class="dialog-layout"><header class="dialog-head"><h2>\u5220\u9664\u4EFB\u52A1</h2></header><div class="dialog-body" id="confirmBody"></div><footer class="dialog-foot row"><button data-close="confirm" type="button">\u53D6\u6D88</button><button id="confirmYes" type="button">\u786E\u8BA4</button></footer></div></dialog><output id="toast" role="status" aria-live="polite"></output>`;
-
-  // src/trading/market-task-report.js
-  function marketTaskReport(ledger, taskId) {
-    const holdings = ledger.holdings.filter((h) => h.taskId === taskId);
-    const events = ledger.intents.filter((i) => i.taskId === taskId);
-    const sold = holdings.filter((h) => h.phase === "sold");
-    const unknownSoldCosts = sold.filter((h) => h.cost === null).length;
-    return {
-      holdings: structuredClone(holdings),
-      events: structuredClone(events),
-      handoffs: structuredClone((ledger.handoffs ?? []).filter((h) => h.fromTaskId === taskId || h.toTaskId === taskId)),
-      elapsedMs: ledger.clocks?.find((c) => c.taskId === taskId)?.elapsedMs ?? 0,
-      purchased: events.filter((i) => i.kind === "buy" && i.phase === "confirmed").length,
-      listed: events.filter((i) => i.kind === "list" && i.phase === "confirmed").length,
-      sold: sold.length,
-      heldCost: holdings.filter((h) => h.phase !== "sold").some((h) => h.cost === null) ? null : holdings.filter((h) => h.phase !== "sold").reduce((sum2, h) => sum2 + h.cost, 0),
-      netRevenue: sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice), 0),
-      realizedProfit: unknownSoldCosts ? null : sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice) - h.cost, 0),
-      unknownSoldCosts
-    };
-  }
-
   // src/trading/market-task-messages.js
   var marketTaskMessages = Object.freeze({
+    MARKET_PLAYER_DATA_UNAVAILABLE: "EA \u59D3\u540D\u8D44\u6599\u5C1A\u672A\u5C31\u7EEA\uFF0C\u8BF7\u8FDB\u5165 Web App \u540E\u91CD\u8BD5\u3002",
+    MARKET_PLAYER_QUERY_INVALID: "\u8BF7\u9009\u62E9\u59D3\u540D\u5217\u8868\u4E2D\u7684\u7403\u5458\uFF0C\u518D\u8BFB\u53D6\u5177\u4F53\u7248\u672C\u3002",
+    MARKET_PLAYER_VERSIONS_INVALID: "EA \u7248\u672C\u8D44\u6599\u672A\u901A\u8FC7\u8EAB\u4EFD\u6838\u9A8C\uFF0C\u672A\u52A0\u5165\u5019\u9009\u3002",
+    MARKET_PLAYER_BUSY: "\u4E0A\u4E00\u4F4D\u7403\u5458\u7684\u7248\u672C\u4ECD\u5728\u8BFB\u53D6\uFF0C\u8BF7\u7A0D\u540E\u518D\u8BD5\u3002",
+    TASKS_RATING_PRICES_INVALID: "\u8BF7\u81F3\u5C11\u586B\u5B8C\u6574\u4E00\u6863\u5F53\u524D\u8BC4\u5206\u8303\u56F4\u5185\u7684\u4E70\u5165\u4E0A\u9650\u548C\u6302\u724C\u4EF7\uFF1B\u4EF7\u683C\u987B\u7B26\u5408 EA \u6863\u4F4D\u3002",
+    MARKET_RATING_PRICE_UNAVAILABLE: "\u6B64\u5361\u8BC4\u5206\u6CA1\u6709\u5B8C\u6574\u5B9A\u4EF7\u6216\u8BC4\u5206\u4E8B\u5B9E\u7F3A\u5931\uFF0C\u5DF2\u505C\u6B62\uFF1B\u4E0D\u4F1A\u6CBF\u7528\u5176\u4ED6\u8BC4\u5206\u4EF7\u683C\u3002",
     MARKET_SCHEDULE_INVALID: "\u8BF7\u68C0\u67E5\u5B9A\u65F6\u65E5\u671F\u3001\u65F6\u95F4\u548C\u65F6\u533A\uFF1B\u7ED3\u675F\u5FC5\u987B\u665A\u4E8E\u5F00\u59CB\u3002",
     MARKET_SCHEDULE_TIME_AMBIGUOUS: "\u6B64\u65F6\u533A\u7684\u65F6\u95F4\u56E0\u590F\u4EE4\u65F6\u4E0D\u5B58\u5728\u6216\u51FA\u73B0\u4E24\u6B21\uFF0C\u8BF7\u6362\u4E00\u4E2A\u660E\u786E\u65F6\u95F4\u3002",
     MARKET_SCHEDULE_WAIT: "\u7B49\u5F85\u9884\u5B9A\u4E70\u5165\uFF0F\u6302\u724C\u65F6\u95F4\uFF1B\u6CA1\u6709\u63D0\u524D\u641C\u7D22\u6216\u4EA4\u6613\u3002",
@@ -29095,13 +29223,145 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     return "MARKET_PROVIDER_FAILED";
   }
 
+  // src/adapters/browser/fc27-market-player-picker-view.js
+  function mountMarketPlayerPicker({ $, picker, esc: esc2, playerTile, getDraft, getMode, isCurrent, onRows, onExclusion }) {
+    const host = $("pickerRows");
+    let query = null, identities = [], selected = null, result = null, page = 0, serial = 0, liveCheck = () => false;
+    const render = () => {
+      const draft = getDraft(), mode = getMode();
+      if (!selected) {
+        onRows([]);
+        host.innerHTML = identities.map((p) => `<div class="picker-row"><div><b>${esc2(p.name)}</b><small>\u57FA\u7840\u8BC4\u5206 ${p.rating} \xB7 \u5148\u9009\u62E9\u7403\u5458\uFF0C\u518D\u9009\u5361\u7248\u672C</small></div><button type="button" data-player-identity="${p.playerId}">\u67E5\u770B\u7248\u672C</button>${mode === "exclude" ? `<button type="button" data-player-exclusion="${p.playerId}" ${draft.excluded.some((e) => e.type === "player" && e.id === p.playerId) ? "disabled" : ""}>\u6392\u9664\u5168\u90E8\u7248\u672C</button>` : ""}</div>`).join("") || '<p class="hint">\u8BF7\u8F93\u5165\u81F3\u5C11\u4E24\u4E2A\u5B57\u7B26\uFF1B\u6309 EA \u59D3\u540D\u8D44\u6599\u641C\u7D22\uFF0C\u6BCF\u6B21\u6700\u591A\u663E\u793A\u4E94\u4EBA\u3002</p>';
+        return;
+      }
+      const rows = result?.rows.slice(page * 5, page * 5 + 5) ?? [];
+      onRows(rows);
+      host.innerHTML = `<div class="row between"><b>${esc2(selected.name)}</b><button type="button" data-player-back>\u8FD4\u56DE\u59D3\u540D</button></div>` + rows.map((c) => `<div class="picker-row">${playerTile(c)}${mode === "fixed" ? `<button type="button" data-add="${c.definitionId}" ${draft.players.some((p) => p.definitionId === c.definitionId) ? "disabled" : ""}>\u6DFB\u52A0</button>` : `<button type="button" data-exclude="${c.definitionId}" ${taskExclusion(c, draft.excluded) ? "disabled" : ""}>\u6392\u9664\u6B64\u7248\u672C</button>`}</div>`).join("") + `${rows.length ? "" : "<p>\u6B64\u9875\u6CA1\u6709\u53EF\u9009\u7248\u672C\u3002</p>"}<div class="row between"><button type="button" data-player-prev ${page === 0 ? "disabled" : ""}>\u4E0A\u4E00\u9875</button><small>\u7B2C ${page + 1} \u9875 \xB7 \u5DF2\u8BFB\u53D6 ${result?.rows.length ?? 0} \u4E2A\u7248\u672C</small><button type="button" data-player-next ${(page + 1) * 5 < (result?.rows.length ?? 0) || result?.more ? "" : "disabled"}>\u4E0B\u4E00\u9875</button></div><p class="hint">\u7248\u672C\u6765\u81EA EA \u6982\u5FF5\u76EE\u5F55\uFF1B\u4E0D\u8868\u793A\u5E02\u573A\u6709\u8D27\u3002${result?.capped ? "\u5DF2\u8FBE\u672C\u6B21 100 \u4E2A\u7248\u672C\u8BFB\u53D6\u4E0A\u9650\u3002" : ""}</p>`;
+    };
+    const versions = async (player, start = 0) => {
+      const ticket = ++serial;
+      const valid3 = () => ticket === serial && liveCheck() && isCurrent();
+      selected = player;
+      onRows([]);
+      host.textContent = "\u6B63\u5728\u8BFB\u53D6 EA \u5361\u7248\u672C\u2026";
+      try {
+        const next = await picker.versions(player.playerId, { start, isCurrent: valid3 });
+        if (!valid3()) return;
+        if (start === 0) {
+          result = next;
+          page = 0;
+        } else {
+          const known = new Set(result.rows.map((r) => r.definitionId));
+          result = { ...next, rows: [...result.rows, ...next.rows.filter((r) => !known.has(r.definitionId))] };
+          page++;
+        }
+        render();
+      } catch (error2) {
+        if (valid3()) {
+          selected = null;
+          result = null;
+          host.textContent = marketTaskMessages[error2.message] ?? "EA \u7248\u672C\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u7403\u5458\uFF1B\u6CA1\u6709\u6DFB\u52A0\u6216\u8D2D\u4E70\u5361\u7247\u3002";
+        }
+      }
+    };
+    host.addEventListener("click", (event) => {
+      if (!event.isTrusted || !isCurrent()) return;
+      const b = event.target.closest("button");
+      if (!b || b.disabled) return;
+      if (b.hasAttribute("data-player-back")) {
+        serial++;
+        selected = null;
+        result = null;
+        render();
+      }
+      if (b.dataset.playerIdentity) {
+        const player = identities.find((p) => p.playerId === Number(b.dataset.playerIdentity));
+        if (player) void versions(player);
+      }
+      if (b.dataset.playerExclusion) {
+        const player = identities.find((p) => p.playerId === Number(b.dataset.playerExclusion));
+        if (player) {
+          onExclusion(player);
+          render();
+        }
+      }
+      if (b.hasAttribute("data-player-prev") && page > 0) {
+        page--;
+        render();
+      }
+      if (b.hasAttribute("data-player-next") && result) {
+        if ((page + 1) * 5 < result.rows.length) {
+          page++;
+          render();
+        } else if (result.more) void versions(selected, result.next);
+      }
+    });
+    return {
+      reset() {
+        query = null;
+        serial++;
+        selected = null;
+        result = null;
+        identities = [];
+        onRows([]);
+      },
+      query(text7, check) {
+        liveCheck = check;
+        if (query !== text7) {
+          serial++;
+          query = text7;
+          selected = null;
+          result = null;
+          identities = picker.search(text7);
+        }
+        render();
+      }
+    };
+  }
+
+  // src/adapters/browser/fc27-market-task-markup.js
+  var marketTaskMarkup = `<style>
+:host{color-scheme:dark;--bg:#17232d;--panel:#20323d;--line:#354a56;--muted:#a9bbc6;--mint:#a1edda;--yellow:#e5c489}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#edf4f9;font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif}button,input,select{font:inherit;color:inherit;background:#253945;border:1px solid #48606d;border-radius:7px;padding:8px 12px;min-width:0}button{cursor:pointer;white-space:nowrap}button:hover{border-color:var(--mint)}button:disabled{opacity:.4;cursor:default}.primary{background:var(--mint);color:#12372e;border-color:var(--mint);font-weight:700}.danger{color:#ffb7ad}.quiet{border-color:transparent;background:transparent}.muted,small{color:var(--muted)}small{font-size:12px}h1,h2,h3,p{margin:0}h1{font-size:23px}h2{font-size:18px}h3{font-size:14px}.row{display:flex;align-items:center;gap:12px}.between{justify-content:space-between}.wrap{flex-wrap:wrap}.badge{font-size:11px;padding:3px 8px;border:1px solid #52636b;border-radius:5px;white-space:nowrap}.positive{color:var(--mint)}.warning{color:var(--yellow)}.hidden{display:none!important}.layout{display:grid;grid-template-columns:72px minmax(0,1fr);min-height:100vh}.rail{background:#14202b;border-right:1px solid #283b48;display:flex;flex-direction:column;align-items:center;gap:25px;padding:20px 6px;color:#b7c5cd}.rail span{text-align:center;font-size:11px}.rail b{display:block;font-size:21px}.rail .selected{color:var(--mint)}main{min-width:0}.brand{height:55px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;background:#14202b}.brand strong{font-size:19px}.nav{display:flex;gap:8px;padding:12px 24px;border-bottom:1px solid var(--line);overflow-x:auto}.nav button{min-width:84px;background:#1c2b34;font-size:13px}.nav .active{border-color:var(--mint);color:var(--mint);background:#273b40}.content{padding:27px 30px;max-width:1450px;margin:0 auto}.lead{margin-bottom:20px}.usage{font-size:12px;text-align:right;line-height:1.8}.usage strong{font-size:14px;color:var(--mint)}.summary{display:flex;align-items:center;gap:30px;padding:14px 18px;border:1px solid var(--line);background:#1c2d38;border-radius:9px;margin-bottom:22px;flex-wrap:wrap}.summary b{margin-left:7px;font-size:18px}.toolbar{margin-bottom:12px}.panel{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1b2b36}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:12px;color:var(--muted);font-weight:500;padding:12px 16px;background:#1e303b}td{padding:17px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}td small{display:block}.task-name{padding:0;border:0;background:transparent;font-weight:700;font-size:15px;text-align:left;color:#f0f7fa}.task-name:hover{color:var(--mint)}.state{font-size:12px;padding:4px 9px;border-radius:5px;display:inline-block;background:#30414b}.state.running{background:#254f45;color:#abf3da}.state.queued{color:#afc8ff;background:#293b59}.state.paused{background:#4b402d;color:#efcf9a}.state.stopped,.state.archived{color:#a9bac5}.actions{display:flex;gap:6px;align-items:center;justify-content:flex-end}.actions button{font-size:12px;padding:6px 10px}.menu{position:relative}.menu>summary{cursor:pointer;list-style:none;padding:5px 11px;border:1px solid #48606d;border-radius:6px;min-width:34px}.menu[open]>div{position:absolute;right:0;top:35px;width:145px;background:#233a46;box-shadow:0 8px 24px #0009;border:1px solid #57727d;border-radius:8px;z-index:4;padding:5px}.menu button{display:block;width:100%;text-align:left;background:transparent;border:0}.global{margin-top:22px;border:1px solid var(--line);border-radius:9px;background:#1b2c37}.global>summary{padding:15px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}.global>summary:after{content:'\u5C55\u5F00 \u25BE';color:var(--mint);font-size:12px}.global[open]>summary:after{content:'\u6536\u8D77 \u25B4'}.global-body{padding:2px 18px 18px}.fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.fields.three{grid-template-columns:repeat(3,minmax(0,1fr))}.fields.two{grid-template-columns:repeat(2,minmax(0,1fr))}label{display:grid;gap:5px;font-size:12px;color:var(--muted);min-width:0}label input,label select{width:100%;color:#edf4f9;font-size:14px}.range{display:flex;align-items:center;gap:6px}.range input{width:100%;min-width:0}.check{display:flex;align-items:center;gap:7px}input[type=checkbox]{accent-color:var(--mint);width:16px;height:16px}.line{height:1px;background:var(--line);margin:17px 0}.hint{font-size:12px;color:var(--muted);margin-top:13px}.note{font-size:12px;color:#b9cbd6;background:#172832;border-left:2px solid #6e9b9b;padding:9px 12px;margin-top:12px}.section-head{margin-bottom:12px}.end-note{margin-top:18px;display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}dialog{border:1px solid #607983;border-radius:12px;padding:0;background:#192a35;color:inherit;width:min(830px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:hidden}dialog::backdrop{background:#07111bc9;backdrop-filter:blur(2px)}.dialog-layout{display:flex;flex-direction:column;max-height:calc(100dvh - 44px)}.dialog-head,.dialog-foot{padding:16px 21px;flex-shrink:0;background:#1f323d}.dialog-head{border-bottom:1px solid var(--line)}.dialog-foot{border-top:1px solid var(--line)}.dialog-body{padding:20px 21px;overflow-y:auto;min-height:0}.dialog-head button{padding:4px 10px}.templates{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:15px 0}.templates button{text-align:left;padding:11px 12px;background:#1e303b}.templates button b{display:block;font-size:13px}.templates button small{font-size:11px}.templates .active{border-color:var(--mint);background:#29413f}.box{background:#1e303a;border:1px solid var(--line);padding:14px;border-radius:8px;margin:14px 0}.compact th,.compact td{padding:9px 8px}.compact input[type=number]{width:85px;padding:6px}.compact button{padding:3px 8px}.player{display:flex;gap:9px;align-items:center;min-width:140px}.card{width:32px;height:42px;background:#544b37;border:1px solid #ae985e;border-radius:4px 4px 10px 10px;color:#f8e7b6;font-size:17px;font-weight:750;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}.card.special{background:#242a35}.card small{font-size:8px;color:inherit}.player b{font-size:12px}.player small{font-size:10px}.advanced>summary{cursor:pointer;color:var(--mint);font-size:12px;margin:12px 0}.picker-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;gap:12px;border-bottom:1px solid var(--line)}#picker{width:min(620px,calc(100vw - 32px))}#confirm{width:min(470px,calc(100vw - 32px))}.search{width:100%;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stats>div{padding:10px;background:#213641;border-radius:7px}.stats strong{display:block;font-size:20px;margin-top:3px}.log{white-space:pre-wrap;font:12px/1.9 ui-monospace,monospace;color:#b4d5d2;max-height:140px;overflow:auto}.toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;background:#264e44;border:1px solid var(--mint);border-radius:8px;z-index:20;max-width:calc(100vw - 48px)}:focus-visible{outline:2px solid var(--mint);outline-offset:3px}@media(max-width:1000px){.content{padding:22px 18px}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}td,th{padding:12px 10px}.usage{max-width:320px}.summary{gap:18px}}@media(max-width:650px){.layout{grid-template-columns:minmax(0,1fr)}.rail{display:none}.brand{padding:0 12px}.brand strong{font-size:16px}.brand small{display:none}.nav{padding:10px 12px}.content{padding:20px 12px}.lead{flex-wrap:wrap}.usage{text-align:left;width:100%;max-width:none}.summary{gap:12px;font-size:12px}.summary b{font-size:15px}.toolbar{flex-wrap:wrap}.global>summary{align-items:flex-start}.global>summary small{display:none}.fields,.fields.three{grid-template-columns:repeat(2,minmax(0,1fr))}.templates button{padding:9px 7px}.templates small{display:none}dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}.dialog-layout{max-height:calc(100dvh - 20px)}.dialog-head,.dialog-foot,.dialog-body{padding:13px}.dialog-foot{flex-wrap:wrap}.dialog-foot small{width:100%}.end-note{flex-wrap:wrap}.task-table thead{display:none}.task-table,.task-table tbody,.task-table tr,.task-table td{display:block}.task-table tr{padding:14px;border-top:1px solid var(--line)}.task-table td{border:0;padding:3px 0}.task-table td:nth-child(2){display:inline-block;margin:6px 8px 6px 0}.task-table td:nth-child(3){display:inline-block}.task-table td:nth-child(4),.task-table td:nth-child(5){display:inline-block;margin:6px 20px 5px 0}.task-table td:nth-child(4):before{content:'\u6301\u4ED3\u6210\u672C ';color:var(--muted)}.task-table td:nth-child(5):before{content:'\u5DF2\u5B9E\u73B0 ';color:var(--muted)}.actions{margin-top:7px}.task-table .menu[open]>div{top:auto;bottom:35px}.stats{gap:6px}.stats strong{font-size:17px}.dialog-head h2{font-size:16px}}
+.menu[open]>div{position:fixed;top:auto;bottom:auto;max-height:220px;overflow:auto}
+
+:host{display:block;color:#edf4f9;font:14px/1.5 Arial,sans-serif}.content{padding:0}.dialog-body{overflow:auto}#toast{display:block;margin-top:12px;color:#e5c489}.hint{margin:12px 0}.player small{display:block}.task-table td{padding:12px}.actions{flex-wrap:wrap}.search{width:100%}</style><section class="content"><div class="row between wrap"><h2>\u5E02\u573A\u4EA4\u6613</h2><div class="row"><button id="reloadTasks">\u5237\u65B0\u4EFB\u52A1</button><button id="newTask" class="primary">\uFF0B \u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</button></div></div><p class="hint">\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002</p><div class="row between toolbar"><select id="taskFilter" aria-label="\u4EFB\u52A1\u7B5B\u9009"><option value="active">\u5F53\u524D\u4EFB\u52A1</option><option value="archived">\u5DF2\u5F52\u6863</option></select><button id="pauseAll">\u6682\u505C\u5168\u90E8</button></div><div class="panel scroll"><table class="task-table"><thead><tr><th>\u4EFB\u52A1 / \u89C4\u5219</th><th>\u72B6\u6001</th><th>\u4E70 / \u6302 / \u552E</th><th>\u64CD\u4F5C</th></tr></thead><tbody id="tasks"></tbody></table><p id="empty" class="hint">\u5C1A\u65E0\u4EFB\u52A1</p></div><details class="global" id="globalSettings"><summary><span><b>\u516C\u5171\u4EA4\u6613\u8BBE\u7F6E</b>\u3000<small id="settingsBrief">FUTBIN \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 7\u201315 \u79D2</small></span></summary><div class="global-body"><div class="fields"><label>\u516C\u5171\u62A5\u4EF7\u6E90<select id="source"><option value="futbin">FUTBIN</option><option value="futgg">FUT.GG</option><option value="both">Both \xB7 \u8F83\u4F4E\u6709\u6548\u4EF7</option></select></label><label>\u4EA4\u6613\u62A5\u4EF7\u5E73\u53F0<select disabled><option>\u8DDF\u968F\u5F53\u524D EA \u8D26\u53F7</option></select></label><label>\u8D26\u53F7\u6700\u4F4E\u7559\u5B58\u91D1\u5E01<input id="reserve" type="number" placeholder="\u4E0D\u8BBE\u6700\u4F4E\u7559\u5B58" min="0"></label><label>\u6240\u6709\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="totalCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u641C\u7D22\u95F4\u9694 / \u79D2<div class="range"><input id="gapMin" type="number" min="1" value="7">\u2013<input id="gapMax" type="number" min="1" value="15"></div></label><label>\u6BCF\u591A\u5C11\u6B21\u641C\u7D22\u4F11\u606F<div class="range"><input id="cycleMin" type="number" min="1" value="10">\u2013<input id="cycleMax" type="number" min="1" value="15"></div></label><label>\u4F11\u606F / \u79D2<div class="range"><input id="restMin" type="number" min="0" value="5">\u2013<input id="restMax" type="number" min="0" value="8"></div></label><label>\u6BCF\u6B21\u641C\u7D22\u6700\u591A\u4E70\u5165<input id="perSearch" type="number" min="1" value="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 1 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="hourLimit" type="number" value="1000" min="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 24 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="dayLimit" type="number" value="5000" min="1"></label></div><p class="hint">\u641C\u7D22\u8282\u594F\u53C2\u8003 Enhancer\uFF1B\u505C\u6B62\u9608\u503C\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6\u3002\u767B\u5F55\u3001\u9650\u6D41\u53CA\u672A\u77E5\u56DE\u6267\u5904\u7406\u5C06\u5728\u7EDF\u4E00\u8C03\u5EA6\u9636\u6BB5\u63A5\u5165\u3002</p><div class="row between wrap"><small>\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E\u4F1A\u6682\u505C\u8FD0\u884C\u53CA\u6392\u961F\u4EFB\u52A1\uFF1B\u4E0B\u6B21\u542F\u52A8\u4F7F\u7528\u65B0\u8BBE\u7F6E\u3002</small><button id="saveGlobal">\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E</button></div></div></details>
+</section><dialog id="editor"><form class="dialog-layout" id="taskForm"><header class="dialog-head row between"><h2 id="editTitle">\u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</h2><button type="button" data-close="editor" aria-label="\u5173\u95ED\u4EFB\u52A1\u7F16\u8F91">\u2715</button></header><div class="dialog-body"><label>\u4EFB\u52A1\u540D\u79F0<input id="taskName" maxlength="60" required placeholder="\u4F8B\u5982\uFF1A84 \u5206\u666E\u901A\u91D1\u4F4E\u4E70\u9AD8\u5356"></label><div class="templates" aria-label="\u4EFB\u52A1\u6A21\u677F"><button type="button" data-mode="fixed" class="active"><b>\u56FA\u5B9A\u540D\u5355</b><small>\u9009\u5B9A\u7403\u5458\u7248\u672C</small></button><button type="button" data-mode="filter"><b>\u6761\u4EF6\u9009\u5361</b><small>\u6309\u6761\u4EF6\u751F\u6210\u540D\u5355</small></button><button type="button" data-mode="sell"><b>\u6301\u4ED3\u51FA\u552E</b><small>\u53EA\u5356\u9009\u4E2D\u7684\u5361</small></button></div>
+<section id="fixedBox" class="box"><div class="row between section-head"><h3>\u76EE\u6807\u5361\u7247</h3><button type="button" id="addPlayer">\uFF0B \u6DFB\u52A0\u7403\u5458</button></div><div class="scroll"><table class="compact"><thead><tr><th>\u7CBE\u786E\u7248\u672C</th><th>\u4E70\u5165\u4E0A\u9650</th><th>\u6700\u591A\u6301\u6709</th><th></th></tr></thead><tbody id="selectedRows"></tbody></table></div><small>\u7CBE\u786E\u7248\u672C\u5206\u522B\u9009\u62E9\uFF1B\u6570\u91CF\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002</small></section>
+<section id="filterBox" class="box hidden"><div class="fields three"><label>\u6700\u4F4E\u8BC4\u5206<input id="ratingMin" type="number" value="83" min="1" max="99"></label><label>\u6700\u9AD8\u8BC4\u5206<input id="ratingMax" type="number" value="85" min="1" max="99"></label><label title="\u540C\u4E00\u5177\u4F53\u7248\u672C\u7684\u540C\u65F6\u6301\u4ED3\u4E0A\u9650\uFF1B\u552E\u51FA\u540E\u53EF\u8865\u4ED3\u3002\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002">\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650<input id="perVersion" type="number" min="1" step="1" placeholder="\u4E0D\u9650" aria-label="\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650"></label></div><details class="advanced" id="extraFilters"><summary id="extraFiltersLabel">\u66F4\u591A\u7B5B\u9009</summary><div class="fields three"><label>\u54C1\u8D28<select id="quality"><option value="all">\u5168\u90E8\u53EF\u4EA4\u6613\u7248\u672C</option><option value="gold">\u666E\u901A\u91D1</option><option value="silver">\u666E\u901A\u94F6</option><option value="bronze">\u666E\u901A\u94DC</option><option value="special">\u7279\u6B8A\u7248\u672C</option></select></label><label>\u8054\u8D5B<select id="league"><option value="">\u5168\u90E8</option></select></label><label>\u4F4D\u7F6E<select id="position"><option value="">\u5168\u90E8</option></select></label><label>\u56FD\u7C4D<select id="nation"><option value="">\u5168\u90E8</option></select></label><label>\u4FF1\u4E50\u90E8<select id="club"><option value="">\u5168\u90E8</option></select></label><div><small>\u6392\u9664\u7403\u5458</small><button type="button" id="editExclusions" style="display:block;margin-top:6px">\u641C\u7D22\u6DFB\u52A0\u6392\u9664</button></div></div><div id="exclusionList" class="row wrap" style="margin-top:10px"></div></details><div class="row between"><small id="filterCount">\u6309\u6761\u4EF6\u5339\u914D \xB7 \u5C55\u5F00\u9884\u89C8\u540E\u8BFB\u53D6</small><button type="button" id="previewPool">\u9884\u89C8\u5339\u914D\u7403\u5458</button></div><div id="poolPreview" class="hidden"><input id="poolSearch" class="search" placeholder="\u641C\u7D22\u5339\u914D\u7403\u5458" aria-label="\u641C\u7D22\u5339\u914D\u7403\u5458"><div id="pool"></div><div class="row between"><button type="button" id="poolPrev">\u4E0A\u4E00\u9875</button><small id="poolPage"></small><button type="button" id="poolNext">\u4E0B\u4E00\u9875</button></div></div></section>
+<section id="sellBox" class="box hidden"><div class="row between section-head"><h3>\u9009\u62E9\u53EF\u552E\u5361</h3><select id="pile" style="width:170px"><option value="all">\u5168\u90E8\u6765\u6E90</option><option value="transfer">Transfer</option><option value="unassigned">Unassigned</option><option value="club">Club</option></select></div><div id="sellRows"></div><small>\u4EC5\u7F13\u5B58\u6301\u4ED3\u5F15\u7528\uFF0C\u6267\u884C\u524D\u9700\u91CD\u65B0\u6838\u9A8C\u5B9E\u4F53\u548C\u4FDD\u62A4\u72B6\u6001\uFF1B\u4E0D\u51FA\u552E\u672A\u5BFC\u5165\u7684\u5361\u3002</small></section>
+<div class="fields two" id="buyFields"><label>\u7EDF\u4E00\u4E70\u5165\u89C4\u5219<select id="buyRule"><option value="percent">\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="fixed">\u56FA\u5B9A\u91D1\u5E01\u4E0A\u9650</option></select></label><label><span id="buyLabel">\u4E70\u5165\u6BD4\u4F8B %</span><input id="buyValue" type="number" value="85" min="1"></label></div><div class="fields three" style="margin-top:13px"><label>\u5356\u51FA\u5B9A\u4EF7<select id="sellRule"><option value="reference">\u53C2\u8003\u4EF7\u767E\u5206\u6BD4</option><option value="fixed">\u56FA\u5B9A\u552E\u4EF7</option></select></label><label><span id="sellLabel">\u6302\u724C\u6BD4\u4F8B %</span><input id="sellValue" type="number" value="100" min="1"></label><label>\u6302\u724C\u65F6\u957F<select id="duration"><option value="3600">1 \u5C0F\u65F6</option><option value="10800">3 \u5C0F\u65F6</option><option value="21600">6 \u5C0F\u65F6</option><option value="43200">12 \u5C0F\u65F6</option><option value="86400">1 \u5929</option><option value="259200">3 \u5929</option></select></label></div>
+<details class="advanced" id="moreRules"><summary>\u9884\u7B97\u3001\u8FD0\u884C\u65F6\u957F\u4E0E\u91CD\u6302</summary><div class="fields three"><label>\u672C\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="taskCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u7D2F\u8BA1\u91C7\u8D2D\u4E0A\u9650<input id="spendCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u8FD0\u884C\u4E0A\u9650 / \u5206\u949F<input id="runMinutes" type="number" placeholder="\u4E0D\u9650" min="1"></label><label>\u5355\u5361\u7EDD\u5BF9\u4E70\u5165\u4E0A\u9650<input id="hardCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u672A\u552E\u51FA\u5904\u7406<select id="relist"><option value="original">\u539F\u4EF7\u91CD\u6302</option><option value="reference">\u6309\u6700\u65B0\u53C2\u8003\u4EF7\u91CD\u7B97</option><option value="pause">\u6682\u505C\u6B64\u5361</option></select></label><label>\u6700\u591A\u91CD\u6302\u6B21\u6570<input id="relistTimes" type="number" placeholder="\u4E0D\u9650" min="0"></label></div><p class="hint">\u4E0A\u9650\u7559\u7A7A\u8868\u793A\u4E0D\u9650\uFF1B\u91CD\u6302\u6B21\u6570\u586B 0 \u8868\u793A\u4E0D\u91CD\u6302\u3002\u4E70\u5165\u4E0E\u5356\u51FA\u72EC\u7ACB\u5B9A\u4EF7\uFF0C\u5171\u7528\u8D26\u53F7\u8D44\u91D1\u548C\u8BF7\u6C42\u9650\u5236\u3002</p></details><div id="taskPreview" class="note"></div><p class="hint">\u4FDD\u5B58\u89C4\u5219\u4E0D\u4F1A\u4E70\u5356\uFF1B\u542F\u52A8\u5C06\u5728\u6267\u884C\u5668\u63A5\u5165\u540E\u5F00\u653E\u3002</p></div><footer class="dialog-foot row between"><small>\u516C\u5171\u4EF7\u6E90\u4E0E\u8BF7\u6C42\u9650\u5236\u5728\u4E3B\u9875\u9762\u8BBE\u7F6E\u3002</small><div class="row"><button type="button" data-close="editor">\u53D6\u6D88</button><button type="submit" class="primary">\u4FDD\u5B58\u4EFB\u52A1</button></div></footer></form></dialog>
+<dialog id="picker"><div class="dialog-layout"><header class="dialog-head row between"><h2 id="pickerTitle">\u6DFB\u52A0\u7CBE\u786E\u7403\u5458\u7248\u672C</h2><button data-close="picker" aria-label="\u5173\u95ED\u9009\u5361">\u2715</button></header><div class="dialog-body"><input id="playerSearch" class="search" placeholder="\u8F93\u5165\u7403\u5458\u540D\u5B57\uFF0C\u4F8B\u5982 Raya" aria-label="\u641C\u7D22\u7403\u5458"><div id="pickerRows"></div></div></div></dialog>
+<dialog id="taskDetail"><div class="dialog-layout"><header class="dialog-head row between"><h2>\u4EFB\u52A1\u8BE6\u60C5</h2><button data-close="taskDetail" type="button">\u5173\u95ED</button></header><div class="dialog-body" id="taskDetailBody"></div></div></dialog><dialog id="confirm"><div class="dialog-layout"><header class="dialog-head"><h2>\u5220\u9664\u4EFB\u52A1</h2></header><div class="dialog-body" id="confirmBody"></div><footer class="dialog-foot row"><button data-close="confirm" type="button">\u53D6\u6D88</button><button id="confirmYes" type="button">\u786E\u8BA4</button></footer></div></dialog><output id="toast" role="status" aria-live="polite"></output>`;
+
+  // src/trading/market-task-report.js
+  function marketTaskReport(ledger, taskId) {
+    const holdings = ledger.holdings.filter((h) => h.taskId === taskId);
+    const events = ledger.intents.filter((i) => i.taskId === taskId);
+    const sold = holdings.filter((h) => h.phase === "sold");
+    const unknownSoldCosts = sold.filter((h) => h.cost === null).length;
+    return {
+      holdings: structuredClone(holdings),
+      events: structuredClone(events),
+      handoffs: structuredClone((ledger.handoffs ?? []).filter((h) => h.fromTaskId === taskId || h.toTaskId === taskId)),
+      elapsedMs: ledger.clocks?.find((c) => c.taskId === taskId)?.elapsedMs ?? 0,
+      purchased: events.filter((i) => i.kind === "buy" && i.phase === "confirmed").length,
+      listed: events.filter((i) => i.kind === "list" && i.phase === "confirmed").length,
+      sold: sold.length,
+      heldCost: holdings.filter((h) => h.phase !== "sold").some((h) => h.cost === null) ? null : holdings.filter((h) => h.phase !== "sold").reduce((sum2, h) => sum2 + h.cost, 0),
+      netRevenue: sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice), 0),
+      realizedProfit: unknownSoldCosts ? null : sold.reduce((sum2, h) => sum2 + galleryNetSale(h.salePrice) - h.cost, 0),
+      unknownSoldCosts
+    };
+  }
+
   // src/adapters/browser/fc27-market-task-view.js
   var esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   var modes = { fixed: "\u56FA\u5B9A\u540D\u5355", filter: "\u6761\u4EF6\u9009\u5361", sell: "\u6301\u4ED3\u51FA\u552E" };
   var states3 = { ready: "\u5F85\u542F\u52A8", running: "\u8FD0\u884C\u4E2D", queued: "\u6392\u961F\u4E2D", waiting: "\u7B49\u5F85\u4E2D", completed: "\u5DF2\u5B8C\u6210", paused: "\u5DF2\u6682\u505C", stopped: "\u5DF2\u505C\u6B62", archived: "\u5DF2\u5F52\u6863", review: "\u5F85\u6838\u5BF9" };
-  var inputOf = (t) => ({ name: t.name, mode: t.mode, settings: structuredClone(t.settings), players: structuredClone(t.players), owned: structuredClone(t.owned), excluded: structuredClone(t.excluded), schedule: t.schedule ? structuredClone(t.schedule) : null });
+  var inputOf = (t) => ({ name: t.name, mode: t.mode, settings: structuredClone(t.settings), players: structuredClone(t.players), owned: structuredClone(t.owned), excluded: structuredClone(t.excluded), schedule: t.schedule ? structuredClone(t.schedule) : null, ratingPrices: t.ratingPrices ? structuredClone(t.ratingPrices) : null });
   var errors = { ...marketTaskMessages, TASKS_STALE: "\u4EFB\u52A1\u5DF2\u5728\u5176\u4ED6\u7A97\u53E3\u4FEE\u6539\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u65B0\u7F16\u8F91\u3002", TASKS_CONTEXT_CHANGED: "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u4EFB\u52A1\u3002", TASKS_SAVE_UNVERIFIED: "\u4FDD\u5B58\u56DE\u8BFB\u672A\u786E\u8BA4\uFF0C\u8BF7\u5237\u65B0\u6838\u5BF9\uFF0C\u52FF\u91CD\u590D\u6DFB\u52A0\u3002", TASKS_INVALID: "\u8BF7\u68C0\u67E5\u4EF7\u683C\u3001\u8BC4\u5206\u548C\u6570\u91CF\u8BBE\u7F6E\u3002", TASKS_SELECTION_EMPTY: "\u8BF7\u5148\u9009\u62E9\u5177\u4F53\u7248\u672C\u6216\u6301\u4ED3\u5361\u3002", TASKS_STORAGE_LIMIT: "\u4EFB\u52A1\u8BB0\u5F55\u8FBE\u5230\u5B58\u50A8\u5BB9\u91CF\u9650\u5236\uFF0C\u539F\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002", TASKS_UNRESOLVED: "\u6709\u5F85\u6838\u5BF9\u7684\u4EA4\u6613\uFF0C\u4E0D\u80FD\u5220\u9664\u8BB0\u5F55\u3002", TASKS_EDIT_BLOCKED: "\u8BE5\u4EFB\u52A1\u5F53\u524D\u4E0D\u80FD\u7F16\u8F91\uFF0C\u8BF7\u5148\u6682\u505C\u5E76\u6838\u5BF9\u4EA4\u6613\u3002", TASKS_EXECUTION_UNAVAILABLE: "\u81EA\u52A8\u6267\u884C\u5C1A\u672A\u5F00\u653E\u3002" };
-  function mountFc27MarketTasks({ document, parent, tab, service, legacyService = null, readCatalog = () => [], readInventory = () => [], readCoordination = null, runtime = null }) {
+  function mountFc27MarketTasks({ document, parent, tab, service, legacyService = null, readCatalog = () => [], readInventory = () => [], readCoordination = null, runtime = null, playerPicker = null }) {
     parent.replaceChildren();
     const element = document.createElement("section");
     element.className = "market-task-manager";
@@ -29113,6 +29373,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     currencyStyle.textContent = currencyInputStyles + " .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]){display:block;margin:6px 0}";
     shadow.append(currencyStyle);
     const scheduleEditor = mountMarketScheduleEditor({ document, parent: $("moreRules").parentElement });
+    const ratingEditor = mountMarketRatingEditor({ document, $, onChange: () => {
+      readInputs();
+      renderDraft();
+    } });
     $("taskPreview").nextElementSibling.textContent = "\u4FDD\u5B58\u4E0D\u4F1A\u4E70\u5356\uFF1B\u70B9\u51FB\u542F\u52A8\u5E76\u786E\u8BA4\u540E\u6267\u884C\u3002";
     $("confirm").querySelector("h2").textContent = "\u786E\u8BA4\u4EFB\u52A1\u64CD\u4F5C";
     const editorStatus = document.createElement("output");
@@ -29136,6 +29400,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const recoveryBar = document.createElement("div");
     recoveryBar.className = "actions";
     runtimeOutput.after(recoveryBar);
+    const sessionOutput = document.createElement("output");
+    sessionOutput.id = "market-session-status";
+    sessionOutput.className = "hint";
+    sessionOutput.setAttribute("role", "status");
+    sessionOutput.hidden = true;
+    runtimeOutput.after(sessionOutput);
     const recoverButton = document.createElement("button"), releaseButton = document.createElement("button");
     recoverButton.id = "market-recover";
     releaseButton.id = "market-release";
@@ -29216,9 +29486,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       releaseButton.hidden = !(coordination?.ledger.stopped || traffic?.ledger.stopped);
       shadow.querySelector(".content > p.hint").textContent = runtimeStatus?.available ? "\u4FDD\u5B58\u4E0D\u542F\u52A8\uFF1B\u6BCF\u4E2A\u4EFB\u52A1\u9700\u5355\u72EC\u786E\u8BA4\u542F\u52A8\u3002" : "\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002";
       runtimeOutput.hidden = !runtimeStatus?.available;
+      const health = runtimeStatus?.sessionHealth;
+      sessionOutput.hidden = !health || !runtimeStatus.busy && health.lastOnlineAt === null && health.state !== "failed";
+      sessionOutput.textContent = health ? `${health.state === "checking" ? "Checking EA session" : health.state === "failed" ? "Session check failed; tasks paused" : runtimeStatus.busy ? "Session maintenance active (every 3 minutes when idle)" : "Session maintenance stopped"}${health.lastOnlineAt !== null ? " \xB7 Last online " + new Date(health.lastOnlineAt).toLocaleTimeString() : ""}` : "";
+      sessionOutput.title = "Enabled only for running or waiting tasks. Recent successful requests postpone checks. Sleep, disconnection or an EA logout may require login and manual resume.";
       if (runtimeStatus?.available) {
         const row = runtimeStatus.tasks.find((r) => r.id === runtimeStatus.taskId), label = snapshot.store.tasks.find((t) => t.id === row?.id)?.name ?? "";
-        const labels2 = { initialize: "\u6838\u5BF9\u4EA4\u6613\u63A5\u53E3", idle: "\u5DF2\u505C\u6B62\u6267\u884C", prepare: "\u51C6\u5907\u5019\u9009", preflight: "\u6838\u5BF9\u6761\u4EF6", search: "\u641C\u7D22", buy: "\u4E70\u5165", move: "\u79FB\u5361", list: "\u6302\u724C", waiting: "\u7B49\u5F85\u4E0B\u4E00\u8F6E", recover: "\u53EA\u8BFB\u6838\u5BF9", "resume-check": "\u6838\u5BF9\u6062\u590D\u6761\u4EF6" };
+        const labels2 = { initialize: "\u6838\u5BF9\u4EA4\u6613\u63A5\u53E3", idle: "\u5DF2\u505C\u6B62\u6267\u884C", prepare: "\u51C6\u5907\u5019\u9009", preflight: "\u6838\u5BF9\u6761\u4EF6", search: "\u641C\u7D22", buy: "\u4E70\u5165", move: "\u79FB\u5361", list: "\u6302\u724C", waiting: "\u7B49\u5F85\u4E0B\u4E00\u8F6E", recover: "\u53EA\u8BFB\u6838\u5BF9", "resume-check": "\u6838\u5BF9\u6062\u590D\u6761\u4EF6", "session-check": "Checking EA session" };
         runtimeOutput.textContent = `${label ? label + " \xB7 " : ""}${labels2[runtimeStatus.phase] ?? "\u7B49\u5F85"}${row?.nextAt > Date.now() ? ` \xB7 ${Math.ceil((row.nextAt - Date.now()) / 1e3)} \u79D2` : ""}${runtimeStatus.reason ? " \xB7 " + (marketTaskMessages[runtimeStatus.reason] ?? runtimeStatus.reason) : ""}`;
       }
       if (coordination) {
@@ -29229,6 +29503,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       } else coordinationStatus.hidden = true;
       $("tasks").innerHTML = tasks.map((t) => `<tr><td><button type="button" class="task-name" data-action="detail" data-id="${esc(t.id)}">${esc(t.name)}</button><small>${modes[t.mode]}${t.mode === "sell" ? "" : ` \xB7 \u4E70\u5165 ${esc(t.settings.buyValue)}${t.settings.buyRule === "percent" ? "%" : ""}`} \xB7 \u5356\u51FA ${esc(t.settings.sellValue)}${t.settings.sellRule === "reference" ? "%" : ""}</small>${t.schedule ? `<small>${esc(marketScheduleSummary(t))}</small>` : ""}</td><td>${states3[stateFor(t)]}${reasonFor(t)}${runtimeRow(t)?.schedule ? `<small>${runtimeRow(t).schedule.buyClosed ? "\u4E70\u5165\u5DF2\u7ED3\u675F" : "\u4E70\u5165\u672A\u7ED3\u675F"}${runtimeRow(t)?.nextAt > Date.now() ? ` / ${new Date(runtimeRow(t).nextAt).toLocaleString()}` : ""}</small>` : ""}</td><td>${countsOf2(t).join(" / ")}</td><td><div class="actions"><button type="button" data-action="start" data-id="${esc(t.id)}" ${runtimeStatus?.available && runtimeStatus.modes.includes(t.mode) && ["ready", "paused"].includes(stateFor(t)) ? "" : "disabled"} title="\u6309\u5DF2\u4FDD\u5B58\u89C4\u5219\u542F\u52A8\uFF1B\u505C\u6B62\u540E\u8BF7\u590D\u5236\u4E3A\u65B0\u4EFB\u52A1">\u542F\u52A8</button>${stateFor(t) === "review" && !factsOf2(t).unresolved ? `<button type="button" data-action="acknowledge" data-id="${esc(t.id)}">\u786E\u8BA4\u6838\u5BF9\u5B8C\u6210</button>` : ""}${["ready", "paused"].includes(stateFor(t)) ? `<button type="button" data-action="edit" data-id="${esc(t.id)}">\u7F16\u8F91</button>` : ""}<button type="button" data-action="copy" data-id="${esc(t.id)}">\u590D\u5236</button>${["running", "queued", "waiting"].includes(stateFor(t)) ? `<button type="button" data-action="pause" data-id="${esc(t.id)}">\u6682\u505C</button>` : ""}${!["stopped", "archived"].includes(stateFor(t)) ? `<button type="button" data-action="stop" data-id="${esc(t.id)}">\u505C\u6B62</button>` : ""}<button type="button" data-action="delete" data-id="${esc(t.id)}">${t.activity.receipts.length || factsOf2(t).hasEvidence ? "\u5F52\u6863" : "\u5220\u9664"}</button></div></td></tr>`).join("");
       $("empty").hidden = tasks.length > 0;
+      for (const [i, row] of [...$("tasks").children].entries()) if (tasks[i]?.ratingPrices) row.querySelector("small").textContent = marketRatingSummary(tasks[i]);
       if (syncSettings) for (const key2 of Object.keys(defaultTradingPublicSettings())) $(key2).value = String(snapshot.store.settings[key2] ?? "");
       $("settingsBrief").textContent = `${snapshot.store.settings.source.toUpperCase()} \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 ${snapshot.store.settings.gapMin}\u2013${snapshot.store.settings.gapMax} \u79D2`;
     };
@@ -29268,6 +29543,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       draft.name = $("taskName").value.trim();
       draft.schedule = scheduleEditor.read(draft.mode);
+      draft.ratingPrices = ratingEditor.read(draft.mode);
     };
     const playerTile = (c) => `<div class="player"><span class="card">${esc(c.rating ?? "\u2014")}</span><div><b>${esc(c.name)}</b><small>${esc(c.version || "\u7248\u672C")} \xB7 EA ${esc(c.definitionId)}</small></div></div>`;
     const fillSelect = (key2, rows) => {
@@ -29314,6 +29590,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         input.value = String(value);
         draft.players.find((p) => p.definitionId === Number(input.dataset.cap)).cap = value;
       } });
+      ratingEditor.refresh(draft);
     };
     const cancelQuery = () => {
       querySerial++;
@@ -29354,9 +29631,38 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     let pickerRows = [];
+    const namePicker = playerPicker ? mountMarketPlayerPicker({
+      $,
+      picker: playerPicker,
+      esc,
+      playerTile,
+      getDraft: () => draft,
+      getMode: () => pickerMode,
+      isCurrent: () => active && sameContext() && $("picker").open,
+      onRows: (rows) => {
+        pickerRows = rows;
+      },
+      onExclusion: (player) => {
+        if (!draft.excluded.some((e) => e.type === "player" && e.id === player.playerId)) {
+          draft.excluded = draft.excluded.filter((e) => e.type !== "version" || ![...pickerRows, ...catalog ?? []].some((c) => c.definitionId === e.id && c.playerId === player.playerId));
+          draft.excluded.push({ type: "player", id: player.playerId, label: `${player.name} \xB7 \u5168\u90E8\u7248\u672C` });
+          renderDraft();
+          renderPool();
+        }
+      }
+    }) : null;
     const queryPicker = async () => {
       cancelQuery();
       const ticket = querySerial, query = $("playerSearch").value.trim();
+      if (namePicker) {
+        try {
+          namePicker.query(query, () => ticket === querySerial);
+        } catch (error2) {
+          pickerRows = [];
+          $("pickerRows").textContent = errors[error2.message] ?? "EA \u59D3\u540D\u8D44\u6599\u8BFB\u53D6\u5931\u8D25\u3002";
+        }
+        return;
+      }
       if (!query) {
         $("pickerRows").textContent = "\u8F93\u5165\u540D\u5B57\uFF0C\u6BCF\u6B21\u6700\u591A\u663E\u793A5\u4E2A\u7F13\u5B58\u7248\u672C\u3002";
         return;
@@ -29375,6 +29681,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
     };
     const openPicker = (mode) => {
+      namePicker?.reset();
       pickerMode = mode;
       $("pickerTitle").textContent = mode === "fixed" ? "\u9009\u62E9\u7CBE\u786E\u7248\u672C" : "\u6392\u9664\u7403\u5458";
       $("playerSearch").value = "";
@@ -29390,6 +29697,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       catalog = null;
       inventory = [];
       cancelQuery();
+      ratingEditor.open(draft);
       scheduleEditor.open(draft.schedule, draft.mode);
       $("taskName").value = draft.name;
       for (const key2 of Object.keys(defaultTradingTaskSettings())) $(key2).value = String(draft.settings[key2] ?? "");
@@ -29425,6 +29733,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const scope2 = runtimeRow(task)?.candidateScope;
       const receipts = report && (report.events.length || report.holdings.length) ? `<p>\u5DF2\u4E70 ${report.purchased} \xB7 \u5DF2\u6302 ${report.listed} \xB7 \u5DF2\u552E ${report.sold} \xB7 \u6301\u4ED3\u6210\u672C ${money2(report.heldCost)} \xB7 \u5DF2\u5B9E\u73B0\u5229\u6DA6 ${money2(report.realizedProfit)}</p><p class="hint">\u4EC5\u5DF2\u552E\u56DE\u6267\u8BA1\u5165\u6536\u76CA\uFF0C\u6309 5% \u4EA4\u6613\u7A0E\u8BA1\u7B97\uFF1B\u6210\u672C\u7F3A\u5931\u65F6\u5229\u6DA6\u4FDD\u6301\u672A\u77E5\u3002</p><h3>\u6301\u4ED3\uFF08\u6700\u8FD1 40 \u5F20 / \u5171 ${report.holdings.length} \u5F20\uFF09</h3>${report.holdings.slice(-40).reverse().map((h) => `<p>EA ${h.definitionId} \xB7 ${esc(h.itemId)} \xB7 ${{ held: "\u5F85\u79FB\u5361", transfer: "\u5F85\u6302\u724C", listed: "\u5DF2\u6302\u724C", unsold: "\u672A\u552E\u51FA", sold: "\u5DF2\u552E\u51FA" }[h.phase]} \xB7 \u4E70\u5165 ${money2(h.cost)}${h.phase === "sold" ? ` \xB7 \u552E\u51FA ${money2(h.salePrice)}` : ""}</p>`).join("")}<h3>\u4EA4\u6613\u56DE\u6267\uFF08\u6700\u8FD1 40 \u6761 / \u5171 ${report.events.length} \u6761\uFF09</h3>${report.events.slice(-40).reverse().map((r) => `<p>${r.previousTradeId ? "\u91CD\u6302" : { buy: "\u4E70\u5165", move: "\u79FB\u52A8", list: "\u6302\u724C" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${{ pending: "\u5F85\u6838\u5BF9", confirmed: "\u5DF2\u786E\u8BA4", rejected: "\u672A\u6210\u4EA4\uFF0F\u672A\u53D1\u9001" }[r.phase]} \xB7 ${r.coins}${r.listing ? ` \xB7 ${r.listing.startPrice}/${r.listing.buyNow} \xB7 ${r.listing.durationSeconds / 3600}h` : ""}</p>`).join("")}` : `<h3>\u4EA4\u6613\u56DE\u6267</h3>${task.activity.receipts.map((r) => `<p>${{ bought: "\u4E70\u5165", moved: "\u79FB\u52A8", listed: "\u6302\u724C", sold: "\u552E\u51FA" }[r.kind]} \xB7 EA ${r.definitionId} \xB7 ${r.coins ?? "\u91D1\u989D\u672A\u77E5"}</p>`).join("") || "<p>\u6682\u65E0\u4EA4\u6613</p>"}`;
       $("taskDetailBody").innerHTML = `<h3>${esc(task.name)}</h3><p>${modes[task.mode]} \xB7 ${states3[stateFor(task)]}</p><p>\u4E70\u5165\uFF1A${task.settings.buyRule === "fixed" ? "\u56FA\u5B9A\u4E0A\u9650" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.buyValue}${task.settings.buyRule === "percent" ? "%" : ""}</p><p>\u5356\u51FA\uFF1A${task.settings.sellRule === "fixed" ? "\u56FA\u5B9A\u6302\u724C\u4EF7" : "\u53C2\u8003\u4EF7\u6BD4\u4F8B"} ${task.settings.sellValue}${task.settings.sellRule === "reference" ? "%" : ""}</p><p>${task.activity.unresolved || factsOf2(task).unresolved ? "\u6709\u5F85\u6838\u5BF9\u4EA4\u6613" : "\u65E0\u5F85\u6838\u5BF9\u4EA4\u6613"}</p><h3>\u5DF2\u9009\u5361\u7247</h3>${(task.mode === "fixed" ? task.players : task.owned).map((p) => `<p>${esc(p.name)} \xB7 EA ${p.definitionId}</p>`).join("") || "<p>\u6309\u6761\u4EF6\u9009\u5361</p>"}${receipts}`;
+      if (task.ratingPrices) {
+        const prices = document.createElement("section");
+        prices.className = "box";
+        prices.textContent = marketRatingSummary(task) + "\uFF1A" + Object.entries(task.ratingPrices).filter(([r]) => Number(r) >= task.settings.ratingMin && Number(r) <= task.settings.ratingMax).map(([r, p]) => `${r} \u4E70\u5165\u2264${p.buy ?? "\u672A\u586B"} / \u5356\u51FA ${p.sell ?? "\u672A\u586B"}`).join("\uFF1B");
+        const paragraphs = $("taskDetailBody").querySelectorAll(":scope > p");
+        paragraphs[1]?.remove();
+        paragraphs[2]?.remove();
+        $("taskDetailBody").prepend(prices);
+      }
       const scheduleNote = document.createElement("p");
       scheduleNote.className = "hint";
       scheduleNote.textContent = marketScheduleSummary(task);
@@ -37714,7 +38031,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     players: t.players,
     owned: t.owned,
     excluded: t.excluded,
-    schedule: t.schedule
+    schedule: t.schedule,
+    ratingPrices: t.ratingPrices
   });
   var tradingTaskKey = (context) => {
     const c = tradingTaskContext(context);
@@ -37814,6 +38132,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             const task = find(store, options.id);
             if (!["ready", "paused"].includes(task.state) || task.stopRequested || (await evidence(task, c)).unresolved) throw Error("TASKS_EDIT_BLOCKED");
             delete task.schedule;
+            delete task.ratingPrices;
             Object.assign(task, input);
             touch(task);
           } else store.tasks.push({
@@ -38035,6 +38354,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let tasks = /* @__PURE__ */ new Map(), phase = "idle", currentTask = null, lastReason = null, errorCounts = /* @__PURE__ */ new Map();
     const listeners = /* @__PURE__ */ new Set();
     let traffic = null;
+    let sessionHealth = { state: "idle", lastOnlineAt: null };
     const inspect = () => ({
       available: enabled && Boolean(provider),
       modes: [...supportedModes],
@@ -38044,6 +38364,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       taskId: currentTask,
       reason: lastReason,
       traffic,
+      sessionHealth: { ...sessionHealth },
       evidence: structuredClone(evidence),
       errors: [...errorCounts].map(([code2, count3]) => ({ code: code2, count: count3 })),
       tasks: [...tasks.values()].map((row) => ({
@@ -38282,6 +38603,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       errorCounts = /* @__PURE__ */ new Map();
       evidence = [];
       policyRead = null;
+      sessionHealth = { state: "idle", lastOnlineAt: null };
       const startedAt = now();
       tasks = new Map(taskIds.map((taskId) => [taskId, { id: taskId, state: "queued", reason: null, nextAt: 0, startedAt }]));
       publish();
@@ -38323,6 +38645,51 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 const duration = taskConfig(row.id).settings.runMinutes;
                 row.elapsedMs = elapsed(row);
                 if (duration !== null && row.elapsedMs >= duration * 6e4 && actionable(row)) stateOf(row.id, "stopped", "MARKET_TIME_LIMIT");
+              }
+              if (provider.maintainSession && [...tasks.values()].some(actionable)) {
+                const observed = provider.sessionHealth?.()?.lastOnlineAt;
+                if (Number.isFinite(observed) && observed <= now() && (sessionHealth.lastOnlineAt === null || observed > sessionHealth.lastOnlineAt))
+                  sessionHealth = { state: "online", lastOnlineAt: observed };
+                if (sessionHealth.lastOnlineAt === null || now() < sessionHealth.lastOnlineAt || now() - sessionHealth.lastOnlineAt >= 18e4) {
+                  const ticket = controlGeneration, selected2 = [...tasks.values()].find(actionable).id;
+                  const check = () => {
+                    current2();
+                    if (disposed || ticket !== controlGeneration || !allowed(selected2)) throw Error("MARKET_USER_STOP");
+                  };
+                  const maintained = await session2.control(async (turn) => {
+                    if (turn.inspect().stopped || turn.inspect().intents.some((i) => i.phase === "pending")) return { status: "busy" };
+                    try {
+                      await bound(selected2, async () => {
+                        check();
+                        const shared = await provider.traffic?.();
+                        check();
+                        if (shared?.ledger.stopped) throw Error("MARKET_TRAFFIC_STOPPED");
+                        phase = "session-check";
+                        sessionHealth.state = "checking";
+                        publish();
+                        const result2 = await provider.maintainSession({ beforeDispatch: check });
+                        check();
+                        if (result2?.status !== "online") throw Error("MARKET_SESSION_UNVERIFIED");
+                        sessionHealth = { state: "online", lastOnlineAt: now() };
+                        diagnostic(turn.inspect());
+                        publish();
+                      });
+                    } catch (error2) {
+                      if (ticket !== controlGeneration || !allowed(selected2)) return;
+                      sessionHealth.state = "failed";
+                      if (!await applyError(turn, error2)) {
+                        lastReason = safeReason9(error2);
+                        for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, "paused", lastReason);
+                        diagnostic(turn.inspect(), lastReason, codeOf(error2));
+                      }
+                    }
+                  });
+                  if (maintained?.status === "busy") {
+                    await delay(1e3);
+                    continue;
+                  }
+                  if (![...tasks.values()].some(actionable)) break;
+                }
               }
               const ready = [...tasks.values()].filter((row) => actionable(row) && row.nextAt <= now()).map((row) => row.id);
               if (!ready.length) {
@@ -38467,9 +38834,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                       if (command?.kind === "buy" && fresh.schedule) command.sellAt = tasks.get(selected).schedule.sellAt;
                       if (command?.kind === "buy") {
                         const row = fresh.mode === "fixed" ? fresh.players.find((p) => p.definitionId === command.definitionId) : null;
-                        if (fresh.mode === "sell" || fresh.mode === "fixed" && !row || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap || row?.cap == null && fresh.settings.buyRule === "fixed" && command.coins > fresh.settings.buyValue || row?.cap != null && command.coins > row.cap) throw Error("MARKET_BUY_RULE_CHANGED");
+                        if (fresh.mode === "sell" || fresh.mode === "fixed" && !row || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap || !fresh.ratingPrices && row?.cap == null && fresh.settings.buyRule === "fixed" && command.coins > fresh.settings.buyValue || row?.cap != null && command.coins > row.cap) throw Error("MARKET_BUY_RULE_CHANGED");
                       }
-                      if (command?.kind === "list" && !(action.previousTradeId && fresh.settings.relist === "original") && fresh.settings.sellRule === "fixed" && command.coins !== fresh.settings.sellValue) throw Error("MARKET_SELL_RULE_CHANGED");
+                      if (command?.kind === "list" && !(action.previousTradeId && fresh.settings.relist === "original") && !fresh.ratingPrices && fresh.settings.sellRule === "fixed" && command.coins !== fresh.settings.sellValue) throw Error("MARKET_SELL_RULE_CHANGED");
+                      if (fresh.ratingPrices && ["search", "buy", "list"].includes(action.kind) && !(action.previousTradeId && fresh.settings.relist === "original")) {
+                        const prices = marketRatingRow(fresh, action.rating);
+                        if (!completeMarketRatingRow(prices) || action.kind === "search" && action.maxBuy > prices.buy || action.kind === "buy" && command.coins > prices.buy || action.kind === "list" && command.coins !== prices.sell) throw Error("MARKET_RATING_PRICE_UNAVAILABLE");
+                      }
                       phase = action.kind;
                       publish();
                       if (action.kind === "search") await turn.checkpoint((state) => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
@@ -38566,6 +38937,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         reportFailure(lastReason);
         for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, "paused", lastReason);
       } finally {
+        if (sessionHealth.state !== "failed") sessionHealth.state = "idle";
         busy = false;
         executing = false;
         phase = "idle";
@@ -38748,14 +39120,17 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     context,
     now,
     priceTiers,
-    limits = null
+    limits = null,
+    rating = null
   }) {
     if (!["buy", "sell"].includes(side)) fail34("PRICE_INVALID");
     const buy = side === "buy", settings = task.settings;
+    const ratingRow = marketRatingRow(task, rating);
+    if (task.ratingPrices && !completeMarketRatingRow(ratingRow)) fail34("RATING_PRICE_UNAVAILABLE");
     const override = buy && player?.cap != null ? player.cap : null;
-    const fixed = override !== null || (buy ? settings.buyRule : settings.sellRule) === "fixed";
+    const fixed = Boolean(ratingRow) || override !== null || (buy ? settings.buyRule : settings.sellRule) === "fixed";
     const reference = fixed ? null : marketTaskReference({ quotes, source, definitionId, context, now });
-    const value = override ?? (buy ? settings.buyValue : settings.sellValue);
+    const value = ratingRow?.[buy ? "buy" : "sell"] ?? override ?? (buy ? settings.buyValue : settings.sellValue);
     const raw = fixed ? value : reference.price * value / 100;
     if (!Number.isFinite(raw) || raw < 150) fail34("PRICE_INVALID");
     let price3;
@@ -38867,7 +39242,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       return result;
     };
     return Object.freeze({ read, async lookup(ids2) {
-      const snapshot = previous?.context === JSON.stringify(context()) ? previous : await read();
+      let snapshot = previous?.context === JSON.stringify(context()) ? previous : await read();
+      if (ids2.some((id15) => !snapshot.find(id15))) snapshot = await read();
       return ids2.map((id15) => snapshot.find(id15)).filter(Boolean);
     } });
   }
@@ -38942,17 +39318,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       side,
       context,
       now: now(),
-      priceTiers: native.priceTiers()
+      priceTiers: native.priceTiers(),
+      rating: cursors.get(task.id)?.catalog?.find(definitionId)?.rating
     });
     const priceFor2 = async (task, settings, definitionId, side) => {
       const player = task.mode === "fixed" ? task.players.find((p) => p.definitionId === definitionId) : null;
-      const fixed = side === "buy" ? player?.cap != null || task.settings.buyRule === "fixed" : task.settings.sellRule === "fixed";
+      const fixed = task.ratingPrices || (side === "buy" ? player?.cap != null || task.settings.buyRule === "fixed" : task.settings.sellRule === "fixed");
       const quotes = fixed ? null : await loadQuotes([definitionId], { source: settings.source, context });
       check();
       return { ...price3(task, settings, definitionId, side, quotes?.[definitionId]), quotes: quotes?.[definitionId] ?? null };
     };
     const remember = (task, settings, action) => {
-      const result = { ...action, taskId: task.id, token: id15(), expiresAt: Math.min(
+      const result = { ...action, ...task.ratingPrices && ["search", "buy", "list"].includes(action.kind) ? { rating: cursors.get(task.id)?.catalog?.find(action.definitionId)?.rating } : {}, taskId: task.id, token: id15(), expiresAt: Math.min(
         action.expiresAt ?? Infinity,
         now() + (action.kind === "search" ? 3e5 : 3e4)
       ) };
@@ -39094,7 +39471,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             }
           }
           const eligible = c.rows.slice(c.index).filter((row) => task.settings.perVersion === null || held.filter((h) => h.definitionId === row.definitionId && h.phase !== "sold").length < task.settings.perVersion);
-          if (task.settings.buyRule !== "fixed" && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 3e4 && eligible.some((row) => {
+          if (!task.ratingPrices && task.settings.buyRule !== "fixed" && eligible.length && (c.quotedAt === null || now() - c.quotedAt >= 3e4 && eligible.some((row) => {
             try {
               price3(task, settings, row.definitionId, "buy", c.quotes[row.definitionId]);
               return false;
@@ -39245,7 +39622,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       verifySession: () => {
         check();
         return native.verifySession();
-      }
+      },
+      sessionHealth: () => native.sessionHealth?.() ?? null,
+      ...typeof native.maintainSession === "function" ? { maintainSession: (args) => {
+        check();
+        return native.maintainSession(args);
+      } } : {}
     };
     return Object.freeze(api);
   }
@@ -39373,7 +39755,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     now = () => Date.now(),
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
     tradeFactory = createEaTradeAdapter,
-    inventoryFactory = createFc27GalleryListingInventory
+    inventoryFactory = createFc27GalleryListingInventory,
+    sessionReaderFactory = createFc27MarketReadTransport
   }) {
     if (![assertCurrent, assertProtected, checkOtherTransactions].every((fn) => typeof fn === "function")) fail36("GUARDS_UNAVAILABLE");
     const context = readFc27Context(root), service = root.services.Item, repository = root.repositories.Item;
@@ -39408,7 +39791,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       return taskTrades.get(taskId);
     };
-    let lastRequest = -Infinity;
+    let lastRequest = -Infinity, lastOnlineAt = null;
     const pace = async () => {
       assert();
       const left = 3e3 - (now() - lastRequest);
@@ -39438,6 +39821,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const result = await bounded2(() => pile === "transfer" ? trade.refreshTransferItems() : trade.refreshPurchaseState());
       assert();
       readable(result);
+      lastOnlineAt = now();
     };
     const exact = (row) => {
       const result = trade.inspectPurchase(refFor(row)), c = result.candidate;
@@ -39561,7 +39945,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (action.kind === "buy") {
             if (task.mode === "filter") {
               const facts2 = readTradingTaskCard(item2);
-              if (!facts2 || !taskCandidateAllowed(facts2, task)) fail36("CANDIDATE_CHANGED");
+              if (!facts2 || !taskCandidateAllowed(facts2, task) || task.ratingPrices && facts2.rating !== action.rating) fail36("CANDIDATE_CHANGED");
             }
             const auction = item2?.getAuctionData?.();
             if (item2?.id !== Number(action.itemId) || item2.definitionId !== action.definitionId || String(auction?.tradeId) !== action.tradeId || auction.buyNowPrice !== action.coins || auction.canBuy?.(capabilities().balance) !== true || !(auction.getSecondsRemaining?.() > 0) || purchasePriceCap({
@@ -39573,6 +39957,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (["move", "list"].includes(action.kind)) {
             checkRelist(action);
             const c = exact(action).candidate;
+            if (task.ratingPrices && action.kind === "list" && !(action.previousTradeId && task.settings.relist === "original") && readTradingTaskCard(repository.getTransferItems().find((i) => i.id === Number(action.itemId)))?.rating !== action.rating) fail36("CANDIDATE_CHANGED");
             if (!galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true || action.kind === "list" && c.item.pile !== "transfer" || action.kind === "move" && !["club", "unassigned"].includes(c.item.pile)) fail36("HOLDING_PROTECTED");
           }
           beforeDispatch();
@@ -39674,6 +40059,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         await guards();
         await refresh("transfer");
         return capabilities();
+      },
+      sessionHealth: () => ({ lastOnlineAt }),
+      async maintainSession({ beforeDispatch }) {
+        assert();
+        beforeDispatch();
+        try {
+          const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
+          assert();
+          beforeDispatch();
+          const result = await reader.readSessionHealth({ beforeDispatch: () => {
+            assert();
+            beforeDispatch();
+          } });
+          assert();
+          if (result?.status !== "online") fail36("SESSION_UNVERIFIED");
+          lastOnlineAt = now();
+          return { status: "online", observedAt: lastOnlineAt };
+        } catch (error2) {
+          const http = error2.marketFailure?.httpStatus, ea = error2.marketFailure?.eaCode;
+          throw Object.assign(Error("MARKET_SESSION_UNVERIFIED"), { code: http === 401 ? http : [403, 427, 429, 512, 521, 426, 459].includes(ea) ? ea : http ?? error2.code ?? null });
+        }
       },
       traffic: () => fc27MarketTraffic(root)?.inspect() ?? null,
       clearTraffic: () => fc27MarketTraffic(root)?.clear(),
@@ -42192,6 +42598,89 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     });
   }
 
+  // src/adapters/ea/fc27-market-player-picker.js
+  function createFc27MarketPlayerPicker({ root, context, createTransport = createFc27MarketReadTransport, now = () => Date.now() }) {
+    let scope2 = null, data = null, engine2 = null, busy = false;
+    const known = /* @__PURE__ */ new Map(), pages = /* @__PURE__ */ new Map(), fail39 = (code2) => {
+      throw Error(`MARKET_PLAYER_${code2}`);
+    };
+    const check = () => {
+      const next = JSON.stringify(context());
+      if (scope2 !== next) {
+        scope2 = next;
+        data = null;
+        engine2 = null;
+        known.clear();
+        pages.clear();
+      }
+      return next;
+    };
+    const current2 = (captured, isCurrent) => {
+      if (!isCurrent() || check() !== captured) throw Error("TASKS_CONTEXT_CHANGED");
+    };
+    const identity5 = (row) => {
+      if (!row || !Number.isSafeInteger(row.id) || row.id <= 0 || row.id > 16777215 || !Number.isSafeInteger(row.rating) || row.rating < 1 || row.rating > 99) return null;
+      const parts2 = (key2) => typeof row[key2] === "string" ? row[key2].trim().slice(0, 100) : "";
+      const name2 = parts2("commonName") || [parts2("firstName"), parts2("lastName")].filter(Boolean).join(" ");
+      return name2 ? { playerId: row.id, name: name2, rating: row.rating } : null;
+    };
+    const source = () => {
+      const next = root.repositories?.Item?.getStaticData?.();
+      if (!Array.isArray(next) || !next.length || next.length > 1e5 || root.ItemIdMask?.DATABASE !== 16777215 || typeof root.UTPlayerSearchEngine !== "function") fail39("DATA_UNAVAILABLE");
+      if (data !== next) {
+        data = next;
+        engine2 = new root.UTPlayerSearchEngine(next);
+      }
+    };
+    return Object.freeze({
+      search(query) {
+        check();
+        if (typeof query !== "string" || query.trim().length < 2) return [];
+        if (query.length > 100) fail39("QUERY_INVALID");
+        source();
+        const rows = engine2.getEntriesForString(query.trim(), 5);
+        if (!Array.isArray(rows) || rows.length > 5) fail39("DATA_UNAVAILABLE");
+        return rows.map(identity5).filter(Boolean);
+      },
+      known() {
+        check();
+        return [...known.values()];
+      },
+      async versions(playerId, { start = 0, isCurrent = () => true } = {}) {
+        const captured = check();
+        current2(captured, isCurrent);
+        source();
+        const player = identity5(data.find((row) => row.id === playerId));
+        if (!player || !Number.isSafeInteger(start) || start < 0 || start > 80 || start % 20 !== 0) fail39("QUERY_INVALID");
+        const key2 = `${playerId}:${start}`, cached = pages.get(key2);
+        if (cached && now() - cached.at < 3e5) return structuredClone(cached.result);
+        if (busy) fail39("BUSY");
+        busy = true;
+        try {
+          const transport = await createTransport(root, { maxRequests: 1 });
+          current2(captured, isCurrent);
+          const result = await transport.readPlayerVersions({ playerId, start, count: 20 });
+          current2(captured, isCurrent);
+          if (!Array.isArray(result.entries) || result.entries.length > 20 || typeof result.pageEndObserved !== "boolean") fail39("VERSIONS_INVALID");
+          if (result.entries.some((row) => !Number.isSafeInteger(row.definitionId) || (row.definitionId & 16777215) !== playerId)) fail39("VERSIONS_INVALID");
+          const rows = result.entries.filter((row) => row.evolution === false && row.cosmetic === false).map((row) => normalizeTaskCatalogCard({ ...row, playerId, name: player.name, preferredPosition: row.positions?.[0], version: `EA ${row.rarity ?? "?"}` })).filter(Boolean);
+          for (const row of rows) {
+            known.delete(row.definitionId);
+            known.set(row.definitionId, row);
+          }
+          while (known.size > 2e3) known.delete(known.keys().next().value);
+          const value = { rows, more: !result.pageEndObserved && start < 80, next: start + 20, capped: !result.pageEndObserved && start === 80 };
+          pages.delete(key2);
+          pages.set(key2, { at: now(), result: value });
+          while (pages.size > 30) pages.delete(pages.keys().next().value);
+          return structuredClone(value);
+        } finally {
+          busy = false;
+        }
+      }
+    });
+  }
+
   // src/adapters/browser/fc27-trading-execution.js
   var same41 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var fail38 = (reason) => {
@@ -43576,6 +44065,8 @@ ${version ?? ""}`;
     "MARKET_AUTHENTICATION",
     "MARKET_CAPTCHA",
     "MARKET_THROTTLED",
+    "MARKET_SESSION_UNVERIFIED",
+    "MARKET_TRAFFIC_STOPPED",
     "MARKET_ERROR_LIMIT",
     "MARKET_RECOVERY_REQUIRED",
     "MARKET_STOPPED",
@@ -50070,7 +50561,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.108" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.109" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -50233,9 +50724,10 @@ ${detail.join(" \xB7 ")}`;
     readCandidates: () => readFc27TradingCandidates(unsafeWindow)
   });
   var marketCoordinator = createMarketCoordinator({ context: () => publicPrices.context(), get: GM_getValue, set: GM_setValue, locks: unsafeWindow.navigator.locks });
+  var marketPlayerPicker = createFc27MarketPlayerPicker({ root: unsafeWindow, context: () => publicPrices.context() });
   var marketTaskCatalog = createMarketTaskCatalog({
     context: () => publicPrices.context(),
-    readRows: async (options) => [...await readTradingTaskCatalog(unsafeWindow, options), ...publicPrices.knownTaskPlayers()]
+    readRows: async (options) => [...await readTradingTaskCatalog(unsafeWindow, options), ...publicPrices.knownTaskPlayers(), ...marketPlayerPicker.known()]
   });
   var tradingTasks = {
     service: createTradingTaskStore({
@@ -50247,7 +50739,8 @@ ${detail.join(" \xB7 ")}`;
     }),
     readCoordination: () => marketCoordinator.inspect(),
     readCatalog: async (ids2) => ids2 ? marketTaskCatalog.lookup(ids2) : (await marketTaskCatalog.read()).rows,
-    readInventory: () => readTradingTaskInventory(unsafeWindow)
+    readInventory: () => readTradingTaskInventory(unsafeWindow),
+    playerPicker: marketPlayerPicker
   };
   var marketTraffic = createFc27MarketTraffic({
     context: () => publicPrices.context(),
@@ -50462,8 +50955,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.108"}`,
-    version: "27.0.108",
+    title: `FC Automation Tool ${"27.0.109"}`,
+    version: "27.0.109",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

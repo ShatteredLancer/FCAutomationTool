@@ -1,11 +1,12 @@
 // The editor queries an injected local catalog only. No quote/network methods.
 import { yieldStreamlinedTask } from '../streamlined/scheduling.js';
+import { marketRatingRow, completeMarketRatingRow } from './market-rating-prices.js';
 export const yieldTaskCatalog=()=>yieldStreamlinedTask(typeof globalThis.MessageChannel==='function'?{MessageChannel:globalThis.MessageChannel}:globalThis);
 export function taskMatches(card,settings){return Number.isSafeInteger(card.rating)&&card.rating>=settings.ratingMin&&card.rating<=settings.ratingMax
  &&(settings.quality==='all'||card.quality===settings.quality)
  &&[['league','leagueId'],['nation','nationId'],['club','teamId'],['position','preferredPosition']].every(([key,field])=>settings[key]===null||card[field]===settings[key]);}
 export const taskExclusion=(card,excluded)=>excluded.find(e=>e.type==='version'?e.id===card.definitionId:card.playerId!=null&&e.id===card.playerId);
-export const taskCandidateAllowed=(card,task)=>taskMatches(card,task.settings)&&!taskExclusion(card,task.excluded)
+export const taskCandidateAllowed=(card,task)=>taskMatches(card,task.settings)&&(!task.ratingPrices||completeMarketRatingRow(marketRatingRow(task,card.rating)))&&!taskExclusion(card,task.excluded)
  &&(!task.excluded.some(e=>e.type==='player')||Number.isSafeInteger(card.playerId)&&card.playerId>0);
 export async function readTaskCatalogPage({rows,settings=null,query='',cursor=0,isCurrent=()=>true,yieldControl=yieldTaskCatalog}){
  const search=query.trim().toLocaleLowerCase(),page=[];let next=cursor,scanned=0;

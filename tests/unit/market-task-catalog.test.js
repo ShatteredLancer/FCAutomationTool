@@ -8,6 +8,11 @@ const card = id => Object.defineProperty({ definitionId: id, playerId: id, name:
 const task = () => ({ settings: defaultTradingTaskSettings(), excluded: [] });
 
 describe('market task immutable catalog and bounded candidates', () => {
+  it('refreshes local facts for newly selected versions without changing a running snapshot',async()=>{
+    const rows=[card(1)],readRows=vi.fn(()=>rows),catalog=createMarketTaskCatalog({readRows,context});
+    const original=await catalog.read();rows.push(card(2));expect((await catalog.lookup([2]))[0].definitionId).toBe(2);
+    expect(original.find(2)).toBeUndefined();expect(readRows).toHaveBeenCalledTimes(2);
+  });
   it('does nothing on construction; batches wide 50k input and pages without a giant match list', async () => {
     const rows = Array.from({ length: 50000 }, (_, i) => card(i + 1)), readRows = vi.fn(() => rows), yieldControl = vi.fn(async () => {});
     const catalog = createMarketTaskCatalog({ readRows, context, yieldControl }); expect(readRows).not.toHaveBeenCalled();

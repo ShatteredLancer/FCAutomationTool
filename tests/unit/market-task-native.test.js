@@ -7,6 +7,7 @@ import { emptyMarketCoordination, reserveMarketWrite, settleMarketWrite, claimMa
 import { createMarketTaskScheduler } from '../../src/trading/market-task-scheduler.js';
 import { createTradingTaskStore } from '../../src/adapters/browser/fc27-trading-task-store.js';
 import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-coordinator.js';
+import { createMarketTaskCatalog } from '../../src/trading/market-task-catalog.js';
 
 async function fixture(mode = 'fixed', extra = {}) {
   const f = marketNativeRuntime();
@@ -16,7 +17,8 @@ async function fixture(mode = 'fixed', extra = {}) {
     settings: { ...defaultTradingTaskSettings(), buyRule: 'fixed', buyValue: 800, sellRule: 'fixed', sellValue: 700 } };
   const settings = { ...defaultTradingPublicSettings(), perSearch: 2 }, context = { scope: 'test', season: '27', platform: 'console' };
   const loadQuotes = vi.fn(async () => { throw Error('unexpected public quote request'); });
-  let sequence = 0; const provider = createMarketTaskProvider({ native, context, loadQuotes, assertCurrent, now: f.now, id: () => `a${++sequence}` });
+  const catalog=createMarketTaskCatalog({context:()=>context,readRows:()=>[{definitionId:901,playerId:901,rating:84,rarity:0}]});
+  let sequence = 0; const provider = createMarketTaskProvider({ native, context, loadQuotes, assertCurrent, catalog, now: f.now, id: () => `a${++sequence}` });
   const ledger = emptyMarketCoordination(), dispatched = [];
   const step = async () => {
     const action = await provider.prepare({ task, settings, ledger });
@@ -44,7 +46,44 @@ async function fixture(mode = 'fixed', extra = {}) {
   return { ...f, native, provider, task, settings, ledger, step, dispatched, loadQuotes, assertProtected, checkOtherTransactions };
 }
 
+describe('native session maintenance', () => {
+  it('records only successful native reads and cancels at the final health send boundary', async () => {
+    const f = await fixture();
+    expect(f.provider.sessionHealth()).toEqual({ lastOnlineAt: null });
+    await f.native.verifySession();
+    expect(f.provider.sessionHealth()).toEqual({ lastOnlineAt: f.now() });
+    const last = f.now(); f.advance(180000);
+    let active = true; f.hooks.session = async () => { active = false; };
+    await expect(f.provider.maintainSession({ beforeDispatch: () => { if (!active) throw Error('stop'); } })).rejects.toThrow('SESSION_UNVERIFIED');
+    expect(f.calls.filter(c => c[1] === 'session')).toHaveLength(0);
+    expect(f.provider.sessionHealth()).toEqual({ lastOnlineAt: last });
+    f.hooks.session = null; active = true;
+    expect(await f.provider.maintainSession({ beforeDispatch: () => {} })).toEqual({ status: 'online', observedAt: f.now() });
+    expect(f.calls.filter(c => c[1] === 'session')).toHaveLength(1);
+    expect(f.calls.some(c => ['bid', 'move', 'list', 'search'].includes(c[0]))).toBe(false);
+  });
+  it('propagates authentication and EA restriction codes without exposing a reply', async () => {
+    for (const [httpStatus, eaCode, code] of [[401, null, 401], [200, 459, 459], [429, null, 429]]) {
+      const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: async () => {
+        throw Object.assign(Error('private response'), { marketFailure: { httpStatus, eaCode } });
+      } }) });
+      await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'MARKET_SESSION_UNVERIFIED', code });
+      expect(f.native.sessionHealth().lastOnlineAt).toBeNull();
+    }
+  });
+});
+
 describe('market task relisting with the production native port', () => {
+  it.each(['original','reference'])('restarts a rating task and relists at %s price with the exact native entity',async relist=>{
+    const f=await fixture('filter'),card=f.makeCard(101,901,'transfer');
+    f.task.ratingPrices={84:{buy:800,sell:1400}};f.task.settings.relist=relist;
+    claimMarketHolding(f.ledger,{taskId:'t',itemId:'101',definitionId:901,cost:600},'transfer');
+    await f.provider.begin({task:f.task,settings:f.settings});await f.step();
+    card.auction.tradeState='expired';card.auction.isSold=()=>false;await f.step();
+    f.task.ratingPrices['84'].sell=1600;await f.provider.begin({task:f.task,settings:f.settings});
+    const result=await f.step();expect(result.action.coins).toBe(relist==='original'?1400:1600);
+    expect(result.response.status).toBe('confirmed');expect(f.ledger.holdings[0].cost).toBe(600);expect(f.loadQuotes).not.toHaveBeenCalled();
+  });
   it('runs initial listing, fresh expiry, one relist and count exhaustion through the real scheduler and journals', async () => {
     const f = await fixture('sell'), data = new Map(), context = { scope: 'test', season: '27', platform: 'console' };
     f.task.owned = [{ itemId: '101', definitionId: 901, name: 'A', pile: 'transfer' }]; f.task.settings.relistTimes = 1;

@@ -62,6 +62,10 @@ export function marketNativeRuntime() {
   const inventoryFactory = () => ({ clubItems: () => club, async validate(ref) {
     calls.push(['read', 'club']); if (!club.some(c => c.id === ref.id && c.definitionId === ref.definitionId)) throw Error('MARKET_HOLDING_UNAVAILABLE');
   } });
-  return { root, calls, hooks, makeCard, club, transfer, unassigned, market, inventoryFactory, now: () => time,
+  const sessionReaderFactory = async () => ({ readSessionHealth: async ({ beforeDispatch }) => {
+    if (hooks.session) await hooks.session(); beforeDispatch(); calls.push(['read', 'session']);
+    return { status: 'online', observedAt: time };
+  } });
+  return { root, calls, hooks, makeCard, club, transfer, unassigned, market, inventoryFactory, sessionReaderFactory, now: () => time,
     sleep: async ms => { time += ms; if (hooks.sleep) await hooks.sleep(); }, advance: ms => { time += ms; } };
 }

@@ -1,4 +1,10 @@
 export const marketTaskMessages = Object.freeze({
+  MARKET_PLAYER_DATA_UNAVAILABLE: 'EA 姓名资料尚未就绪，请进入 Web App 后重试。',
+  MARKET_PLAYER_QUERY_INVALID: '请选择姓名列表中的球员，再读取具体版本。',
+  MARKET_PLAYER_VERSIONS_INVALID: 'EA 版本资料未通过身份核验，未加入候选。',
+  MARKET_PLAYER_BUSY: '上一位球员的版本仍在读取，请稍后再试。',
+  TASKS_RATING_PRICES_INVALID: '请至少填完整一档当前评分范围内的买入上限和挂牌价；价格须符合 EA 档位。',
+  MARKET_RATING_PRICE_UNAVAILABLE: '此卡评分没有完整定价或评分事实缺失，已停止；不会沿用其他评分价格。',
   MARKET_SCHEDULE_INVALID: '请检查定时日期、时间和时区；结束必须晚于开始。',
   MARKET_SCHEDULE_TIME_AMBIGUOUS: '此时区的时间因夏令时不存在或出现两次，请换一个明确时间。',
   MARKET_SCHEDULE_WAIT: '等待预定买入／挂牌时间；没有提前搜索或交易。',

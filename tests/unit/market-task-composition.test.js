@@ -61,6 +61,19 @@ it('a production preflight 401 propagates to other FCAT modules without sending 
  const send=vi.fn();await expect(f.traffic.run('buy',()=>{},send)).rejects.toThrow('STOPPED');expect(send).not.toHaveBeenCalled();
  expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([]);
 });
+it.each([false,true])('executes rating-specific fixed buy/list rules or blocks native rating drift (drift=%s)',async drift=>{
+ const f=await fixture('filter'),card=f.makeCard(101,901);
+ if(drift)card._rating=85;
+ const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];
+ const snapshot=await f.store.saveTask({...f.snapshot,id:'sell',input:{name,mode,settings:{...settings,ratingMax:85,buyRule:'percent',buyValue:85,sellRule:'reference',sellValue:100},players,owned,excluded,
+ ratingPrices:{84:{buy:800,sell:1400},85:{buy:900,sell:1600}}}});
+ let stopped=false;f.runtime.subscribe(s=>{if(!stopped&&s.evidence?.some(e=>e.counts[1]===1)){stopped=true;f.runtime.pauseAll();}});
+ await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
+ const writes=f.calls.filter(c=>['bid','move','list'].includes(c[0]));
+ if(drift)expect(writes).toEqual([]);
+ else{expect(writes.map(c=>c[0])).toEqual(['bid','move','list']);expect(writes.at(-1)).toEqual(['list',101,1400,1400,3600]);}
+ expect(f.gmRequest).not.toHaveBeenCalled();
+});
 it.each([false,true])('carries scheduled purchase and sale through production native composition (common gate=%s)', async shared => {
   const f=await fixture('filter',shared);f.makeCard(101,901);
   const {name,mode,settings,players,owned,excluded}=f.snapshot.store.tasks[0];

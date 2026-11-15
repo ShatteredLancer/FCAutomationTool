@@ -49,7 +49,7 @@ function fixture(methodHashes = null) {
       calls.push(this); control.onSend?.();
       if (!control.timeout) this.callback(control.wrongOwner ? {} : this,
         { success: control.status === 200, status: control.status,
-          response: this.url.endsWith('/defid') ? catalog : market });
+          response: this.url.endsWith('/user/credits') ? (control.credits ?? { currencies: [{ name: 'coins', funds: 10000 }] }) : this.url.endsWith('/defid') ? catalog : market });
     }
   }
   class UTItemEntityFactory {
@@ -99,11 +99,48 @@ function fixture(methodHashes = null) {
 const catalogQuery = { start: 0, count: 20, level: 'silver' };
 const quoteQuery = { definitionId: 101, start: 0, count: 20, maxBuy: 2000 };
 const october12Hashes = FC27_MARKET_READ_METHODS.map(([path]) => october12.methods[path].sha256);
+it('checks session with one authenticated GET, no market search, balance export or retry', async () => {
+  const f = fixture(october12Hashes), dispatch = vi.fn();
+  const result = await (await createFc27MarketReadTransport(f.root, { quotesOnly: true, maxRequests: 1 })).readSessionHealth({ beforeDispatch: dispatch });
+  expect(result).toEqual({ status: 'online', observedAt: expect.any(Number) });
+  expect(f.calls).toHaveLength(1); expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(f.calls[0]).toMatchObject({ url: 'https://utas.test.ea.com/ut/game/fc27/user/credits', urlVariables: '', requestType: 'GET', doRetry: false, doReauth: false, cache: false });
+  expect(f.identified.map(row => row[0])).toEqual(['request', 'response']);
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+it.each([401, 429, 500])('session check exposes only numeric HTTP %s and never retries', async status => {
+  const f = fixture(october12Hashes); f.control.status = status;
+  const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ marketFailure: { httpStatus: status } });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toThrow('READ_BLOCKED');
+  expect(f.calls).toHaveLength(1);
+});
+it('cancels session checks at the actual send boundary and rejects malformed successful replies', async () => {
+  const f = fixture(october12Hashes);
+  await expect((await createFc27MarketReadTransport(f.root, { quotesOnly: true })).readSessionHealth({ beforeDispatch: () => { throw Error('stop'); } })).rejects.toThrow();
+  expect(f.calls).toHaveLength(0);
+  f.control.credits = { currencies: [{ name: 'coins', funds: '10000' }] };
+  await expect((await createFc27MarketReadTransport(f.root, { quotesOnly: true })).readSessionHealth({ beforeDispatch: () => {} })).rejects.toThrow('RESPONSE_UNVERIFIED');
+});
+it('reads native concept defId versions without broadening quality queries or using auction search',async()=>{
+ const f=fixture(october12Hashes);f.root.ItemIdMask={DATABASE:0xffffff};f.catalog.itemData.push({...f.player,resourceId:0x1000065});
+ const t=await createFc27MarketReadTransport(f.root);
+ const result=await t.readPlayerVersions({playerId:101});expect(result.entries.map(p=>p.definitionId)).toEqual([101,0x1000065]);
+ expect(f.calls).toHaveLength(1);expect(f.calls[0].url).toContain('/defid');expect(f.calls[0].urlVariables).toBe('?type=player&sort=asc&defId=101&start=0&count=20');
+ expect(f.forbidden).not.toHaveBeenCalled();
+ await expect(t.readCatalogPage({start:0,count:20,defId:[101]})).rejects.toThrow('QUERY_INVALID');
+});
+it('rejects concept versions for a different identity and a disabled catalog transport',async()=>{
+ const f=fixture(october12Hashes);f.root.ItemIdMask={DATABASE:0xffffff};
+ await expect((await createFc27MarketReadTransport(f.root)).readPlayerVersions({playerId:102})).rejects.toThrow('DEFINITION_MISMATCH');
+ await expect((await createFc27MarketReadTransport(f.root,{quotesOnly:true})).readPlayerVersions({playerId:101})).rejects.toThrow('CATALOG_DISABLED');
+});
 
 it('counts actual quote requests but not concept catalog pages and shares their throttle with buying',async()=>{
  const f=fixture(october12Hashes),data=new Map();let clock=1000,id=0;
  const gate=createFc27MarketTraffic({context:()=>({scope:'account',season:'27',platform:'pc'}),get:async(k,d)=>structuredClone(data.get(k)??d),set:async(k,v)=>data.set(k,structuredClone(v)),
  locks:{request:async(_k,_o,fn)=>fn()},readSettings:()=>defaultTradingPublicSettings(),now:()=>clock,sleep:async ms=>{clock+=ms;},id:()=>`r${++id}`});registerFc27MarketTraffic(f.root,gate);
+ await (await createFc27MarketReadTransport(f.root,{quotesOnly:true,maxRequests:1})).readSessionHealth({beforeDispatch:()=>{}});expect((await gate.inspect()).gate.hour).toBe(0);
  await (await createFc27MarketReadTransport(f.root)).readCatalogPage(catalogQuery);expect((await gate.inspect()).gate.hour).toBe(0);
  await (await createFc27MarketReadTransport(f.root)).readQuotePage(quoteQuery);expect((await gate.inspect()).gate.hour).toBe(1);
  f.control.status=429;

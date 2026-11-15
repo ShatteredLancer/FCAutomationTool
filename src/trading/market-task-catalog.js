@@ -61,7 +61,10 @@ export function createMarketTaskCatalog({ readRows, context, yieldControl = paus
     return result;
   };
   return Object.freeze({ read, async lookup(ids) {
-    const snapshot = previous?.context === JSON.stringify(context()) ? previous : await read();
+    let snapshot = previous?.context === JSON.stringify(context()) ? previous : await read();
+    // An explicit player selection can add definitions after the last preview.
+    // Refresh local facts once on a miss, never fetch the whole market here.
+    if(ids.some(id=>!snapshot.find(id)))snapshot=await read();
     return ids.map(id => snapshot.find(id)).filter(Boolean);
   } });
 }

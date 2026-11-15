@@ -117,6 +117,8 @@ if (help) {
       await exerciseMarketTaskFilter(context, out);
       const { exerciseMarketTaskSchedule } = await import('./market-task-schedule-smoke.mjs');
       await exerciseMarketTaskSchedule(context, out);
+      const { exerciseMarketRatingPicker } = await import('./market-rating-picker-smoke.mjs');
+      await exerciseMarketRatingPicker(context, out);
       const { exerciseProductionLivePanel } = await import('./production-live-smoke.mjs');
       await exerciseProductionLivePanel(context, out);
       const { exercisePuzzleBuyButton } = await import('./puzzle-buy-smoke.mjs');

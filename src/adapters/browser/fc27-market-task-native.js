@@ -1,4 +1,5 @@
 import { fc27MarketTraffic } from '../ea/fc27-market-traffic.js';
+import { createFc27MarketReadTransport } from '../ea/fc27-market-read.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { verifyFc27Methods } from '../ea/fc27-transaction-transport.js';
@@ -25,7 +26,8 @@ const errorResult = result => ({ code: codeOf(result), category: result?.error?.
 // account lock/protection/other-journal checks; no permissive defaults exist.
 export async function createFc27MarketTaskNative({ root, assertCurrent, assertProtected, checkOtherTransactions,
   now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)),
-  tradeFactory = createEaTradeAdapter, inventoryFactory = createFc27GalleryListingInventory }) {
+  tradeFactory = createEaTradeAdapter, inventoryFactory = createFc27GalleryListingInventory,
+  sessionReaderFactory = createFc27MarketReadTransport }) {
   if (![assertCurrent, assertProtected, checkOtherTransactions].every(fn => typeof fn === 'function')) fail('GUARDS_UNAVAILABLE');
   const context = readFc27Context(root), service = root.services.Item, repository = root.repositories.Item;
   const functions = Object.fromEntries(['bid', 'move', 'list', 'searchTransferMarket', 'clearTransferMarketCache',
@@ -48,7 +50,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     }
     return taskTrades.get(taskId);
   };
-  let lastRequest = -Infinity;
+  let lastRequest = -Infinity, lastOnlineAt = null;
   const pace = async () => { assert(); const left = 3000 - (now() - lastRequest); if (left > 0) await sleep(left); assert(); lastRequest = now(); };
   const bounded = operation => new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('MARKET_RESPONSE_UNCONFIRMED')), 20000);
@@ -64,6 +66,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     assert(); repository.setDirty(pile === 'transfer' ? 5 : 6); await pace();
     const result = await bounded(() => pile === 'transfer' ? trade.refreshTransferItems() : trade.refreshPurchaseState());
     assert(); readable(result);
+    lastOnlineAt = now();
   };
   const exact = row => {
     const result = trade.inspectPurchase(refFor(row)), c = result.candidate;
@@ -157,7 +160,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         if (action.kind === 'buy') {
           if (task.mode === 'filter') {
             const facts = readTradingTaskCard(item);
-            if (!facts || !taskCandidateAllowed(facts, task)) fail('CANDIDATE_CHANGED');
+            if (!facts || !taskCandidateAllowed(facts, task) || task.ratingPrices&&facts.rating!==action.rating) fail('CANDIDATE_CHANGED');
           }
           const auction = item?.getAuctionData?.();
           if (item?.id !== Number(action.itemId) || item.definitionId !== action.definitionId || String(auction?.tradeId) !== action.tradeId
@@ -169,6 +172,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         if (['move', 'list'].includes(action.kind)) {
           checkRelist(action);
           const c = exact(action).candidate;
+          if(task.ratingPrices&&action.kind==='list'&&!(action.previousTradeId&&task.settings.relist==='original')&&readTradingTaskCard(repository.getTransferItems().find(i=>i.id===Number(action.itemId)))?.rating!==action.rating)fail('CANDIDATE_CHANGED');
           if (!galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true
             || action.kind === 'list' && c.item.pile !== 'transfer'
             || action.kind === 'move' && !['club', 'unassigned'].includes(c.item.pile)) fail('HOLDING_PROTECTED');
@@ -234,6 +238,23 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       return receipts;
     },
     async verifySession() { await guards(); await refresh('transfer'); return capabilities(); },
+    sessionHealth: () => ({ lastOnlineAt }),
+    async maintainSession({ beforeDispatch }) {
+      assert(); beforeDispatch();
+      try {
+        const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
+        assert(); beforeDispatch();
+        const result = await reader.readSessionHealth({ beforeDispatch: () => { assert(); beforeDispatch(); } });
+        assert();
+        if (result?.status !== 'online') fail('SESSION_UNVERIFIED');
+        lastOnlineAt = now();
+        return { status: 'online', observedAt: lastOnlineAt };
+      } catch (error) {
+        const http = error.marketFailure?.httpStatus, ea = error.marketFailure?.eaCode;
+        throw Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: http === 401 ? http
+          : [403, 427, 429, 512, 521, 426, 459].includes(ea) ? ea : http ?? error.code ?? null });
+      }
+    },
     traffic: () => fc27MarketTraffic(root)?.inspect() ?? null,
     clearTraffic: () => fc27MarketTraffic(root)?.clear(),
     stopTraffic: reason => fc27MarketTraffic(root)?.signal(reason),
