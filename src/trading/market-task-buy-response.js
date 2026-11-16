@@ -1,4 +1,5 @@
-// Task buy responses only. Other market actions keep their existing contracts.
+// Reviewed native bid envelopes only; callers explicitly opt in. Searches,
+// delivery and listing responses keep their own existing contracts.
 // Preserve both layers; a 403 transport status is not itself a rate-limit code.
 export function marketTaskBuyResponse(reply) {
   const numeric = n => Number.isSafeInteger(n) && n >= 100 && n <= 99999 ? n : null;

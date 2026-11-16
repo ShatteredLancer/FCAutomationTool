@@ -25,6 +25,17 @@ export async function exerciseMarketTraffic(context){
   const attempts=await Promise.all(pages.map(p=>p.evaluate(async()=>{try{await globalThis.traffic.run('search',()=>{},()=>{globalThis.sent++;return {success:true};},{wait:false});return 'sent';}catch(e){return e.message;}})));
   assert.deepEqual(attempts.sort(),['MARKET_TRAFFIC_WAIT','sent']);
   assert.equal(await pages[1].evaluate(async()=>(await globalThis.traffic.inspect()).gate.hour),1);
+  // Same reviewed bid envelope now used by the shared legacy SBC buyer.
+  // Failed bids are not purchases; real authentication/unknown outcomes still stop.
+  const bid=await pages[0].evaluate(async()=>{
+   const reply=await globalThis.traffic.run('buy',()=>{},()=>({success:false,status:403,error:{code:461}}),{taskBuyResponse:true});
+   return {status:reply.status,stopped:(await globalThis.traffic.inspect()).ledger.stopped};
+  });
+  assert.deepEqual(bid,{status:403,stopped:null});
+  assert.equal(await pages[1].evaluate(async()=>(await globalThis.traffic.inspect()).ledger.stopped),null);
+  await pages[0].evaluate(async()=>{globalThis.time+=5000;await globalThis.traffic.run('buy',()=>{},()=>({success:false,status:403,error:{code:403}}),{taskBuyResponse:true});});
+  assert.equal(await pages[1].evaluate(async()=>(await globalThis.traffic.inspect()).ledger.stopped),'manual');
+  await pages[0].evaluate(()=>globalThis.traffic.clear());
   await pages[0].evaluate(()=>globalThis.traffic.signal('throttle'));
   assert.equal(await pages[1].evaluate(async()=>{try{await globalThis.traffic.run('buy',()=>{},()=>{globalThis.sent++;});}catch(e){return e.message;}}),'MARKET_TRAFFIC_STOPPED');
   // Reloading the other tab does not reset the persisted search budget/stop.

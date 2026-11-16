@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-16 FCAT 27.0.112：.111日志Campaign Mix 27810/40000、已确认5批37张/4000、无待核对/未耗采购；bid HTTP403+EA461后共用traffic STOPPED，后两次恢复不推进。先红生产legacy adapter+真实gate（合成nativeI/O）得到throttle；shared buyer仅显式接ad既有bid envelope分类，同确拒才skip该挂牌，保留HTTP/EA码；401/429/458/512/未知403/矛盾itemIds仍阻断。8次生产采购/Journal波次含一次403461拒绝后完成，重建引擎重跑0再买/再贡献；原预算/cap/停止/原Journal及新Trading任务策略不变。旧持久化暂停不自动清，用户市场交易显式清后回原SBC核对继续。FSU26.09.10未改：旧备份依赖缓存/约1.8MB数据不能证明当前启动原因；本轮UI工具URL识别失败，无刷新/设置写，不冒称已修FSU。见docs/releases/27.0.112.md。
+
 2026-11-16 Puzzle 27.0.111：基于93eac04/main .110，保留ad累计Trading/Gallery及最终库存复用。用户.107新日志115/175安全28全金、45目录/43可用、200k组合而摆阵/验算0；备份核实20首银分属20俱乐部、专项6张/去重总25银、其余19俱乐部各1；其中专项1张FUTBIN/PS无价，24可用银在5俱乐部内最多9张（64条linked映射复核无别名变化），第三页却铜。先红同形生产Session200k/0验算；只改查询仍117843，联合near-whole品质下限与distinct-clubs上限必要DP后866节点/合法11银/33chem，cash893/10银。非完整现场回放：备份无28安全库存快照、未查替代页；不冒称现场最低。仅无显式身份且同联赛cap不小于dominant count时优先该品质俱乐部页；纯容量DP忽略副本/位置/价格等冲突保持乐观，原最终原生验证不变。穷举后缀/副本/关联club与认证/输入漂移/原cap、冷暖缓存/离线Chrome覆盖；不抬3页/50k→100k→200k、不改锁卡/主阵容/FSU/交易或Journal。见docs/releases/27.0.111.md。
 
 2026-11-16 用户授权提交并合并累计Trading改动：fetch后origin/main仍08c0faf，本地main为7de00d2，领先1/落后0；独立fix/trading-batches-20261116分支合入origin/main已最新，无冲突。纳入命中提速/403分类、停止任务显式重启、只买不挂及先买后移售批次，版本保持27.0.110；此前verify505/6584和完整离线Chrome已过，本轮重新完整verify后提交并快进合并本地main。最终业务产物SHAf427af9f9aa4e794ae1221f01efa470775e0464895f43c18b6290ec2194c92e5已专用安装回读一致，但真实交易待用户；不push/tag/Release，两个私人.tmp不入Git。本段覆盖此前累计WIP未提交状态，见docs/FC27_TRADING_SEARCH_BATCH_ZH.md提交记录。

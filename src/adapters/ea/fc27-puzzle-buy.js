@@ -8,6 +8,7 @@ import { puzzleBuyMatchesSlots } from '../../fc27/puzzle-buy-slots.js';
 import { readFsuStyleAuctionPrices } from '../../fc27/fsu-auction-search.js';
 import { purchaseApprovedPrice, validatePurchasePriceApproval, purchasePriceApprovalFor } from '../../fc27/purchase-price-approval.js';
 import { purchasePriceCap } from '../../gallery/public-price-policy.js';
+import { marketTaskBuyResponse } from '../../trading/market-task-buy-response.js';
 
 // FSU 26.09 buyConceptPlayer: exact-version search -> Item.bid at Buy Now
 // -> Item.move(CLUB). Use EA services directly, never invoke FSU's buyer.
@@ -226,7 +227,7 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
       let reply;
       try { reply = await runFc27MarketRequest(root,'buy',async()=>{await verifyCurrent(currentRecord);writable();const liveCap=approvedCap(entry.definitionId,cap.maxBuy,item,cap.fresh);
         if(liveCap.maxBuy===null||entry.price>liveCap.maxBuy||auction.buyNowPrice!==entry.price||!auction.canBuy(coins())||!(auction.getSecondsRemaining()>0))fail('FC27_BUY_LISTING_CHANGED');},
-        mark=>observe(() => {mark();return service.bid(item, entry.price); }, true),{exactDispatch:true});
+        mark=>observe(() => {mark();return service.bid(item, entry.price); }, true),{exactDispatch:true,taskBuyResponse:true});
       } catch(error) {
         if(error.notSent===true&&/^FC27_MARKET_TRAFFIC_/.test(error.message))return {status:'rejected',reason:error.message};
         throw error;
@@ -246,9 +247,11 @@ export async function createFc27PuzzleBuyAdapter(root, { canWrite, assertTarget,
         return { status: 'bought', itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
       }
       if (rejected) {
-        const reason = reply.error?.code !== undefined && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED
+        const bidResponse = marketTaskBuyResponse(reply);
+        const reason = bidResponse.category === 'offer-rejected'
+          && reply.error?.code !== undefined && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED
           ? 'FC27_BUY_LISTING_UNAVAILABLE' : 'FC27_BUY_REJECTED';
-        if (reason === 'FC27_BUY_LISTING_UNAVAILABLE' && ![401,403,429].includes(reply.status)) rememberRejected(entry);
+        if (reason === 'FC27_BUY_LISTING_UNAVAILABLE' && !bidResponse.stop) rememberRejected(entry);
         return { status: 'rejected', ...responseCodes(reply), reason };
       }
       return { status: 'unknown' };

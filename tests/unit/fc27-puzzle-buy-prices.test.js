@@ -89,9 +89,41 @@ it('skips the exact explicitly rejected stale listing before the price walk and 
   expect(f.state.bids).toEqual([150, 200]);
 });
 
+it('does not globally pause on a definite HTTP403/EA461 legacy bid rejection and skips only that offer', async () => {
+  const f = await fixture({ skipRejectedListings: true, filterByCap: true });
+  f.state.prices = [150, 200]; f.state.rejectTrades = ['1000']; f.state.rejectStatus = 403;
+  const gate = await sharedGate(f);
+  const first = await f.adapter.find(10, 200);
+  expect(await f.adapter.buy(first)).toMatchObject({ status: 'rejected', reason: 'FC27_BUY_LISTING_UNAVAILABLE' });
+  expect((await gate.inspect()).ledger.stopped).toBeNull();
+  const second = await f.adapter.find(10, 200);
+  expect(second).toMatchObject({ tradeId: '1001', price: 200 });
+  expect(await f.adapter.buy(second)).toMatchObject({ status: 'bought', itemId: 101 });
+  expect(f.state.bids).toEqual([150, 200]);
+});
+
+it.each([
+  [401,461,'authentication',undefined,'rejected'],
+  [429,461,'throttle',undefined,'rejected'],
+  [403,403,'manual',undefined,'rejected'],
+  [403,undefined,'manual',undefined,'rejected'],
+  [403,458,'captcha',undefined,'rejected'],
+  [403,512,'throttle',undefined,'rejected'],
+  [403,461,'manual',{itemIds:[100]},'unknown'],
+])('retains the real stop for HTTP%s/EA%s and never reuses contradictory evidence',async(status,code,stop,data,expected)=>{
+  const f=await fixture({skipRejectedListings:true,filterByCap:true});f.state.prices=[150,200];
+  f.state.bidReply={success:false,status,error:{code},...(data?{data}:{})};
+  const gate=await sharedGate(f),offer=await f.adapter.find(10,200);
+  expect((await f.adapter.buy(offer)).status).toBe(expected);
+  expect((await gate.inspect()).ledger.stopped).toBe(stop);
+  const send=vi.fn();await expect(gate.run('buy',()=>{},send)).rejects.toThrow('STOPPED');
+  expect(send).not.toHaveBeenCalled();expect(f.state.bids).toEqual([150]);
+});
+
 it.each([401,403,429])('does not reinterpret HTTP %i as permission to skip and automatically rebid', async status => {
   const f = await fixture({ skipRejectedListings: true, filterByCap: true });
   f.state.prices = [150, 200]; f.state.rejectTrades = ['1000']; f.state.rejectStatus = status;
+  if (status === 403) f.state.bidReply = { success: false, status, error: { code: 403 } };
   const first = await f.adapter.find(10, 200); await f.adapter.buy(first);
   expect(await f.adapter.find(10, 200)).toMatchObject({ tradeId: '1000', price: 150 });
   expect(f.state.bids).toEqual([150]);
@@ -203,10 +235,11 @@ it('returns no supply without a bid when every native auction is excluded', asyn
   const f = await fixture({ excludeOffer: () => true }); f.state.prices = [150, 200];
   expect(await f.adapter.find(10, 200)).toBeNull(); expect(f.state.bids).toEqual([]);
 });
-it('completes eight real native search/bid waves while old consumed listings remain in every response', async () => {
+it.each([false,true])('completes eight native waves without rebuying consumed material (shared 403/461=%s)', async sharedRejection => {
   const excludeOffer = (offer, record) => record.entries.some(entry => entry.state === 'consumed'
     && (entry.itemId === offer.itemId || entry.tradeId === offer.tradeId));
-  const f = await fixture({ excludeOffer }); f.state.prices = [150];
+  const f = await fixture({ excludeOffer, skipRejectedListings: sharedRejection }); f.state.prices = sharedRejection ? [150,200] : [150];
+  if (sharedRejection) { f.state.rejectTrades=['1000']; f.state.rejectStatus=403; await sharedGate(f); }
   const market = { source: 'market', definitionId: 10, id: null, points: 20, price: 200, purchaseMaxBuy: 200 };
   const plan = { context: { schema: 1, season: '27', accountScope: 'account', platform: 'pc' },
     challenge: { id: 1, setId: 2, targetScore: 160, submittedScore: 0, selectionLimit: 30 }, policy: {},
@@ -224,13 +257,17 @@ it('completes eight real native search/bid waves while old consumed listings rem
     contribute: async batch => { score += batch.material.length * 20;
       f.state.prices = [...f.state.prices.map(() => 150), 200]; return { confirmed: true, submittedScore: score }; },
   };
-  const result = await createStreamlinedProcurement({ adapter, journal, operationId: () => 'offline',
-    lock: { acquire: async () => () => {} }, now: () => 1000 }).execute(plan,
-    { approved: true, fingerprint: JSON.stringify(plan), budget: 2000, attempts: 2, expiresAt: 10000 });
-  expect(result).toMatchObject({ status: 'completed', record: { spent: 1550, submittedScore: 160 } });
-  expect(result.record.consumedIds).toEqual([100, 101, 102, 103, 104, 105, 106, 107]);
-  expect(f.state.bids).toEqual([150, 200, 200, 200, 200, 200, 200, 200]);
-  expect(f.state.searches).toEqual(Array(8).fill(200));
+  const make = () => createStreamlinedProcurement({ adapter, journal, operationId: () => 'offline',
+    lock: { acquire: async () => () => {} }, now: () => f.state.time });
+  const approval={ approved: true, fingerprint: JSON.stringify(plan), budget: 2000, attempts: 2, expiresAt: 200000 };
+  const result = await make().execute(plan,approval);
+  expect(result).toMatchObject({ status: 'completed', record: { spent: sharedRejection?1600:1550, submittedScore: 160 } });
+  expect(result.record.consumedIds).toEqual(Array.from({length:8},(_,i)=>100+i+Number(sharedRejection)));
+  expect(f.state.bids).toEqual([150, ...Array(sharedRejection?8:7).fill(200)]);
+  expect(f.state.searches).toEqual(Array(sharedRejection?9:8).fill(200));
+  const before=structuredClone({ bids:f.state.bids, searches:f.state.searches, score });
+  expect(await make().execute(plan,approval)).toMatchObject({status:'completed',record:{spent:result.record.spent,submittedScore:160}});
+  expect({bids:f.state.bids,searches:f.state.searches,score}).toEqual(before);
 });
 it('floors a 275 approval to a 250 search cap and cannot walk above it', async () => {
   const f = await fixture({ premium: 75 }); f.state.prices = [];

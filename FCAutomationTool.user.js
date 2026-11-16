@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.111
+// @version      27.0.112
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.111", at: Date.now(), status: 'started',
+    state = { version: "27.0.112", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -12329,7 +12329,7 @@
               mark();
               return service.bid(item2, entry.price);
             }, true),
-            { exactDispatch: true }
+            { exactDispatch: true, taskBuyResponse: true }
           );
         } catch (error2) {
           if (error2.notSent === true && /^FC27_MARKET_TRAFFIC_/.test(error2.message)) return { status: "rejected", reason: error2.message };
@@ -12349,8 +12349,9 @@
           return { status: "bought", itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId, price: entry.price };
         }
         if (rejected) {
-          const reason = reply.error?.code !== void 0 && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED ? "FC27_BUY_LISTING_UNAVAILABLE" : "FC27_BUY_REJECTED";
-          if (reason === "FC27_BUY_LISTING_UNAVAILABLE" && ![401, 403, 429].includes(reply.status)) rememberRejected(entry);
+          const bidResponse = marketTaskBuyResponse(reply);
+          const reason = bidResponse.category === "offer-rejected" && reply.error?.code !== void 0 && reply.error.code === root.UtasErrorCode.PERMISSION_DENIED ? "FC27_BUY_LISTING_UNAVAILABLE" : "FC27_BUY_REJECTED";
+          if (reason === "FC27_BUY_LISTING_UNAVAILABLE" && !bidResponse.stop) rememberRejected(entry);
           return { status: "rejected", ...responseCodes(reply), reason };
         }
         return { status: "unknown" };
@@ -51298,7 +51299,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.111" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.112" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -51713,8 +51714,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.111"}`,
-    version: "27.0.111",
+    title: `FC Automation Tool ${"27.0.112"}`,
+    version: "27.0.112",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
