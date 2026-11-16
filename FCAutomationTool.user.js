@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.110
+// @version      27.0.111
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.110", at: Date.now(), status: 'started',
+    state = { version: "27.0.111", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5024,7 +5024,7 @@
         group.indices.push(candidateIndex);
       }
     }
-    const suffixCount2 = (indices, start) => {
+    const suffixCount3 = (indices, start) => {
       let low = 0;
       let high = indices.length;
       while (low < high) {
@@ -5059,7 +5059,7 @@
       });
       for (const item2 of chosen) {
         const fits = compatible.get(item2);
-        const cap = pointsFor(keys2.get(item2), (index, key2) => (selectedGroups[index].get(key2) ?? 0) + Math.min(remaining, suffixCount2(groups[index].get(key2).indices, start)));
+        const cap = pointsFor(keys2.get(item2), (index, key2) => (selectedGroups[index].get(key2) ?? 0) + Math.min(remaining, suffixCount3(groups[index].get(key2).indices, start)));
         if (fits?.length === 1) singleton[fits[0]] = Math.max(singleton[fits[0]], cap);
         else if (fits?.length > 1) selected += cap;
       }
@@ -5290,6 +5290,62 @@
         }
       };
     });
+  }
+
+  // src/fc27/puzzle-club-quality-capacity.js
+  var suffixCount2 = (indices, start) => {
+    let low = 0, high = indices.length;
+    while (low < high) {
+      const middle = low + high >>> 1;
+      if (indices[middle] < start) low = middle + 1;
+      else high = middle;
+    }
+    return indices.length - low;
+  };
+  function createPuzzleClubQualityCapacity({ candidates, matches: matches2, minimum, clubLimit, resolveClub }) {
+    const groups = /* @__PURE__ */ new Map();
+    for (let index = 0; index < candidates.length; index++) {
+      const key2 = resolveClub(candidates[index].teamId ?? candidates[index].clubId);
+      if (!groups.has(key2)) groups.set(key2, { all: [], matching: [] });
+      const group = groups.get(key2);
+      group.all.push(index);
+      if (matches2[index]) group.matching.push(index);
+    }
+    return {
+      canReach(chosen, start, remaining, usedMatches) {
+        const usedClubs = new Set(chosen.map((item2) => resolveClub(item2.teamId ?? item2.clubId)));
+        const slots = clubLimit - usedClubs.size;
+        if (slots < 0) return false;
+        const needed = Math.max(0, minimum - usedMatches);
+        if (needed > remaining) return false;
+        let freeTotal = 0, freeMatching = 0;
+        const choices = [];
+        for (const [key2, group] of groups) {
+          const total = suffixCount2(group.all, start);
+          if (!total) continue;
+          const matching = suffixCount2(group.matching, start);
+          if (usedClubs.has(key2)) {
+            freeTotal += total;
+            freeMatching += matching;
+          } else choices.push({ total, matching });
+        }
+        if (freeTotal >= remaining && freeMatching >= needed) return true;
+        const count3 = Math.min(slots, choices.length);
+        if (freeTotal + choices.map((group) => group.total).sort((a, b) => b - a).slice(0, count3).reduce((a, b) => a + b, 0) < remaining || freeMatching + choices.map((group) => group.matching).sort((a, b) => b - a).slice(0, count3).reduce((a, b) => a + b, 0) < needed) return false;
+        if (needed === 0 || needed === remaining) return true;
+        const dp = Array.from({ length: count3 + 1 }, () => Array(needed + 1).fill(-1));
+        dp[0][Math.min(needed, freeMatching)] = Math.min(remaining, freeTotal);
+        for (const group of choices) for (let clubs = count3; clubs > 0; clubs--) {
+          for (let quality3 = 0; quality3 <= needed; quality3++) {
+            if (dp[clubs - 1][quality3] < 0) continue;
+            const nextQuality = Math.min(needed, quality3 + group.matching);
+            dp[clubs][nextQuality] = Math.max(dp[clubs][nextQuality], Math.min(remaining, dp[clubs - 1][quality3] + group.total));
+            if (dp[clubs][needed] >= remaining) return true;
+          }
+        }
+        return false;
+      }
+    };
   }
 
   // src/fc27/puzzle-plan-ranking.js
@@ -6111,6 +6167,16 @@
       entry.used = 0;
       for (let i = candidates.length - 1; i >= 0; i--) entry.suffix[i] = entry.suffix[i + 1] + Number(entry.matches[i]);
     }
+    const clubQualityCaps = relations.filter((rule) => rule.kind === "distinct-clubs" && rule.mode !== "min").flatMap((cap) => counted.filter((entry) => entry.rule.kind === "quality-count" && entry.rule.mode !== "max" && entry.rule.count > 0 && entry.rule.count >= required2 - 1).map((entry) => ({
+      entry,
+      bound: createPuzzleClubQualityCapacity({
+        candidates,
+        matches: entry.matches,
+        minimum: entry.rule.count,
+        clubLimit: cap.value,
+        resolveClub
+      })
+    })));
     const sameCaps = new Map(relations.filter((rule) => rule.kind.startsWith("same-") && rule.mode !== "min").map((rule) => [rule, counted.filter((entry) => entry.rule.mode !== "max" && entry.rule.count > 0).map((entry) => ({
       entry,
       groups: groupSuffixIndex(rule, candidates, resolveClub)
@@ -6216,7 +6282,7 @@
           if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
         }
       }
-      if (groupCapacity.some((bound) => !bound.canReach(chosen, start, remaining))) return;
+      if (groupCapacity.some((bound) => !bound.canReach(chosen, start, remaining)) || clubQualityCaps.some(({ entry, bound }) => !bound.canReach(chosen, start, remaining, entry.used))) return;
       if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
       if (chosen.length === required2) {
         const validate3 = (facts2) => matchFc27SbcRequirements({
@@ -8278,6 +8344,29 @@
       const candidates = [...pool.candidates, ...marketCandidates(input, entries2)];
       const dominant = parsed.rules.filter((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.qualities.length === 1 && rule.count > required(input) / 2).sort((a, b) => b.count - a.count)[0];
       const leagueCap = Math.min(required(input), ...parsed.rules.filter((rule) => rule.kind === "same-league" && rule.mode !== "min").map((rule) => rule.value));
+      if (chemistryNeeded && dominant && dominant.count >= required(input) - 1 && leagueCap >= dominant.count && !parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind))) {
+        const level2 = levelOf(dominant.qualities[0]);
+        const unused = (query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query));
+        if (tiers2.includes(level2)) {
+          const groups = /* @__PURE__ */ new Map();
+          for (const item2 of candidates) {
+            const key2 = resolveClub(item2.teamId);
+            if (!positive7(item2.teamId) || !positive7(key2)) continue;
+            if (!groups.has(key2)) groups.set(key2, { team: item2.teamId, ids: /* @__PURE__ */ new Set(), tier: /* @__PURE__ */ new Set() });
+            const group = groups.get(key2);
+            group.ids.add(item2.definitionId);
+            if (levelOf(quality2(item2.rating)) === level2) group.tier.add(item2.definitionId);
+          }
+          const ranked = [...groups.values()].filter((group) => group.tier.size > 0).sort((a, b) => b.tier.size - a.tier.size || b.ids.size - a.ids.size || a.team - b.team);
+          const broad = { start: 0, count: 20, level: level2 };
+          if (!ranked.length && unused(broad)) add3(broad);
+          for (const group of ranked) {
+            const query = { start: 0, count: 20, level: level2, team: group.team };
+            if (unused(query)) add3(query);
+          }
+          if (queries.length) return { status: "ready", executable: false, queries, complete: false };
+        }
+      }
       if (chemistryNeeded && dominant && leagueCap < dominant.count && !parsed.rules.some((rule) => ["from-clubs", "from-leagues", "from-nations"].includes(rule.kind))) {
         const level2 = levelOf(dominant.qualities[0]);
         if (allowedFc27MarketTiers(parsed.rules, input.policy).some((tier) => tier.level === level2)) {
@@ -51209,7 +51298,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.110" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.111" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -51624,8 +51713,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.110"}`,
-    version: "27.0.110",
+    title: `FC Automation Tool ${"27.0.111"}`,
+    version: "27.0.111",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

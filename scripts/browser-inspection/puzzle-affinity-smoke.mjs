@@ -11,6 +11,7 @@ export async function exercisePuzzleAffinity(context) {
       export { createFc27PuzzleProcurementSession } from './src/fc27/puzzle-procurement-session.js';
       export { nationalMinimumFixture } from './tests/helpers/fc27-puzzle-national-minimum-fixture.js';
       export { nationalCostFixture } from './tests/helpers/fc27-puzzle-national-cost-fixture.js';
+      export { tenSilverFixture } from './tests/helpers/fc27-puzzle-ten-silver-fixture.js';
       export { prepareFc27PuzzleConceptDraft } from './src/fc27/puzzle-concept-draft.js';
       export { evaluateFc27PuzzleSquad } from './src/fc27/puzzle-evaluator.js';
     ` }, bundle: true, write: false, format: 'iife', globalName: 'PuzzleAffinitySmoke', target: 'chrome120' });
@@ -106,5 +107,36 @@ export async function exercisePuzzleAffinity(context) {
     assert.equal(cost.draft, 'prepared'); assert.equal(cost.againCost, cost.cost); assert.equal(cost.againRequests, 0);
     assert.equal(cost.writes, 0); assert.ok(cost.reads <= 5);
     console.log('Puzzle cost-reserve Chrome passed: synthetic 8800 -> 4300, native concept validation, same 50k stage, cached repeat, zero EA writes; not live savings.');
+    for (const materialValue of [true, false]) {
+      const silver = await page.evaluate(async materialValue => {
+        const { tenSilverFixture, createFc27PuzzleProcurementSession, prepareFc27PuzzleConceptDraft } = globalThis.PuzzleAffinitySmoke;
+        const f = tenSilverFixture(), { input } = f, memory = new Map(), queries = []; let writes = 0;
+        const mutation = () => { writes++; throw Error('Unexpected offline mutation'); };
+        const options = { now: () => input.now,
+          get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+          set: async (key, value) => memory.set(key, structuredClone(value)),
+          createTransport: async () => ({ readCatalogPage: async query => {
+            queries.push(query); return { status: 'observed', source: 'ea-defid', season: '27', query, observedAt: input.now,
+              entries: (query.level==='bronze' ? f.bronze : query.team===2 ? f.target : query.team===3 ? f.second : f.silver)
+                .filter(card => !query.team || card.teamId===query.team).slice(query.start, query.start+query.count) };
+          }, buy: mutation, move: mutation, save: mutation, submit: mutation, readQuotePage: mutation }),
+          loadPublicPrices: async ids => ({ policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+            { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futbin', 'futgg'].map(source => [source,
+              { schema: 2, source, definitionId, season: '27', platform: 'pc', price: source==='futbin' ? definitionId>=5000 ? 1000 : 200 : null,
+                fetchedAt: input.now, expiresAt: input.now+300000, sourceUpdatedAt: null,
+                error: source==='futbin' ? null : 'FC27_PUBLIC_PRICE_NOT_REQUESTED' }])) }])) }) };
+        const run = () => createFc27PuzzleProcurementSession(options).plan(input, { optimizeMaterialValue: materialValue, adaptiveSearch: true });
+        const result = await run(), again = await run(), plan = result.plans?.[0];
+        return { status: result.status, reason: result.reason, nodes: result.diagnostics.nodes, queries, writes,
+          draft: plan ? prepareFc27PuzzleConceptDraft(input, plan).status : null,
+          chemistry: plan?.teamFacts.chemistry, silverCount: plan ? [...plan.selectedOwned,...plan.purchases].filter(c=>c.rating>=65&&c.rating<75).length : 0,
+          againStatus: again.status, againRequests: again.requests };
+      }, materialValue);
+      assert.equal(silver.status, 'suggested', JSON.stringify(silver)); assert.equal(silver.againStatus, 'suggested');
+      assert.equal(silver.draft, 'prepared'); assert.ok(silver.chemistry>=16 && silver.silverCount>=10 && silver.nodes<=10000);
+      assert.deepEqual(silver.queries, [{start:0,count:20,level:'silver'}, {start:0,count:20,level:'silver',team:2}, {start:0,count:20,level:'silver',team:3}]);
+      assert.equal(silver.againRequests, 0); assert.equal(silver.writes, 0);
+      console.log(`Ten-silver club-cap Chrome passed (${materialValue ? 'material-value' : 'additional-coins'}): three silver lanes, native concept validation, <10k nodes, cached repeat; synthetic, no EA writes.`);
+    }
   } finally { await page.close(); }
 }

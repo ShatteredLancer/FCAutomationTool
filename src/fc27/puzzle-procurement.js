@@ -658,6 +658,34 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
       .sort((a, b) => b.count - a.count)[0];
     const leagueCap = Math.min(required(input), ...parsed.rules.filter(rule => rule.kind === 'same-league' && rule.mode !== 'min')
       .map(rule => rule.value));
+    if (chemistryNeeded && dominant && dominant.count >= required(input) - 1 && leagueCap >= dominant.count
+        && !parsed.rules.some(rule => ['from-clubs', 'from-leagues', 'from-nations'].includes(rule.kind))) {
+      // A near-whole-squad tier needs several dense clubs under a club cap.
+      // Ten scattered silvers are not interchangeable with ten silvers that
+      // fit inside five clubs. Spend the remaining bounded lanes growing that
+      // required tier, not discovering bronze fillers before its backbone.
+      const level = levelOf(dominant.qualities[0]);
+      const unused = query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query));
+      if (tiers.includes(level)) {
+        const groups = new Map();
+        for (const item of candidates) {
+          const key = resolveClub(item.teamId);
+          if (!positive(item.teamId) || !positive(key)) continue;
+          if (!groups.has(key)) groups.set(key, { team: item.teamId, ids: new Set(), tier: new Set() });
+          const group = groups.get(key); group.ids.add(item.definitionId);
+          if (levelOf(quality(item.rating)) === level) group.tier.add(item.definitionId);
+        }
+        const ranked = [...groups.values()].filter(group => group.tier.size > 0)
+          .sort((a, b) => b.tier.size - a.tier.size || b.ids.size - a.ids.size || a.team - b.team);
+        const broad = { start: 0, count: 20, level };
+        if (!ranked.length && unused(broad)) add(broad);
+        for (const group of ranked) {
+          const query = { start: 0, count: 20, level, team: group.team };
+          if (unused(query)) add(query);
+        }
+        if (queries.length) return { status: 'ready', executable: false, queries, complete: false };
+      }
+    }
     if (chemistryNeeded && dominant && leagueCap < dominant.count
         && !parsed.rules.some(rule => ['from-clubs', 'from-leagues', 'from-nations'].includes(rule.kind))) {
       // A dominant tier cannot all come from one league under its native cap.

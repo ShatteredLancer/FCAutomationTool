@@ -4,6 +4,7 @@ import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements,
 import { createFc27PuzzlePartialChemistryBound, evaluateFc27PuzzleRating } from './puzzle-evaluator.js';
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
 import { createPuzzleGroupCapacity } from './puzzle-group-capacity.js';
+import { createPuzzleClubQualityCapacity } from './puzzle-club-quality-capacity.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
 const PUZZLE_SEARCH_STAGES = Object.freeze([50000, 100000, 200000]);
@@ -792,6 +793,12 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     entry.suffix = Array(candidates.length + 1).fill(0); entry.used = 0;
     for (let i = candidates.length - 1; i >= 0; i--) entry.suffix[i] = entry.suffix[i + 1] + Number(entry.matches[i]);
   }
+  const clubQualityCaps = relations.filter(rule => rule.kind === 'distinct-clubs' && rule.mode !== 'min')
+    .flatMap(cap => counted.filter(entry => entry.rule.kind === 'quality-count' && entry.rule.mode !== 'max'
+      && entry.rule.count > 0 && entry.rule.count >= required - 1).map(entry => ({ entry,
+      bound: createPuzzleClubQualityCapacity({ candidates, matches: entry.matches, minimum: entry.rule.count,
+        clubLimit: cap.value, resolveClub }),
+    })));
   // Couple item minima (e.g. seven gold) to same-group upper bounds (e.g.
   // four per league). Plain suffix headcount counted unusable fifth/sixth
   // league members, leaving 50k dead combinations before any placement.
@@ -875,7 +882,8 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
         if (entry.used + Math.min(remaining, capacity) < entry.rule.count) return;
       }
     }
-    if (groupCapacity.some(bound => !bound.canReach(chosen, start, remaining))) return;
+    if (groupCapacity.some(bound => !bound.canReach(chosen, start, remaining))
+        || clubQualityCaps.some(({ entry, bound }) => !bound.canReach(chosen, start, remaining, entry.used))) return;
     if (partialChemistry && partialChemistry(chosen, start, remaining) < minimumChemistry) return;
     if (chosen.length === required) {
       const validate = facts => matchFc27SbcRequirements({ requirements: parsed.rules, squad: chosen,
