@@ -3,6 +3,11 @@ import { createSeasonContext } from '../fc27/prelaunch-contract.js';
 export const STREAMLINED_SCHEMA = 1;
 export const integer = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
 export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Reviewed EA Set remaining-seconds projection only. This is not an expiry
+// extension or a rule-equivalence test: callers must still bind every other
+// field and enforce the earlier deadline before a native write.
+export const streamlinedDeadlineReprojection = (before, after) => integer(before, 1) && integer(after, 1)
+  && Math.abs(before - after) === 1;
 export const fail = code => { throw Error(`FC27_STREAMLINED_${code}`); };
 export const deepFreeze = value => {
   if (value && typeof value === 'object') { Object.values(value).forEach(deepFreeze); Object.freeze(value); }

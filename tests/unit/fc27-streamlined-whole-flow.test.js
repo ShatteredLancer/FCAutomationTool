@@ -18,9 +18,10 @@ import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
 
 afterEach(() => vi.useRealTimers());
 
-async function fixture({ fault = null, innerState = 'rejected' } = {}) {
+async function fixture({ fault = null, innerState = 'rejected', reloadDelta = null } = {}) {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-08T03:01:00Z'));
-  const now = () => Date.now(), f = streamlinedRuntime({ targetScore: 16000 });
+  const now = () => Date.now(), f = streamlinedRuntime({ targetScore: 16000,
+    endTime: reloadDelta === null ? 0 : Math.floor(now() / 1000) + 3600 });
   f.root.info.build.untradeable = false; f.root.info.set.goldenrange = 90;
   f.root.ItemPile.PURCHASED = 1; f.root.MAX_NEW_ITEMS = 100; f.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 0, inc: 50 }] };
   const events = []; const memory = new Map(), pending = new Map(), buys = [], moves = [], contributions = [], allAttempts = [];
@@ -93,7 +94,8 @@ async function fixture({ fault = null, innerState = 'rejected' } = {}) {
   Object.assign(rejection.batches[0], { state: innerState, startingScore: 10550 });
   rejection = await inner.write(context, rejection, rejection.revision);
   const buyer = options => ({
-    verifySquad: async () => options.verifyCurrent(),
+    // Production buyer has a separate read-only recovery callback.
+    verifySquad: async () => options.verifySquad(),
     find: async (definitionId, cap) => {
       options.assertTarget();
       expect(f.state.players.some(raw => raw.resourceId === definitionId)).toBe(false);
@@ -139,12 +141,14 @@ async function fixture({ fault = null, innerState = 'rejected' } = {}) {
     createPurchaseAdapter: (root, options) => createFc27StreamlinedPurchaseAdapter(root, { ...options, createBuyer: async (_root, callbacks) => buyer(callbacks) }),
     createProvider: (root, options) => createFc27StreamlinedProvider(root, { ...options,
       createTransport: async () => ({ request: async (_action, target, before) => {
+        if (fault === 'deadline-before-send' && !fired) { fired = true; vi.setSystemTime(originalChallenge.endTime * 1000); }
         await before(); expect(held).toBe(true); allAttempts.push([...target.itemIds]);
         expect(target.itemIds.some(id => forbiddenIds.includes(id))).toBe(false);
         expect(contributions.flat().some(id => target.itemIds.includes(id))).toBe(false);
         const points = target.itemIds.reduce((sum, id) => sum + (f.root.repositories.Item.club.items._collection[id]?.sbsScore ?? 0), 0);
         expect(points).toBeGreaterThan(0);
         contributions.push([...target.itemIds]);
+        if (fault === 'deadline-after-send' && !fired) { fired = true; vi.setSystemTime(originalChallenge.endTime * 1000); }
         f.state.players = f.state.players.filter(row => !target.itemIds.includes(row.id));
         f.replies.rows[0].submittedScore += points;
         const complete = f.replies.rows[0].submittedScore >= 16000;
@@ -160,13 +164,14 @@ async function fixture({ fault = null, innerState = 'rejected' } = {}) {
           submittedScore: f.replies.rows[0].submittedScore, grantedChallengeAwards: complete ? [{ type: 'pack' }] : [] } };
       } }) }) };
   const execution = () => createFc27StreamlinedExecution(f.root, options);
+  if (reloadDelta !== null) { f.set.endTime += reloadDelta; f.replies.set.endTime = f.set.endTime; }
   return { f, context, memory, outer, inner, plan, execution, buys, moves, contributions, allAttempts, fault, events,
     report: () => ({ score: f.replies.rows[0].submittedScore, buys: buys.length, spentNew: buys.reduce((sum, row) => sum + row.price, 0),
       moves: moves.length, contributedIds: contributions.flat(), held }) };
 }
 
-it('replays the incident-shaped recovery, buys the remaining five cards, completes, reloads, and never repeats a write', async () => {
-  const f = await fixture();
+it.each([null, -1, 1])('replays recovery through completion without repeating writes after reload (deadline delta=%s)', async reloadDelta => {
+  const f = await fixture({ reloadDelta });
   const initial = f.report();
   let execution = await f.execution();
   expect(await finishNativeIo(execution.recoverPurchase(f.plan.challenge))).toMatchObject({ status: 'recovered' });
@@ -184,6 +189,30 @@ it('replays the incident-shaped recovery, buys the remaining five cards, complet
     .toMatchObject({ status: 'completed' });
   expect(f.report()).toEqual(final); expect(final.held).toBe(false);
   console.log('WHOLE_FLOW_AUDIT', JSON.stringify(final));
+});
+
+it('retains the earlier frozen deadline at the real provider dispatch seam after a later loaded projection', async () => {
+  const f = await fixture({ fault: 'deadline-before-send', reloadDelta: 1 });
+  const execution = await f.execution();
+  const result = await finishNativeIo(execution.purchase(f.plan, { approved: true, fingerprint: f.plan.fingerprint,
+    budget: 8568, expiresAt: f.plan.challenge.endTime * 1000 + 10000 }));
+  expect(result.status).toBe('stopped');
+  expect(f.contributions).toHaveLength(0); expect(f.allAttempts).toHaveLength(0);
+  expect((await f.outer.read(f.context)).contribution).toBeNull();
+  expect((await f.inner.read(f.context)).batches[0].state).toBe('waiting');
+});
+
+it('settles an accepted write at expiry then allows read-only reload without another market write or contribution', async () => {
+  const f = await fixture({ fault: 'deadline-after-send', reloadDelta: 1 });
+  let execution = await f.execution();
+  const result = await finishNativeIo(execution.purchase(f.plan, { approved: true, fingerprint: f.plan.fingerprint,
+    budget: 8568, expiresAt: f.plan.challenge.endTime * 1000 + 10000 }));
+  expect(result).toMatchObject({ status: 'recovery-required', reason: 'FC27_STREAMLINED_CHALLENGE_EXPIRED' });
+  expect(f.contributions).toHaveLength(1); expect(result.record.submittedScore).toBeGreaterThan(10550);
+  expect(result.record.contribution).toBeNull();
+  const before = f.report(); execution = await f.execution();
+  expect(await finishNativeIo(execution.recoverPurchase(f.plan.challenge))).toMatchObject({ status: 'recovered' });
+  expect(f.report()).toEqual(before);
 });
 
 it.each(['buy-response-lost', 'move-response-lost', 'readback-exhausted', 'finalization-before', 'finalization-after', 'outer-checkpoint'])(

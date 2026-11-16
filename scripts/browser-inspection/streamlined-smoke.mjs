@@ -3,8 +3,10 @@ import { build } from 'esbuild';
 import path from 'node:path';
 import { exerciseStreamlinedExternal } from './streamlined-external-smoke.mjs';
 import { exerciseStreamlinedRejectedWave } from './streamlined-rejected-wave-smoke.mjs';
+import { exerciseStreamlinedDeadline } from './streamlined-deadline-smoke.mjs';
 
 export async function exerciseStreamlined(context) {
+  await exerciseStreamlinedDeadline(context);
   const page = await context.newPage();
   try {
     const root = path.resolve(import.meta.dirname, '../..');

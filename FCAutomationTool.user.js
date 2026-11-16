@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.112
+// @version      27.0.113
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.112", at: Date.now(), status: 'started',
+    state = { version: "27.0.113", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -2868,6 +2868,7 @@
   // src/streamlined/contract.js
   var integer7 = (v, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isSafeInteger(v) && v >= min && v <= max;
   var same6 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  var streamlinedDeadlineReprojection = (before, after) => integer7(before, 1) && integer7(after, 1) && Math.abs(before - after) === 1;
   var fail10 = (code2) => {
     throw Error(`FC27_STREAMLINED_${code2}`);
   };
@@ -41565,7 +41566,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
   function canReplaceStreamlinedRejectedWave(record, plan) {
     const batch = record?.batches?.[0];
-    return record?.retired !== true && same6(record?.context, plan?.context) && same6(record?.plan?.challenge, plan?.challenge) && same6(record?.plan?.policy, plan?.policy) && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
+    const previous = record?.plan?.challenge, next = plan?.challenge;
+    const sameChallenge = same6(previous, next) || streamlinedDeadlineReprojection(previous?.endTime, next?.endTime) && same6({ ...previous, endTime: next.endTime }, next);
+    return record?.retired !== true && same6(record?.context, plan?.context) && sameChallenge && same6(record?.plan?.policy, plan?.policy) && record?.batches?.length === 1 && plan?.batches?.length === 1 && batch.state === "rejected" && batch.receipt === void 0 && !batch.progressChanged && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;
   }
   var refOf = (item2) => ({
     id: item2.id,
@@ -50007,14 +50010,46 @@ ${detail.join(" \xB7 ")}`;
       preferredPosition: item2.preferredPosition
     }]));
     const references = new Map(marketItems.map((item2) => [item2.definitionId, item2.price]));
-    const assertTarget = () => {
-      if (!same6(origin, readFc27Context(root))) fail10("CONTEXT_CHANGED");
-      const page = locateFc27StreamlinedPage(root);
-      if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail10("CONTEXT_CHANGED");
-      const current2 = projectFc27StreamlinedChallenge(page, origin);
-      for (const key2 of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode", "endTime"]) {
-        if (!same6(current2[key2], plan.challenge[key2])) fail10("CONTEXT_CHANGED");
+    const initialPage = locateFc27StreamlinedPage(root);
+    const loadedEndTime = initialPage ? projectFc27StreamlinedChallenge(initialPage, origin).endTime : null;
+    const frozenEndTime = plan.challenge.endTime;
+    const sameDeadline = loadedEndTime === frozenEndTime;
+    const reprojectedDeadline = streamlinedDeadlineReprojection(frozenEndTime, loadedEndTime);
+    const deadline = integer7(loadedEndTime, 1) && integer7(frozenEndTime, 1) ? Math.min(loadedEndTime, frozenEndTime) : frozenEndTime;
+    const expired = () => deadline > 0 && deadline * 1e3 <= now();
+    let reportedDeadline = false;
+    const contextEvent = (status, mismatch2) => {
+      try {
+        onEvent({
+          stage: "context-check",
+          status,
+          mismatch: mismatch2,
+          ...status === "blocked" ? { reason: "FC27_STREAMLINED_CONTEXT_CHANGED" } : {}
+        });
+      } catch {
       }
+    };
+    const contextChanged = (mismatch2) => {
+      contextEvent("blocked", mismatch2);
+      fail10("CONTEXT_CHANGED");
+    };
+    const assertTarget = () => {
+      if (!same6(origin, readFc27Context(root)) || !same6(origin, plan.context)) contextChanged("account");
+      const page = locateFc27StreamlinedPage(root);
+      if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) contextChanged("target");
+      const current2 = projectFc27StreamlinedChallenge(page, origin);
+      for (const key2 of ["targetScore", "selectionLimit", "eligibility", "eligibilityOperation", "repeats", "repeatabilityMode"]) {
+        if (!same6(current2[key2], plan.challenge[key2])) contextChanged(key2);
+      }
+      if (!sameDeadline && !reprojectedDeadline || current2.endTime !== loadedEndTime) contextChanged("deadline");
+      if (reprojectedDeadline && !reportedDeadline) {
+        reportedDeadline = true;
+        contextEvent("verified", "deadline-reprojection");
+      }
+    };
+    const assertLiveTarget = () => {
+      assertTarget();
+      if (expired()) fail10("CHALLENGE_EXPIRED");
     };
     const buyer = await createBuyer(root, {
       canWrite: () => canWrite() === true && persistence.inspect().active === true,
@@ -50024,7 +50059,7 @@ ${detail.join(" \xB7 ")}`;
       referencePrice: ({ definitionId }) => references.get(definitionId),
       excludeOffer: (offer, record) => record?.entries?.some((entry) => ["rejected", "consumed"].includes(entry.state) && entry.definitionId === offer.definitionId && entry.itemId === offer.itemId && entry.tradeId === offer.tradeId) === true,
       onEvent,
-      verifyCurrent: () => assertTarget(),
+      verifyCurrent: () => assertLiveTarget(),
       verifySquad: async () => assertTarget()
     });
     const createOwnedReader = async (onEntity) => {
@@ -50113,6 +50148,7 @@ ${detail.join(" \xB7 ")}`;
     };
     const contributionDiagnostic = (row) => onEvent({ ...row, stage: `contribution-${row.phase}` });
     const contribute = async (batchPlan, callbacks = {}) => {
+      assertLiveTarget();
       if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail10("WRITE_CONTRACT_UNVERIFIED");
       const result = await createStreamlinedTransaction({
         adapter: contributionAdapter.adapter,
@@ -50124,7 +50160,7 @@ ${detail.join(" \xB7 ")}`;
       }).execute(
         batchPlan,
         { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
-        { ...callbacks, restartRejected: true }
+        { ...callbacks, stopped: () => callbacks.stopped?.() === true || expired(), restartRejected: true }
       );
       if (result.status === "stopped" && result.record?.plan.fingerprint === batchPlan.fingerprint) {
         if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
@@ -50176,8 +50212,7 @@ ${detail.join(" \xB7 ")}`;
         };
       },
       async find(item2, cap) {
-        assertTarget();
-        if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1e3 <= now()) fail10("CHALLENGE_EXPIRED");
+        assertLiveTarget();
         let quote2 = item2.quote;
         if (prices) {
           const snapshot = await prices.load([item2.definitionId], {
@@ -50201,12 +50236,14 @@ ${detail.join(" \xB7 ")}`;
         return buyer.find(item2.definitionId, cap);
       },
       async buy(entry) {
+        assertLiveTarget();
         return buyer.buy(entry);
       },
       async locate(entry) {
         return buyer.locate(entry);
       },
       async move(entry) {
+        assertLiveTarget();
         return buyer.move(entry);
       },
       async afterPlayer() {
@@ -50214,6 +50251,7 @@ ${detail.join(" \xB7 ")}`;
       },
       materialize: materialize3,
       async prepareContribution(material, currentRecord) {
+        assertLiveTarget();
         const page = locateFc27StreamlinedPage(root), challenge = projectFc27StreamlinedChallenge(page, origin);
         const items = material.map((row) => row.item), score2 = items.reduce((sum2, item2) => sum2 + item2.points, 0);
         const progress = {
@@ -51299,7 +51337,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.112" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.113" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -51714,8 +51752,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.112"}`,
-    version: "27.0.112",
+    title: `FC Automation Tool ${"27.0.113"}`,
+    version: "27.0.113",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

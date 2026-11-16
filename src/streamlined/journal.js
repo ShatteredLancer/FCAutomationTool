@@ -1,6 +1,6 @@
 import { contextKey, createSeasonContext } from '../fc27/prelaunch-contract.js';
 import { assertStreamlinedPlan } from './plan.js';
-import { same, integer, fail } from './contract.js';
+import { same, integer, fail, streamlinedDeadlineReprojection } from './contract.js';
 import { projectStreamlinedReceipt } from './contribution.js';
 import { createCompactStorage } from '../runtime/compact-storage.js';
 
@@ -67,8 +67,14 @@ export function canRestartStreamlinedRejectedWave(record, plan) {
 }
 export function canReplaceStreamlinedRejectedWave(record, plan) {
   const batch = record?.batches?.[0];
+  const previous = record?.plan?.challenge, next = plan?.challenge;
+  // A definitive, receipt-free rejection can be archived under the existing
+  // explicit execute/revalidation path after one reviewed deadline reprojection.
+  // Never rewrite the old record or apply this exception to pending receipts.
+  const sameChallenge = same(previous, next) || streamlinedDeadlineReprojection(previous?.endTime, next?.endTime)
+    && same({ ...previous, endTime: next.endTime }, next);
   return record?.retired !== true && same(record?.context, plan?.context)
-    && same(record?.plan?.challenge, plan?.challenge) && same(record?.plan?.policy, plan?.policy)
+    && sameChallenge && same(record?.plan?.policy, plan?.policy)
     && record?.batches?.length === 1 && plan?.batches?.length === 1
     && batch.state === 'rejected' && batch.receipt === undefined && !batch.progressChanged
     && batch.startingScore === record.submittedScore && record.submittedScore === plan.challenge.submittedScore;

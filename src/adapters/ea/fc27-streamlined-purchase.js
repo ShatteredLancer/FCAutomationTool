@@ -4,7 +4,7 @@ import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge, projectFc27
 import { readFc27Context } from './fc27-local-read.js';
 import { createStreamlinedPlan } from '../../streamlined/plan.js';
 import { createStreamlinedTransaction } from '../../streamlined/transaction.js';
-import { integer, same, fail } from '../../streamlined/contract.js';
+import { integer, same, fail, streamlinedDeadlineReprojection } from '../../streamlined/contract.js';
 import { galleryReferenceQuote, purchasePriceCap } from '../../gallery/public-price-policy.js';
 import { approvedStreamlinedPurchaseRoute } from '../../streamlined/purchase-scope.js';
 import { isUnsentStreamlinedJournal } from '../../streamlined/journal.js';
@@ -20,15 +20,34 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
   const players = new Map(marketItems.map(item => [item.definitionId, { _rating: item.rating, nationId: item.nationId,
     teamId: item.teamId, leagueId: item.leagueId, preferredPosition: item.preferredPosition }]));
   const references = new Map(marketItems.map(item => [item.definitionId, item.price]));
-  const assertTarget = () => {
-    if (!same(origin, readFc27Context(root))) fail('CONTEXT_CHANGED');
-    const page = locateFc27StreamlinedPage(root);
-    if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) fail('CONTEXT_CHANGED');
-    const current = projectFc27StreamlinedChallenge(page, origin);
-    for (const key of ['targetScore', 'selectionLimit', 'eligibility', 'eligibilityOperation', 'repeats', 'repeatabilityMode', 'endTime']) {
-      if (!same(current[key], plan.challenge[key])) fail('CONTEXT_CHANGED');
-    }
+  // A new page can round EA's remaining-seconds Set projection differently.
+  // Bind that loaded projection once; never keep rebinding during a run, edit
+  // the frozen plan/Journal, or extend its original deadline.
+  const initialPage = locateFc27StreamlinedPage(root);
+  const loadedEndTime = initialPage ? projectFc27StreamlinedChallenge(initialPage, origin).endTime : null;
+  const frozenEndTime = plan.challenge.endTime;
+  const sameDeadline = loadedEndTime === frozenEndTime;
+  const reprojectedDeadline = streamlinedDeadlineReprojection(frozenEndTime, loadedEndTime);
+  const deadline = integer(loadedEndTime, 1) && integer(frozenEndTime, 1) ? Math.min(loadedEndTime, frozenEndTime) : frozenEndTime;
+  const expired = () => deadline > 0 && deadline * 1000 <= now();
+  let reportedDeadline = false;
+  const contextEvent = (status, mismatch) => {
+    try { onEvent({ stage: 'context-check', status, mismatch,
+      ...(status === 'blocked' ? { reason: 'FC27_STREAMLINED_CONTEXT_CHANGED' } : {}) }); } catch { /* diagnostic only */ }
   };
+  const contextChanged = mismatch => { contextEvent('blocked', mismatch); fail('CONTEXT_CHANGED'); };
+  const assertTarget = () => {
+    if (!same(origin, readFc27Context(root)) || !same(origin, plan.context)) contextChanged('account');
+    const page = locateFc27StreamlinedPage(root);
+    if (!page || page.setId !== plan.challenge.setId || page.challengeId !== plan.challenge.id) contextChanged('target');
+    const current = projectFc27StreamlinedChallenge(page, origin);
+    for (const key of ['targetScore', 'selectionLimit', 'eligibility', 'eligibilityOperation', 'repeats', 'repeatabilityMode']) {
+      if (!same(current[key], plan.challenge[key])) contextChanged(key);
+    }
+    if ((!sameDeadline && !reprojectedDeadline) || current.endTime !== loadedEndTime) contextChanged('deadline');
+    if (reprojectedDeadline && !reportedDeadline) { reportedDeadline = true; contextEvent('verified', 'deadline-reprojection'); }
+  };
+  const assertLiveTarget = () => { assertTarget(); if (expired()) fail('CHALLENGE_EXPIRED'); };
   const buyer = await createBuyer(root, {
     canWrite: () => canWrite() === true && persistence.inspect().active === true,
     assertTarget, attempts: searchAttempts, playerDetails: players,
@@ -36,7 +55,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
     excludeOffer: (offer, record) => record?.entries?.some(entry => ['rejected', 'consumed'].includes(entry.state)
       && entry.definitionId === offer.definitionId && entry.itemId === offer.itemId && entry.tradeId === offer.tradeId) === true,
     onEvent,
-    verifyCurrent: () => assertTarget(), verifySquad: async () => assertTarget(),
+    verifyCurrent: () => assertLiveTarget(), verifySquad: async () => assertTarget(),
   });
   const createOwnedReader = async onEntity => {
     const contradictoryIds = new Set(), evolutionIds = new Set();
@@ -115,11 +134,12 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
   };
   const contributionDiagnostic = row => onEvent({ ...row, stage: `contribution-${row.phase}` });
   const contribute = async (batchPlan, callbacks = {}) => {
+    assertLiveTarget();
     if (!contributionAdapter?.adapter || !contributionAdapter?.journal) fail('WRITE_CONTRACT_UNVERIFIED');
     const result = await createStreamlinedTransaction({ adapter: contributionAdapter.adapter, journal: contributionAdapter.journal,
       lock: { acquire: async () => () => {} }, now, onDiagnostic: contributionDiagnostic }).execute(batchPlan,
       { approved: true, fingerprint: batchPlan.fingerprint, batchIndices: [0], allowPartial: true },
-      { ...callbacks, restartRejected: true });
+      { ...callbacks, stopped: () => callbacks.stopped?.() === true || expired(), restartRejected: true });
     if (result.status === 'stopped' && result.record?.plan.fingerprint === batchPlan.fingerprint) {
       if (isUnsentStreamlinedJournal(result.record)) return { confirmed: false, notDispatched: true, stopped: true };
       // A STOP after dispatch is deferred through durable receipt/readback.
@@ -165,8 +185,7 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
         heldDefinitions: [...new Set(heldDefinitions)], blockedDefinitions: [] };
     },
     async find(item, cap) {
-      assertTarget();
-      if (plan.challenge.endTime > 0 && plan.challenge.endTime * 1000 <= now()) fail('CHALLENGE_EXPIRED');
+      assertLiveTarget();
       let quote = item.quote;
       if (prices) {
         const snapshot = await prices.load([item.definitionId], { purpose: 'purchase', policy: item.pricePolicy, rows: [item],
@@ -182,9 +201,10 @@ export async function createFc27StreamlinedPurchaseAdapter(root, { plan, persist
       references.set(item.definitionId, quote.price);
       return buyer.find(item.definitionId, cap);
     },
-    async buy(entry) { return buyer.buy(entry); }, async locate(entry) { return buyer.locate(entry); },
-    async move(entry) { return buyer.move(entry); }, async afterPlayer() { return buyer.afterPlayer?.(); }, materialize,
+    async buy(entry) { assertLiveTarget(); return buyer.buy(entry); }, async locate(entry) { return buyer.locate(entry); },
+    async move(entry) { assertLiveTarget(); return buyer.move(entry); }, async afterPlayer() { return buyer.afterPlayer?.(); }, materialize,
     async prepareContribution(material, currentRecord) {
+      assertLiveTarget();
       const page = locateFc27StreamlinedPage(root), challenge = projectFc27StreamlinedChallenge(page, origin);
       const items = material.map(row => row.item), score = items.reduce((sum, item) => sum + item.points, 0);
       const progress = { target: challenge.targetScore, submitted: currentRecord.submittedScore, added: score,
