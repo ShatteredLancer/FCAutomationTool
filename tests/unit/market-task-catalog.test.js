@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMarketTaskCatalog, taskCandidatePage } from '../../src/trading/market-task-catalog.js';
+import { createMarketTaskCatalog, taskCandidatePage, rotateMarketRatings } from '../../src/trading/market-task-catalog.js';
 import { defaultTradingTaskSettings } from '../../src/trading/task-model.js';
 
 const context = () => ({ scope: 'A', season: '27', platform: 'console' });
@@ -8,6 +8,18 @@ const card = id => Object.defineProperty({ definitionId: id, playerId: id, name:
 const task = () => ({ settings: defaultTradingTaskSettings(), excluded: [] });
 
 describe('market task immutable catalog and bounded candidates', () => {
+  it('rotates ratings before players and omits excluded or incomplete prices without losing pagination',async()=>{
+    const rows=Array.from({length:30},(_,i)=>({...card(i+1),rating:i<25?83:i<28?84:85}));
+    const snapshot=await createMarketTaskCatalog({readRows:()=>rows,context}).read();
+    const t={...task(),mode:'filter',ratingPrices:{83:{buy:700,bid:600,sell:800},84:{buy:null,bid:700,sell:1000},85:{buy:1100,bid:900,sell:1300}}};
+    t.settings.buyMode='both';t.excluded=[{type:'version',id:1}];
+    const rotated=await rotateMarketRatings(snapshot,t,()=>true),first=await taskCandidatePage(rotated,t,{limit:4});
+    expect(first.rows.map(r=>r.rating)).toEqual([83,85,83,85]);
+    expect(first.rows.map(r=>r.definitionId)).toEqual([2,29,3,30]);
+    const second=await taskCandidatePage(rotated,t,{cursor:first.next});expect(second.rows.every(r=>r.rating===83)).toBe(true);
+    expect(snapshot.candidates[0].definitionId).toBe(1);expect(rotated.find(29)).toBe(snapshot.find(29));
+    await expect(rotateMarketRatings(snapshot,t,()=>false)).rejects.toThrow('USER_STOP');
+  });
   it('refreshes local facts for newly selected versions without changing a running snapshot',async()=>{
     const rows=[card(1)],readRows=vi.fn(()=>rows),catalog=createMarketTaskCatalog({readRows,context});
     const original=await catalog.read();rows.push(card(2));expect((await catalog.lookup([2]))[0].definitionId).toBe(2);

@@ -70,7 +70,8 @@ export async function exerciseMarketTaskProvider(context) {
     assert.equal(result.fixed.sold, 1); assert.equal(result.sell.sold, 1);
     const batches = await page.evaluate(async () => {
       const api = globalThis.marketProviderTest, results = [];
-      for (const afterBuy of ['list','hold']) {
+      for (const variant of ['list','hold','reject-list']) {
+        const afterBuy = variant === 'hold' ? 'hold' : 'list', rejectList = variant === 'reject-list';
         const data = new Map(), calls = [], context = {scope:`batch-${afterBuy}`,season:'27',platform:'console'};
         let serial = 0, time = 1000000, paused = false;
         const get = async (k,d) => structuredClone(data.get(k) ?? d), set = async (k,v) => data.set(k,structuredClone(v));
@@ -87,6 +88,10 @@ export async function exerciseMarketTaskProvider(context) {
             if(action.kind==='search')return {status:'confirmed',sent:true,offers:[3,1,2].map(n=>({
               itemId:String(100+n),definitionId:901,tradeId:String(500+n),coins:400+n*100}))};
             if(action.kind==='buy'&&action.itemId==='102')return {status:'rejected',sent:true,receipt:null,code:461,category:'offer-rejected'};
+            if(action.kind==='list'&&rejectList){
+              if(calls.filter(c=>c[0]==='list').length>2)scheduler.pauseAll();
+              return {status:'rejected',sent:true,receipt:null,code:400};
+            }
             return {status:'confirmed',sent:true,receipt:{itemId:action.itemId,definitionId:901,coins:action.coins,
               tradeId:action.kind==='list'?`7${action.itemId}`:action.tradeId??null}};
           },
@@ -101,15 +106,21 @@ export async function exerciseMarketTaskProvider(context) {
             }
           }});
         await scheduler.run({approved:true,snapshot,taskIds:['batch']});
-        results.push({afterBuy,calls,phases:(await coordinator.inspect()).ledger.holdings.map(h=>h.phase)});
+        results.push({afterBuy,rejectList,calls,state:scheduler.inspect().tasks[0],phases:(await coordinator.inspect()).ledger.holdings.map(h=>h.phase)});
       }
       return results;
     });
     for (const batch of batches) {
       assert.deepEqual(batch.calls.slice(0,4),[['search',null],['buy','101'],['buy','102'],['buy','103']]);
       assert.equal(batch.calls.filter(c=>c[0]==='search').length,1);
-      assert.deepEqual(batch.phases,Array(2).fill(batch.afterBuy==='list'?'listed':'transfer'));
-      assert.equal(batch.calls.filter(c=>c[0]==='list').length,batch.afterBuy==='list'?2:0);
+      if(batch.rejectList){
+        assert.deepEqual(batch.phases,['transfer','held']);
+        assert.equal(batch.calls.filter(c=>c[0]==='list').length,1);
+        assert.equal(batch.state.state,'paused');assert.equal(batch.state.reason,'MARKET_LIST_REJECTED');
+      }else{
+        assert.deepEqual(batch.phases,Array(2).fill(batch.afterBuy==='list'?'listed':'transfer'));
+        assert.equal(batch.calls.filter(c=>c[0]==='list').length,batch.afterBuy==='list'?2:0);
+      }
     }
     assert.equal(requests, 0); assert.deepEqual(errors, []);
     console.log('Market provider Chrome passed: real provider/scheduler/Web Locks with simulated native port, fixed buy and selected Club sale, bounded batch buys before moves/listings, explicit rejection continuation, hold-only, exact receipts, no requests.');

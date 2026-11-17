@@ -236,7 +236,7 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
       const status = ownData(dto, 'status');
       if (ownData(dto, 'success') !== true || status !== 200) {
         // Numeric EA subcodes only: never retain the response, messages or credentials.
-        const rawCode = ownData(ownData(dto, 'response'), 'code');
+        const rawCode = ownData(ownData(dto, 'response'), 'code') ?? ownData(ownData(dto, 'error'), 'code');
         const code = typeof rawCode === 'string' && /^\d{1,10}$/.test(rawCode) ? Number(rawCode) : rawCode;
         failureDetails = { httpStatus: valid(status, 100, 599) ? status : null,
           eaCode: valid(code, 0, 0x7fffffff) ? code : null };

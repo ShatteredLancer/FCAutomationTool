@@ -14,6 +14,20 @@ function fixture(items, transfer = [], unassigned = []) {
 }
 const target = { source: 'futgg', set: { id: 'futgg:1' }, pool: { setId: 1, complete: true, items: [{ eaId: 111 }] } };
 
+it('scans the complete Club for rule-based sales with page boundaries and final count verification',async()=>{
+  const rows=Array.from({length:251},(_,i)=>({id:i+1,definitionId:1000+i,type:'player'}));const f=fixture(rows),beforeRead=vi.fn(),progress=vi.fn();
+  expect(await f.inventory.scanPlayers({beforeRead,onProgress:progress})).toHaveLength(251);
+  expect(beforeRead).toHaveBeenCalledTimes(4);expect(f.transport.readCount).toHaveBeenCalledTimes(2);
+  expect(progress).toHaveBeenLastCalledWith(251,251);
+  f.transport.readCount.mockResolvedValueOnce(251).mockResolvedValueOnce(250);
+  await expect(f.inventory.scanPlayers()).rejects.toThrow('CLUB_INCOMPLETE');
+});
+it('cancels before the next Club scan request without accepting partial inventory',async()=>{
+  const f=fixture([{id:1,definitionId:111}]);let reads=0;
+  await expect(f.inventory.scanPlayers({beforeRead:()=>{if(++reads===2)throw Error('cancelled');}})).rejects.toThrow('cancelled');
+  expect(f.transport.readPage).not.toHaveBeenCalled();
+});
+
 it('includes exact Unassigned versions and excludes stale Club copies and unrelated versions', async () => {
   const item = { id: 1, definitionId: 111, type: 'player' };
   const f = fixture([item], [], [item, { ...item, id: 2, definitionId: 222 }]);

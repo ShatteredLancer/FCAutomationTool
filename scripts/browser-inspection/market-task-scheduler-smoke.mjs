@@ -53,7 +53,9 @@ export async function exerciseMarketTaskScheduler(context, directory) {
           return { status: 'confirmed', receipt: { itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId, coins: action.coins } };
         },
         accept: async ({ action }) => { queues.get(action.taskId).shift(); return { acceptedCount: 0 }; },
-        reconcile: async () => ({ status: 'unknown', receipt: null }), verifySession: async () => ({ ready: true }),
+        reconcile: async entry => state.resolveUnlisted ? { status:'resolved',receipt:null,resolution:{kind:'unlisted',
+          itemId:entry.itemId,definitionId:entry.definitionId,at:Date.now(),tradeId:null} }
+          : { status: 'unknown', receipt: null, reason:'MARKET_LISTING_STATE_UNCONFIRMED' }, verifySession: async () => ({ ready: true }),
         inspectHolding: async h => ({ eligible: true, itemId: h.itemId, definitionId: h.definitionId, pile: 'unassigned' }),
       };
       const runtime = api.createMarketTaskRuntime({ context: service.context, enabled: true, createScheduler: async () => {
@@ -165,8 +167,9 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       await globalThis.marketSchedulerUI.coordinator.withOwner(s => s.control(t => t.checkpoint(state => { state.stopped = 'authentication'; })));
     });
     await view.locator('#reloadTasks').click(); await view.locator('#market-release').waitFor({ state: 'visible' });
-    await view.locator('#market-recover').click(); await view.locator('#toast').getByText('核对完成；任务不会自动继续。', { exact: true }).waitFor();
-    await view.locator('#market-release').click(); assert.match(await view.locator('#confirmBody').innerText(), /不会启动任务/);
+    await view.locator('#market-recover').click(); await view.locator('#toast').getByText(/Receipt check complete.*tasks will not restart automatically/).waitFor();
+    await view.locator('#market-release').click(); assert.match(await view.locator('#confirmBody').innerText(), /Tasks remain stopped/);
+    assert.match(await view.locator('#confirmBody').innerText(), /cannot remove an EA market restriction/);
     await view.locator('#confirmYes').click(); await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
     assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.stopped), null);
@@ -189,10 +192,62 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await view.locator('#market-release').click(); await view.locator('#confirmYes').click();
     await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
+    const previousRun = await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().tasks.find(t => t.id === 'task-2')?.startedAt ?? 0);
     await start('task-2');
-    await page.waitForFunction(async () => (await globalThis.marketSchedulerUI.service.read()).store.tasks.find(t => t.id === 'task-2').state === 'paused' && !globalThis.marketSchedulerUI.runtime.inspect().busy);
+    // Reopen briefly persists paused before the asynchronous run starts. Wait
+    // for this run's terminal state, not that intermediate old state, before
+    // acquiring the owner lock to install the recovery fixture.
+    await page.waitForFunction(previous => {
+      const s = globalThis.marketSchedulerUI, runtime = s.runtime.inspect(), row = runtime.tasks.find(t => t.id === 'task-2');
+      return row?.startedAt > previous && row.state === 'completed' && !runtime.busy;
+    }, previousRun);
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.service.read()).store.tasks.find(t => t.id === 'task-2').state), 'paused');
     assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.holdings[0].cost), 800);
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.calls.length), writesBefore);
+    // A retained old listing must show why checking did not release the pause,
+    // then complete using current disposition without sending a replacement.
+    await page.evaluate(async () => {
+      const s=globalThis.marketSchedulerUI;
+      const installed = await s.coordinator.withOwner(o=>o.control(t=>t.checkpoint(l=>{
+        l.stopped='unknown-write';
+        l.holdings.push({taskId:'task-2',itemId:'202',definitionId:1002,cost:600,phase:'transfer',listingTradeId:null,salePrice:null});
+        l.intents.push({id:'old-list',taskId:'task-2',itemId:'202',definitionId:1002,kind:'list',coins:700,tradeId:null,
+          at:Date.now()-120000,phase:'pending',receipt:null,listing:{startPrice:650,buyNow:700,durationSeconds:3600}});
+      })));
+      if (!installed?.intents?.some(i => i.id === 'old-list' && i.phase === 'pending')) throw Error('RECOVERY_FIXTURE_NOT_INSTALLED');
+    });
+    await view.locator('#reloadTasks').click(); await view.locator('#toast').getByText(/任务已加载/).waitFor();
+    await view.locator('#market-recover').click();
+    await view.locator('#toast').getByText(/old listing is still unresolved/).waitFor();
+    await view.locator('#market-release').click(); await view.locator('#confirmYes').click();
+    await view.locator('#toast').getByText(/有未决交易/).waitFor();
+    const recovery=view.locator('#market-recovery-panel');
+    await recovery.locator('summary').click();
+    await recovery.locator('[data-recovery=isolate]').click();
+    await view.locator('#market-recovery-confirm').getByText('取消',{exact:true}).click();
+    assert.equal(await page.evaluate(async()=>(await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.intents.find(i=>i.id==='old-list').phase),'pending');
+    await recovery.locator('[data-recovery=isolate]').click();
+    await view.locator('#market-recovery-confirm-yes').click();
+    await view.locator('#toast').getByText(/旧交易已隔离/).waitFor();
+    await view.locator('#reloadTasks').click();await view.locator('#toast').getByText(/任务已加载/).waitFor();
+    assert.match(await recovery.innerText(),/隔离待处理/);
+    assert.equal(await view.locator('[data-action=start][data-id="task-2"]').isDisabled(),true);
+    await recovery.locator('[data-recovery=handled]').click();
+    await view.locator('#market-recovery-confirm-yes').click();
+    await page.waitForFunction(async()=>(await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.intents.find(i=>i.id==='old-list').isolation?.handledAt>0);
+    await recovery.getByText(/已备注手动处理，仍需回执/).waitFor();
+    await page.screenshot({path:path.join(directory,'market-recovery-isolation-mobile.png')});
+    await view.locator('#market-release').click();await view.locator('#confirmYes').click();
+    await view.locator('#toast').getByText('全局暂停已解除，任务尚未启动。',{exact:true}).waitFor();
+    assert.equal(await view.locator('[data-action=start][data-id="task-2"]').isDisabled(),true);
+    assert.equal(await page.evaluate(()=>globalThis.marketSchedulerUI.calls.length),writesBefore);
+    await page.evaluate(()=>{globalThis.marketSchedulerUI.resolveUnlisted=true;});
+    await view.locator('#market-recover').click(); await view.locator('#toast').getByText(/Receipt check complete/).waitFor();
+    await view.locator('[data-action=detail][data-id="task-2"]').click();
+    assert.match(await view.locator('#taskDetailBody').innerText(),/Resolved: currently unlisted/);
+    await view.locator('[data-close=taskDetail]').first().click();
+    assert.equal(await view.locator('#market-release').isVisible(),false);
+    assert.equal(await page.evaluate(()=>globalThis.marketSchedulerUI.calls.length),writesBefore);
     await host.locator('#tab-sbc').click();
     assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), false);
     assert.equal(externalRequests, 0); assert.deepEqual(errors, []);

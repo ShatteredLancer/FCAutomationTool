@@ -1,4 +1,7 @@
+import {marketUnresolved,marketIsolated,marketRecoveryBlocks,validateMarketIsolation} from './market-recovery.js';
 import { marketTaskAutoLists } from './market-task-policy.js';
+import { activeMarketAuctions, validateMarketAuctions, confirmMarketBid } from './market-auctions.js';
+export { settleMarketAuction } from './market-auctions.js';
 import { validateMarketSchedules } from './market-task-schedule.js';
 // Account-wide bookkeeping primitives. They do not authorize or send requests.
 // P3 adapters must supply freshly verified EA facts and exact receipts.
@@ -28,7 +31,8 @@ export const emptyMarketCoordination = () => ({ schema: 1, revision: 0, lastTask
 
 export function readMarketCoordination(value) {
   if (value == null) return emptyMarketCoordination();
-  fields(value, [...Object.keys(emptyMarketCoordination()), 'clocks', 'handoffs', 'schedules']);
+  fields(value, [...Object.keys(emptyMarketCoordination()), 'clocks', 'handoffs', 'schedules', 'auctions']);
+  if(value.auctions!==undefined)validateMarketAuctions(value.auctions);
   if (value.schedules !== undefined) validateMarketSchedules(value.schedules);
   if (value.clocks !== undefined) validateMarketClocks(value.clocks);
   if (value.handoffs !== undefined) {
@@ -53,13 +57,17 @@ export function readMarketCoordination(value) {
     choice(event.status, ['dispatching', 'sent', 'not-sent']);
   }
   for (const entry of value.intents) {
-    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt', 'listing', 'acknowledged', 'previousTradeId', 'sellAt']);
-    if (entry.sellAt !== undefined) { number(entry.sellAt); if (entry.kind !== 'buy') fail('INVALID'); }
+    fields(entry, ['id', 'taskId', 'kind', 'itemId', 'definitionId', 'tradeId', 'coins', 'at', 'phase', 'receipt', 'listing', 'acknowledged', 'previousTradeId', 'sellAt', 'resolution', 'isolation']);
+    if (entry.sellAt !== undefined) { number(entry.sellAt); if (!['buy','bid'].includes(entry.kind)) fail('INVALID'); }
     if (entry.previousTradeId !== undefined) { id(entry.previousTradeId); if (entry.kind !== 'list' || !entry.listing) fail('INVALID'); }
     id(entry.id); id(entry.taskId); id(entry.itemId); number(entry.definitionId, 1); number(entry.at);
-    choice(entry.kind, ['buy', 'move', 'list']); choice(entry.phase, ['pending', 'confirmed', 'rejected']);
+    choice(entry.kind, ['buy', 'bid', 'move', 'list']); choice(entry.phase, ['pending', 'isolated', 'confirmed', 'rejected', 'resolved']);
+    if(entry.phase==='isolated'||entry.isolation!==undefined)validateMarketIsolation(entry);
+    if(entry.phase==='pending'&&entry.isolation!==undefined)fail('RECOVERY_INVALID');
+    if (entry.phase === 'resolved') validateUnlistedResolution(entry, entry.resolution);
+    else if (entry.resolution !== undefined) fail('RECEIPT_CONFLICT');
     if (entry.tradeId !== null) id(entry.tradeId);
-    if (entry.kind === 'buy' && entry.tradeId === null) fail('INVALID');
+    if (['buy','bid'].includes(entry.kind) && entry.tradeId === null) fail('INVALID');
     number(entry.coins, entry.kind === 'move' ? 0 : 150);
     if (entry.coins > 15000000 || entry.kind === 'move' && entry.coins !== 0) fail('INVALID');
     if (entry.acknowledged !== undefined && entry.acknowledged !== true) fail('INVALID');
@@ -88,8 +96,8 @@ export function readMarketCoordination(value) {
   for (const [rows, key] of [[value.searches, 'id'], [value.intents, 'id'], [value.holdings, 'itemId']]) {
     if (new Set(rows.map(row => row[key])).size !== rows.length) fail('INVALID');
   }
-  if (new Set(value.intents.filter(i => i.phase === 'pending').map(i => i.itemId)).size
-    !== value.intents.filter(i => i.phase === 'pending').length) fail('INVALID');
+  if (new Set(value.intents.filter(marketUnresolved).map(i => i.itemId)).size
+    !== value.intents.filter(marketUnresolved).length) fail('INVALID');
   if (new globalThis.TextEncoder().encode(JSON.stringify(value)).length > MARKET_COORDINATION_BYTES) fail('STORAGE_LIMIT');
   return structuredClone(value);
 }
@@ -150,14 +158,15 @@ export function settleMarketSearch(state, requestId, status) {
 }
 
 export function marketOccupancy(state, taskId = null) {
-  const pending = state.intents.filter(i => i.phase === 'pending' && i.kind === 'buy' && (taskId === null || i.taskId === taskId));
+  const pending = state.intents.filter(i => marketUnresolved(i) && ['buy','bid'].includes(i.kind) && (taskId === null || i.taskId === taskId));
+  const auctions=activeMarketAuctions(state).filter(a=>(taskId===null||a.taskId===taskId)&&!pending.some(i=>i.tradeId===a.tradeId));
   const held = state.holdings.filter(h => h.phase !== 'sold' && (taskId === null || h.taskId === taskId));
   return { reservedCoins: pending.reduce((sum, i) => sum + i.coins, 0),
-    holdingCoins: held.reduce((sum, h) => sum + (h.cost ?? 0), 0),
+    holdingCoins: held.reduce((sum, h) => sum + (h.cost ?? 0), 0)+auctions.reduce((sum,a)=>sum+a.coins,0),
     unknownCosts: held.filter(h => h.cost === null).length,
-    count: held.length + pending.length,
+    count: held.length + pending.length + auctions.length,
     spent: state.intents.filter(i => i.kind === 'buy' && i.phase === 'confirmed' && (taskId === null || i.taskId === taskId))
-      .reduce((sum, i) => sum + i.coins, 0) };
+      .reduce((sum, i) => sum + i.coins, 0)+(state.auctions??[]).filter(a=>a.state==='won'&&(taskId===null||a.taskId===taskId)).reduce((sum,a)=>sum+a.coins,0) };
 }
 
 export function claimMarketHolding(state, holding, phase = 'held') {
@@ -165,6 +174,7 @@ export function claimMarketHolding(state, holding, phase = 'held') {
   if (holding.sellAt !== undefined) number(holding.sellAt);
     id(holding.taskId); id(holding.itemId); number(holding.definitionId, 1);
   if (holding.cost !== null) number(holding.cost);
+  if(marketRecoveryBlocks(state,holding))fail('RECOVERY_ISOLATED');
   if (state.holdings.some(h => h.itemId === holding.itemId) || state.intents.some(i => i.itemId === holding.itemId && i.phase === 'pending')) fail('ITEM_OCCUPIED');
   choice(phase, ['held', 'transfer']);
   state.holdings.push({ ...holding, phase, listingTradeId: null, salePrice: null });
@@ -176,28 +186,36 @@ export function reserveMarketWrite(state, command, funds) {
   // Validate before changing any caller-owned state.
   readMarketCoordination({ ...emptyMarketCoordination(), intents: [entry] });
   if (state.stopped) fail('STOPPED');
+  if(marketRecoveryBlocks(state,entry))fail('RECOVERY_ISOLATED');
   if (state.intents.some(i => i.phase === 'pending')) fail('RECOVERY_REQUIRED');
   if (state.intents.some(i => i.id === entry.id)) fail('DUPLICATE_REQUEST');
   const holding = state.holdings.find(h => h.itemId === entry.itemId);
-  if (entry.kind === 'buy') {
-    if (holding || state.intents.some(i => i.kind === 'buy' && i.tradeId === entry.tradeId && i.phase !== 'rejected')) fail('ITEM_OCCUPIED');
+  if (['buy','bid'].includes(entry.kind)) {
+    const auction=state.auctions?.find(a=>a.tradeId===entry.tradeId);
+    const rebid=entry.kind==='bid'&&auction?.state==='outbid'&&auction.taskId===entry.taskId
+      &&auction.itemId===entry.itemId&&auction.definitionId===entry.definitionId&&entry.coins>auction.coins;
+    if (holding || activeMarketAuctions(state).some(a=>a.itemId===entry.itemId&&a.tradeId!==entry.tradeId)
+      || auction&&!rebid || state.intents.some(i => ['buy','bid'].includes(i.kind) && i.tradeId === entry.tradeId && i.phase !== 'rejected')&&!rebid) fail('ITEM_OCCUPIED');
     fields(funds, ['balance', 'reserve', 'totalCap', 'taskCap', 'spendCap', 'freeSlots', 'perVersion']);
     number(funds.balance); number(funds.freeSlots);
     for (const key of ['reserve', 'totalCap', 'taskCap', 'spendCap']) if (funds[key] !== null) number(funds[key]);
-    const all = marketOccupancy(state), task = marketOccupancy(state, entry.taskId);
+    const comparison=rebid?{...state,auctions:state.auctions.filter(a=>a!==auction)}:state;
+    const all = marketOccupancy(comparison), task = marketOccupancy(comparison, entry.taskId);
     if (funds.perVersion != null) {
       number(funds.perVersion, 1);
-      const copies = state.holdings.filter(h => h.taskId === entry.taskId && h.definitionId === entry.definitionId && h.phase !== 'sold').length;
+      const copies = state.holdings.filter(h => h.taskId === entry.taskId && h.definitionId === entry.definitionId && h.phase !== 'sold').length
+        +activeMarketAuctions(comparison).filter(a=>a.taskId===entry.taskId&&a.definitionId===entry.definitionId).length
+        +comparison.intents.filter(i=>marketUnresolved(i)&&['buy','bid'].includes(i.kind)&&i.taskId===entry.taskId&&i.definitionId===entry.definitionId).length;
       if (copies >= funds.perVersion) fail('VERSION_CAP');
     }
     if (funds.freeSlots < 1 || funds.balance - all.reservedCoins - entry.coins < (funds.reserve ?? 0)) fail('FUNDS_OR_CAPACITY');
     // Won cards awaiting a move occupy future Transfer slots across all tasks.
     // Buying a batch must not count the same physical slot several times.
-    if (funds.freeSlots <= state.holdings.filter(h => h.phase === 'held').length) fail('TRANSFER_FULL');
+    if (funds.freeSlots <= state.holdings.filter(h => h.phase === 'held').length+activeMarketAuctions(comparison).length+comparison.intents.filter(i=>marketUnresolved(i)&&['buy','bid'].includes(i.kind)).length) fail('TRANSFER_FULL');
     for (const [cap, occupancy] of [[funds.totalCap, all], [funds.taskCap, task]]) {
       if (cap !== null && (occupancy.unknownCosts || occupancy.reservedCoins + occupancy.holdingCoins + entry.coins > cap)) fail('HOLDING_CAP');
     }
-    if (funds.spendCap !== null && task.spent + task.reservedCoins + entry.coins > funds.spendCap) fail('SPEND_CAP');
+    if (funds.spendCap !== null && task.spent + task.reservedCoins + activeMarketAuctions(comparison).filter(a=>a.taskId===entry.taskId).reduce((s,a)=>s+a.coins,0)+entry.coins > funds.spendCap) fail('SPEND_CAP');
   } else if (!holding || holding.taskId !== entry.taskId || holding.definitionId !== entry.definitionId
     || entry.kind === 'move' && holding.phase !== 'held'
     || entry.kind === 'list' && (entry.previousTradeId ? holding.phase !== 'unsold' || holding.listingTradeId !== entry.previousTradeId
@@ -208,8 +226,32 @@ export function reserveMarketWrite(state, command, funds) {
 function validateReceipt(entry, receipt) {
   fields(receipt, ['itemId', 'definitionId', 'tradeId', 'coins']);
   if (receipt.itemId !== entry.itemId || receipt.definitionId !== entry.definitionId || receipt.coins !== entry.coins) fail('RECEIPT_CONFLICT');
-  if (entry.kind === 'buy' && receipt.tradeId !== entry.tradeId || entry.kind === 'move' && receipt.tradeId !== null) fail('RECEIPT_CONFLICT');
+  if (['buy','bid'].includes(entry.kind) && receipt.tradeId !== entry.tradeId || entry.kind === 'move' && receipt.tradeId !== null) fail('RECEIPT_CONFLICT');
   if (entry.kind === 'list') { id(receipt.tradeId); if (entry.previousTradeId === receipt.tradeId) fail('RECEIPT_CONFLICT'); }
+}
+
+function validateUnlistedResolution(entry, proof) {
+  fields(proof, ['kind', 'itemId', 'definitionId', 'at', 'tradeId']);
+  if (entry.kind !== 'list' || !entry.listing || proof.kind !== 'unlisted'
+    || proof.itemId !== entry.itemId || proof.definitionId !== entry.definitionId) fail('RECEIPT_CONFLICT');
+  number(proof.at);
+  if (proof.at < entry.at + 60000) fail('RECEIPT_CONFLICT');
+  if (proof.tradeId !== null) id(proof.tradeId);
+}
+
+// Resolves only the current disposition of a listing. It does not invent a
+// historical rejection, positive listing receipt or sale, or erase an ack.
+export function resolveMarketUnlisted(state, requestId, proof) {
+  const entry = state.intents.find(i => i.id === requestId);
+  if (!entry) fail('RECEIPT_CONFLICT');
+  validateUnlistedResolution(entry, proof);
+  if (entry.phase === 'resolved' && same(entry.resolution, proof)) return;
+  const holding = state.holdings.find(h => h.itemId === entry.itemId);
+  if (!marketUnresolved(entry) || !holding || holding.taskId !== entry.taskId
+    || holding.definitionId !== entry.definitionId
+    || (entry.previousTradeId ? holding.phase !== 'unsold' || holding.listingTradeId !== entry.previousTradeId
+      : holding.phase !== 'transfer')) fail('RECEIPT_CONFLICT');
+  entry.phase = 'resolved'; entry.resolution = structuredClone(proof);
 }
 
 // Only an adapter's independently verified exact receipt may call confirmed.
@@ -220,7 +262,7 @@ export function settleMarketWrite(state, requestId, result) {
   if (!entry) fail('RECEIPT_CONFLICT');
   if (result.acknowledged !== undefined && result.acknowledged !== true) fail('RECEIPT_CONFLICT');
   if ((entry.acknowledged || result.acknowledged) && result.status === 'rejected') fail('RECEIPT_CONFLICT');
-  if (entry.phase !== 'pending') {
+  if (!marketUnresolved(entry)) {
     if (entry.phase === result.status && same(entry.receipt, result.receipt)) return;
     fail('RECEIPT_CONFLICT');
   }
@@ -230,7 +272,8 @@ export function settleMarketWrite(state, requestId, result) {
   if (result.status === 'confirmed') {
     validateReceipt(entry, result.receipt);
     const holding = state.holdings.find(h => h.itemId === entry.itemId);
-    if (entry.kind === 'buy') {
+    if(entry.kind==='bid')confirmMarketBid(state,entry);
+    else if (entry.kind === 'buy') {
       if (holding) fail('ITEM_OCCUPIED');
       state.holdings.push({ taskId: entry.taskId, itemId: entry.itemId, definitionId: entry.definitionId,
         cost: entry.coins, phase: 'held', listingTradeId: null, salePrice: null, ...(entry.sellAt !== undefined ? { sellAt: entry.sellAt } : {}) });
@@ -271,6 +314,7 @@ export function marketLastListing(state, holding) {
 
 export function marketRelistAllowed(state, task, holding) {
   if (!marketTaskAutoLists(task)) return false;
+  if(marketRecoveryBlocks(state,{taskId:task.id,itemId:holding.itemId,definitionId:holding.definitionId}))return false;
   if (holding.phase !== 'unsold' || task.settings.relist === 'pause' || task.settings.relistTimes === 0) return false;
   const attempts = state.intents.filter(i => i.itemId === holding.itemId && i.kind === 'list' && i.previousTradeId);
   // A rejected relist needs a new explicit review; never hammer the same auction.
@@ -283,6 +327,7 @@ export function transferMarketHoldings(state, { fromTaskId, toTaskId, itemIds, n
   if (fromTaskId === toTaskId || !Array.isArray(itemIds) || !itemIds.length || itemIds.length > 500
     || new Set(itemIds).size !== itemIds.length) fail('HANDOFF_INVALID');
   if (state.intents.some(i => i.phase === 'pending')) fail('RECOVERY_REQUIRED');
+  if(marketIsolated(state,fromTaskId).length||marketIsolated(state,toTaskId).length||itemIds.some(itemId=>marketRecoveryBlocks(state,{itemId})))fail('RECOVERY_ISOLATED');
   const holdings = itemIds.map(itemId => state.holdings.find(h => h.itemId === itemId));
   if (holdings.some(h => !h || h.taskId !== fromTaskId || !['held', 'transfer', 'unsold'].includes(h.phase))) fail('HANDOFF_INVALID');
   if ((state.handoffs?.length ?? 0) + holdings.length > 2000) fail('STORAGE_LIMIT');
@@ -305,7 +350,7 @@ export function nextMarketTask(state, readyIds) {
 
 export function marketTaskEvidence(state, taskId) {
   const entries = state.intents.filter(entry => entry.taskId === taskId);
-  return { unresolved: entries.some(entry => entry.phase === 'pending'),
+  return { unresolved: entries.some(marketUnresolved),
     hasEvidence: entries.length > 0 || state.holdings.some(holding => holding.taskId === taskId)
       || (state.handoffs ?? []).some(h => h.fromTaskId === taskId || h.toTaskId === taskId) };
 }

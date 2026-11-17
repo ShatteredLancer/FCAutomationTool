@@ -29,15 +29,16 @@ export function marketTaskReference({ quotes, source, definitionId, context, now
 // fail rather than silently changing the price the user saved.
 export function marketTaskPrice({ side, task, player = null, quotes, source, definitionId,
   context, now, priceTiers, limits = null, rating = null }) {
-  if (!['buy', 'sell'].includes(side)) fail('PRICE_INVALID');
-  const buy = side === 'buy', settings = task.settings;
+  if (!['buy', 'bid', 'sell'].includes(side)) fail('PRICE_INVALID');
+  const buy = side !== 'sell', settings = task.settings;
   if (!buy && !marketTaskAutoLists(task)) fail('HOLD_ONLY');
   const ratingRow=marketRatingRow(task,rating);
   if(task.ratingPrices&&!completeMarketRatingRow(ratingRow,task))fail('RATING_PRICE_UNAVAILABLE');
   const override = buy && player?.cap != null ? player.cap : null;
-  const fixed = Boolean(ratingRow) || override !== null || (buy ? settings.buyRule : settings.sellRule) === 'fixed';
+  const rule=side==='bid'?settings.bidRule:buy?settings.buyRule:settings.sellRule;
+  const fixed = Boolean(ratingRow) || override !== null || rule === 'fixed';
   const reference = fixed ? null : marketTaskReference({ quotes, source, definitionId, context, now });
-  const value = ratingRow?.[buy?'buy':'sell'] ?? override ?? (buy ? settings.buyValue : settings.sellValue);
+  const value = ratingRow?.[side] ?? override ?? (side==='bid'?settings.bidValue:buy ? settings.buyValue : settings.sellValue);
   const raw = fixed ? value : reference.price * value / 100;
   if (!Number.isFinite(raw) || raw < 150) fail('PRICE_INVALID');
   let price;

@@ -48,7 +48,7 @@ function fixture(methodHashes = null) {
     send() {
       calls.push(this); control.onSend?.();
       if (!control.timeout) this.callback(control.wrongOwner ? {} : this,
-        { success: control.status === 200, status: control.status,
+        { success: control.status === 200, status: control.status, ...(control.error ? { error: control.error } : {}),
           response: this.url.endsWith('/user/credits') ? (control.credits ?? { currencies: [{ name: 'coins', funds: 10000 }] }) : this.url.endsWith('/defid') ? catalog : market });
     }
   }
@@ -114,6 +114,11 @@ it.each([401, 429, 500])('session check exposes only numeric HTTP %s and never r
   await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ marketFailure: { httpStatus: status } });
   await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toThrow('READ_BLOCKED');
   expect(f.calls).toHaveLength(1);
+});
+it('retains native error subcodes so a mapped 401 is not mistaken for ordinary session expiry', async () => {
+  const f = fixture(october12Hashes); f.control.status = 401; f.control.error = { code: 459, message: 'private error text' };
+  const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ marketFailure: { httpStatus: 401, eaCode: 459 } });
 });
 it('cancels session checks at the actual send boundary and rejects malformed successful replies', async () => {
   const f = fixture(october12Hashes);

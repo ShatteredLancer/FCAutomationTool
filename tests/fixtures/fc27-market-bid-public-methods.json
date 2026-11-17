@@ -1,0 +1,53 @@
+{
+  "evidence": "Public native function bodies observed on dedicated FC27 login page, 2026-11-16; no account data or requests.",
+  "methods": [
+    {
+      "path": "UTItemService.prototype.requestWatchedItems",
+      "source": "function(){var _0xdbdae1=_0x16df02,_0x2a62bf=!services[_0xdbdae1(0x6ca)][_0xdbdae1(0xa47)](UTServerSettingsRepository[_0xdbdae1(0x14a5)][_0xdbdae1(0xed6)]);return this[_0xdbdae1(0x429)][_0xdbdae1(0x645)](_0x2a62bf);}",
+      "decoded": "function(){var _0xdbdae1=_0x16df02,_0x2a62bf=!services[\"Configuration\"][\"checkFeatureEnabled\"](UTServerSettingsRepository[\"KEY\"][\"PLATFORM_SPLIT_FOR_TRANSFER_MARKET\"]);return this[\"itemDao\"][\"getWatchPile\"](_0x2a62bf);}",
+      "hash": "2a9538031134c5ed19f20568b84f501bed00055988ec79f253f31a2b923e41bc"
+    },
+    {
+      "path": "UTItemDAO.prototype.getWatchPile",
+      "source": "function(_0xcad128){var _0x5e7f09=_0x436f56,_0x1fb445=this;_0xcad128===void 0x0&&(_0xcad128=!![]);var _0x16e032=new EAObservable(),_0x37e672=new UTHttpResponseDTO();if(!this[_0x5e7f09(0x12b3)][_0x5e7f09(0xb66)](ItemPile[_0x5e7f09(0xaa8)])){var _0x57b932=this[_0x5e7f09(0x12b3)][_0x5e7f09(0x31b)]();!_0xcad128&&(_0x57b932=_0x57b932[_0x5e7f09(0x5d1)](function(_0xb4fa92){var _0x40d58d=_0x5e7f09;return _0xb4fa92[_0x40d58d(0x10d2)]()[_0x40d58d(0xfbe)]();}));_0x37e672[_0x5e7f09(0x77d)]=!![],_0x37e672[_0x5e7f09(0x257)]=HttpStatusCode[_0x5e7f09(0xf2b)];var _0x1a8e54={};return _0x1a8e54[_0x5e7f09(0xdb3)]=_0x57b932,_0x37e672[_0x5e7f09(0x6cc)]=_0x1a8e54,_0x16e032[_0x5e7f09(0x40e)](_0x37e672),_0x16e032;}var _0x12abe1=new UTHttpRequest(this[_0x5e7f09(0xa1e)]);return _0x12abe1[_0x5e7f09(0x10ea)]=![],_0x12abe1[_0x5e7f09(0x109d)](_0x5e7f09(0xc8c)[_0x5e7f09(0xe3a)](GAME_NAME,_0x5e7f09(0xc31))),services[_0x5e7f09(0x63e)][_0x5e7f09(0xe58)](_0x12abe1)[_0x5e7f09(0x678)](this,function(_0x28f147,_0x4d5e78){var _0xe99225=_0x5e7f09;_0x28f147[_0xe99225(0x11e6)](_0x1fb445),JSUtils[_0xe99225(0xb4b)](_0x4d5e78,_0x37e672);if(_0x4d5e78[_0xe99225(0x77d)]&&JSUtils[_0xe99225(0x64a)](_0x4d5e78[_0xe99225(0x6cc)])){var _0x18e9e4=factories[_0xe99225(0x1076)][_0xe99225(0xc37)](_0x4d5e78[_0xe99225(0x6cc)][_0xe99225(0x9c4)],_0x4d5e78[_0xe99225(0x6cc)][_0xe99225(0xde7)]),_0x7a2908=_0x18e9e4[_0xe99225(0x6ce)]();!_0xcad128&&(_0x7a2908=_0x7a2908[_0xe99225(0x5d1)](function(_0x47eb76){var _0x271aa8=_0xe99225;return _0x47eb76[_0x271aa8(0x10d2)]()[_0x271aa8(0xfbe)]();}));var _0x37fe39={};_0x37fe39[_0xe99225(0xdb3)]=_0x7a2908,_0x37e672[_0xe99225(0x6cc)]=_0x37fe39,_0x1fb445[_0xe99225(0x12b3)][_0xe99225(0x12b0)](_0x18e9e4),_0x1fb445[_0xe99225(0x12b3)][_0xe99225(0x1474)](ItemPile[_0xe99225(0xaa8)],Date[_0xe99225(0x235)](),_0x4d5e78[_0xe99225(0x1403)]>0x0?_0x4d5e78[_0xe99225(0x1403)]:undefined);}else{var _0x2d40b8={};_0x2d40b8[_0xe99225(0xdb3)]=[],_0x37e672[_0xe99225(0x6cc)]=_0x2d40b8;}_0x16e032[_0xe99225(0x40e)](_0x37e672);}),_0x16e032;}",
+      "decoded": "function(_0xcad128){var _0x5e7f09=_0x436f56,_0x1fb445=this;_0xcad128===void 0x0&&(_0xcad128=!![]);var _0x16e032=new EAObservable(),_0x37e672=new UTHttpResponseDTO();if(!this[\"itemRepo\"][\"isDirty\"](ItemPile[\"INBOX\"])){var _0x57b932=this[\"itemRepo\"][\"getWatchedItems\"]();!_0xcad128&&(_0x57b932=_0x57b932[\"filter\"](function(_0xb4fa92){var _0x40d58d=_0x5e7f09;return _0xb4fa92[\"getAuctionData\"]()[\"isWon\"]();}));_0x37e672[\"success\"]=!![],_0x37e672[\"status\"]=HttpStatusCode[\"NOT_MODIFIED\"];var _0x1a8e54={};return _0x1a8e54[\"items\"]=_0x57b932,_0x37e672[\"response\"]=_0x1a8e54,_0x16e032[\"notify\"](_0x37e672),_0x16e032;}var _0x12abe1=new UTHttpRequest(this[\"authDelegate\"]);return _0x12abe1[\"cache\"]=![],_0x12abe1[\"setPath\"](\"/ut/game/\"[\"concat\"](GAME_NAME,\"/watchlist\")),services[\"UTUtasRequestQueue\"][\"send\"](_0x12abe1)[\"observe\"](this,function(_0x28f147,_0x4d5e78){var _0xe99225=_0x5e7f09;_0x28f147[\"unobserve\"](_0x1fb445),JSUtils[\"assignPropertyValues\"](_0x4d5e78,_0x37e672);if(_0x4d5e78[\"success\"]&&JSUtils[\"isObject\"](_0x4d5e78[\"response\"])){var _0x18e9e4=factories[\"Item\"][\"generateItemsFromAuctionData\"](_0x4d5e78[\"response\"][\"auctionInfo\"],_0x4d5e78[\"response\"][\"duplicateItemIdList\"]),_0x7a2908=_0x18e9e4[\"slice\"]();!_0xcad128&&(_0x7a2908=_0x7a2908[\"filter\"](function(_0x47eb76){var _0x271aa8=_0xe99225;return _0x47eb76[\"getAuctionData\"]()[\"isWon\"]();}));var _0x37fe39={};_0x37fe39[\"items\"]=_0x7a2908,_0x37e672[\"response\"]=_0x37fe39,_0x1fb445[\"itemRepo\"][\"setWatchedItems\"](_0x18e9e4),_0x1fb445[\"itemRepo\"][\"setCacheTimestamp\"](ItemPile[\"INBOX\"],Date[\"now\"](),_0x4d5e78[\"maxAge\"]>0x0?_0x4d5e78[\"maxAge\"]:undefined);}else{var _0x2d40b8={};_0x2d40b8[\"items\"]=[],_0x37e672[\"response\"]=_0x2d40b8;}_0x16e032[\"notify\"](_0x37e672);}),_0x16e032;}",
+      "hash": "70c3742a4e8fb1d2be233caaa7e0069d43bf7c05c1633aff2a1114913e5b6bfd"
+    },
+    {
+      "path": "UTItemDomainRepository.prototype.getWatchedItems",
+      "source": "function(){return this.inbox.values()}",
+      "decoded": "function(){return this.inbox.values()}",
+      "hash": "9b50e375193fb92dde08f184d127ace3c398dfd1c49324f66c08686b94bbfbb2"
+    },
+    {
+      "path": "UTAuctionEntity.prototype.isWon",
+      "source": "function(){var _0x3836d2=_0x23b357;return!this[_0x3836d2(0x122f)]&&this[_0x3836d2(0x217)]()&&(this[_0x3836d2(0xc05)]()||this[_0x3836d2(0x11fb)]());}",
+      "decoded": "function(){var _0x3836d2=_0x23b357;return!this[\"tradeOwner\"]&&this[\"isClosedTrade\"]()&&(this[\"isHighestBid\"]()||this[\"isBought\"]());}",
+      "hash": "8b7ddbaf8d6cd45c9c20ab03f645052d56c728df6b0b9785a2d97b065812205c"
+    },
+    {
+      "path": "UTAuctionEntity.prototype.canBid",
+      "source": "function(_0x215a8b,_0x36c46e){var _0x188ab3=_0x23b357,_0x402538=!![];if(_0x215a8b<this[_0x188ab3(0x1153)]||_0x215a8b<=this[_0x188ab3(0xcda)])return![];if(_0x215a8b>AUCTION_MAX_BID||this[_0x188ab3(0xd28)]>0x0&&_0x215a8b>=this[_0x188ab3(0xd28)])return![];return JSUtils[_0x188ab3(0x11bf)](_0x36c46e)&&(_0x402538=_0x36c46e>=_0x215a8b),this[_0x188ab3(0x1279)]()&&!this[_0x188ab3(0x129f)]()&&_0x402538;}",
+      "decoded": "function(_0x215a8b,_0x36c46e){var _0x188ab3=_0x23b357,_0x402538=!![];if(_0x215a8b<this[\"startingBid\"]||_0x215a8b<=this[\"currentBid\"])return![];if(_0x215a8b>AUCTION_MAX_BID||this[\"buyNowPrice\"]>0x0&&_0x215a8b>=this[\"buyNowPrice\"])return![];return JSUtils[\"isNumber\"](_0x36c46e)&&(_0x402538=_0x36c46e>=_0x215a8b),this[\"isActiveTrade\"]()&&!this[\"isPendingExpiry\"]()&&_0x402538;}",
+      "hash": "8de872af2e8adfc6aa99e293179b8e140693ddccb129aeaae600685c99af9d54"
+    },
+    {
+      "path": "UTAuctionEntity.prototype.isBought",
+      "source": "function(){var _0x10d8c8=_0x23b357;return this[_0x10d8c8(0xc6e)]===AuctionBidStateEnum[_0x10d8c8(0x120e)];}",
+      "decoded": "function(){var _0x10d8c8=_0x23b357;return this[\"bidState\"]===AuctionBidStateEnum[\"BUYNOW\"];}",
+      "hash": "656d4c7ba5908f40bddd80bf730e59647d4e9c82416598e3ca3619a489d159bf"
+    },
+    {
+      "path": "UTAuctionEntity.prototype.isHighestBid",
+      "source": "function(){var _0x5f257d=_0x23b357;return this[_0x5f257d(0xc6e)]===AuctionBidStateEnum[_0x5f257d(0x8d1)];}",
+      "decoded": "function(){var _0x5f257d=_0x23b357;return this[\"bidState\"]===AuctionBidStateEnum[\"HIGHEST\"];}",
+      "hash": "918835ad1456698935341f31791ef70e30d509628f3b4d438c5b5fa21387eac5"
+    },
+    {
+      "path": "UTAuctionEntity.prototype.isExpired",
+      "source": "function(){var _0x2c7c12=_0x23b357;return this[_0x2c7c12(0xd2b)]===AuctionTradeStateEnum[_0x2c7c12(0x6b8)];}",
+      "decoded": "function(){var _0x2c7c12=_0x23b357;return this[\"tradeState\"]===AuctionTradeStateEnum[\"EXPIRED\"];}",
+      "hash": "5940b2b12516a030440ed9214d9a794d19113739241ebe4279117ce488ce8b2f"
+    }
+  ]
+}

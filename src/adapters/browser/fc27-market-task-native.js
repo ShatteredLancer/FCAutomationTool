@@ -1,6 +1,8 @@
 import { marketTaskAutoLists } from '../../trading/market-task-policy.js';
+import { marketSellMatches } from '../../trading/market-sell-selection.js';
 import { fc27MarketTraffic } from '../ea/fc27-market-traffic.js';
 import { createFc27MarketReadTransport } from '../ea/fc27-market-read.js';
+import { renewFc27MarketSession } from '../ea/fc27-market-session-renewal.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { verifyFc27Methods } from '../ea/fc27-transaction-transport.js';
@@ -13,13 +15,16 @@ import { marketTaskNativeRuntime } from '../ea/fc27-market-task-runtime.js';
 import { readTradingTaskCard } from '../ea/fc27-trading-task-catalog.js';
 import { taskCandidateAllowed } from '../../trading/task-catalog.js';
 import { marketTaskBuyResponse } from '../../trading/market-task-buy-response.js';
+import { marketBuyMode, chooseMarketOffer } from '../../trading/market-bidding.js';
+import { createMarketAuctionReader, marketAuctionOffer } from '../ea/fc27-market-auctions.js';
+import { observeFc27TrafficResult } from '../ea/fc27-market-traffic-runtime.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = reason => { throw Error(`MARKET_${reason}`); };
 const refFor = (row, pile) => ({ id: Number(row.itemId), definitionId: row.definitionId, ...(pile ? { pile } : {}) });
 const codeOf = result => {
   const http = result?.response?.status;
-  return [401, 403, 429].includes(http) ? http : result?.error?.code ?? result?.response?.code ?? http ?? null;
+  return [401, 403, 429].includes(http) ? http : result?.error?.code ?? result?.response?.error?.code ?? result?.response?.code ?? http ?? null;
 };
 const errorResult = result => ({ code: codeOf(result), category: result?.error?.kind === 'captcha' ? 'captcha'
   : codeOf(result) === 427 ? 'market-unavailable' : null });
@@ -29,7 +34,7 @@ const errorResult = result => ({ code: codeOf(result), category: result?.error?.
 export async function createFc27MarketTaskNative({ root, assertCurrent, assertProtected, checkOtherTransactions,
   now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)),
   tradeFactory = createEaTradeAdapter, inventoryFactory = createFc27GalleryListingInventory,
-  sessionReaderFactory = createFc27MarketReadTransport, onDiagnostic = null }) {
+  sessionReaderFactory = createFc27MarketReadTransport, renewSession = renewFc27MarketSession, onDiagnostic = null }) {
   if (![assertCurrent, assertProtected, checkOtherTransactions].every(fn => typeof fn === 'function')) fail('GUARDS_UNAVAILABLE');
   const context = readFc27Context(root), service = root.services.Item, repository = root.repositories.Item;
   const functions = Object.fromEntries(['bid', 'move', 'list', 'searchTransferMarket', 'clearTransferMarketCache',
@@ -58,15 +63,36 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     const timer = setTimeout(() => reject(Error('MARKET_RESPONSE_UNCONFIRMED')), 20000);
     Promise.resolve().then(operation).then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
   });
+  const recoveryDiagnostic = (transportPhase, result, localReason = null) => {
+    try {
+      const response=result?.response;
+      Promise.resolve(onDiagnostic?.({area:'trading',event:'task-native',phase:'recover',transportPhase,
+        status:localReason?'blocked':'received',
+        httpStatus:Number.isSafeInteger(response?.status)?response.status:undefined,
+        errorCode:Number.isSafeInteger(result?.code)?result.code:Number.isSafeInteger(response?.error?.code)?response.error.code:undefined,
+        ...(localReason?{localReason}:{}),
+      })).catch(()=>{});
+    } catch { /* Diagnostics never change reconciliation or its retained evidence. */ }
+  };
   const readable = result => {
     if (result?.status !== 'completed' || result.response?.success !== true || !Number.isSafeInteger(result.response.status)
       || result.response.status < 200 || result.response.status >= 300) {
-      throw Object.assign(Error('MARKET_READ_UNCONFIRMED'), errorResult(result));
+      throw Object.assign(Error('MARKET_READ_UNCONFIRMED'), errorResult(result), { readResult: result });
     }
   };
-  const refresh = async pile => {
-    assert(); repository.setDirty(pile === 'transfer' ? 5 : 6); await pace();
+  const auctions=createMarketAuctionReader({root,assert,pace,readable}),marketItems=new Map();
+  const marketKey=(task,row)=>`${task.id}:${row.tradeId}`;
+  const wonOrigin=async action=>{
+    const row=action.wonAuction;
+    if(!row||row.itemId!==action.itemId||row.definitionId!==action.definitionId)fail('HOLDING_UNAVAILABLE');
+    await auctions.read([row]);const result=auctions.won(row);
+    if(assertProtected(result.candidate.item,result.candidate)!==true)fail('HOLDING_PROTECTED');
+    return result;
+  };
+  const refresh = async (pile, recovery = false) => {
+    await pace(); assert(); repository.setDirty(pile === 'transfer' ? 5 : 6);
     const result = await bounded(() => pile === 'transfer' ? trade.refreshTransferItems() : trade.refreshPurchaseState());
+    if(recovery)recoveryDiagnostic(`${pile}-read`,result);
     assert(); readable(result);
     lastOnlineAt = now();
   };
@@ -121,15 +147,32 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
   };
   const hitSnapshot = (action,task,scope) => {
     const saved=scope&&searchSnapshots.get(scope);
-    if(action.kind!=='buy'||!saved)return null;
+    if(!['buy','bid'].includes(action.kind)||!saved)return null;
     if(saved.used||saved.task!==JSON.stringify(task)||saved.definitionId!==action.definitionId
       ||now()-saved.at>15000||now()<saved.at||saved.stamp!==pileStamp())fail('SEARCH_HIT_CHANGED');
     return saved;
   };
   const unknown = result => ({ status: 'unknown', receipt: null, ...errorResult(result) });
-  const reconcile = async entry => {
+  const refreshAuctions = async (items, recovery = false) => {
+    await pace();
+    const value = await bounded(() => new Promise((resolve, reject) => {
+      const owner = {}; let observable;
+      try { observable = service.refreshAuctions(items); observable.observe(owner, (_sender, reply) => { observable.unobserve?.(owner); resolve(reply); }); }
+      catch (error) { observable?.unobserve?.(owner); reject(error); }
+    }));
+    if(recovery)recoveryDiagnostic('auction-read',{response:value});
+    assert(); readable({ status: 'completed', response: value });
+  };
+  const reconcile = async (entry, { recovery = false } = {}) => {
+    let stage=entry.kind==='bid'?'watch-read':entry.kind==='buy'?'unassigned-read':'transfer-read';
     try {
-      await refresh(entry.kind === 'buy' ? 'unassigned' : 'transfer');
+      if(entry.kind==='bid'){
+        const proof=(await auctions.read([entry])).receipts[0];
+        if(proof&&(['leading','won'].includes(proof.state)||entry.acknowledged===true))return {status:'confirmed',receipt:{itemId:entry.itemId,definitionId:entry.definitionId,tradeId:entry.tradeId,coins:entry.coins}};
+        return unknown(null);
+      }
+      await refresh(entry.kind === 'buy' ? 'unassigned' : 'transfer', recovery);
+      stage='item-match';
       const result = exact(entry), candidate = result.candidate;
       const receipt = { itemId: entry.itemId, definitionId: entry.definitionId, tradeId: entry.tradeId ?? null, coins: entry.coins };
       if (entry.kind === 'buy' && candidate.item.pile === 'unassigned' && (entry.acknowledged === true || result.purchasePrice === entry.coins)) return { status: 'confirmed', receipt };
@@ -138,36 +181,100 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         const proof = galleryListingEvidence({ item: refFor(entry, 'transfer'), ...entry.listing,
           response: entry.acknowledged === true ? { success: true, status: 200 } : null }, result);
         if (proof.matched && proof.listingTradeId !== entry.previousTradeId) return { status: 'confirmed', receipt: { ...receipt, tradeId: proof.listingTradeId } };
+        if (recovery && Number.isSafeInteger(entry.at) && now() >= entry.at + 60000 && candidate.item.pile === 'transfer') {
+          const findItem = () => repository.getTransferItems().filter(i => i.id === Number(entry.itemId) && i.definitionId === entry.definitionId);
+          let items = findItem();
+          if (items.length !== 1) fail('HOLDING_UNAVAILABLE');
+          const auctionId = items[0].getAuctionData?.()?.tradeId;
+          if (auctionId !== null && auctionId !== undefined && auctionId !== 0 && auctionId !== '0') { stage='auction-read'; await refreshAuctions(items,recovery); }
+          stage='unlisted-proof';
+          assert(); items = findItem();
+          if (items.length !== 1 || exact(entry).candidate.item.pile !== 'transfer') fail('HOLDING_UNAVAILABLE');
+          const a = items[0].getAuctionData?.(), rawId = a?.tradeId;
+          const emptyId = rawId === null || rawId === undefined || rawId === 0 || rawId === '0';
+          const validId = (typeof rawId === 'string' && /^[1-9]\d{0,19}$/.test(rawId)) || (Number.isSafeInteger(rawId) && rawId > 0);
+          const inactive = ['none', 'inactive', 'expired'].includes(a?.tradeState);
+          if (a?.isSold?.() === false && a.isActiveTrade?.() === false && a.currentBid === 0
+            && inactive && (emptyId || validId)) {
+            return { status: 'resolved', receipt: null, resolution: { kind: 'unlisted', itemId: entry.itemId,
+              definitionId: entry.definitionId, at: now(), tradeId: emptyId ? null : String(rawId) } };
+          }
+        }
+        return { ...unknown(null), reason: 'MARKET_LISTING_STATE_UNCONFIRMED' };
       }
       return unknown(null);
-    } catch (error) { return { ...unknown(null), code: error.code ?? null }; }
+    } catch (error) {
+      const reason=error.code===401?'MARKET_AUTHENTICATION':error.message==='MARKET_HOLDING_UNAVAILABLE'?'MARKET_RECOVERY_ITEM_MISSING':'MARKET_READ_UNCONFIRMED';
+      if(recovery)recoveryDiagnostic(stage,error.readResult??{code:error.code},
+        reason==='MARKET_AUTHENTICATION'?'FC27_MARKET_RECOVERY_AUTHENTICATION':reason==='MARKET_RECOVERY_ITEM_MISSING'?'FC27_MARKET_RECOVERY_ITEM_MISSING':'FC27_MARKET_RECOVERY_READ_UNCONFIRMED');
+      return { ...unknown(null), code: error.code ?? null, reason };
+    }
   };
   return Object.freeze({
+    async discoverOwned({task,isCurrent=()=>true,onProgress=()=>{}}) {
+      const check=()=>{assert();if(!isCurrent())fail('USER_STOP');};
+      await guards();check();if(!task.sellSelection)fail('SELL_SELECTION_INVALID');
+      // Refresh external piles before resolving Club entities, since cards may
+      // have moved between warehouses. No stale cache qualifies a new holding.
+      await refresh('transfer');check();await refresh('unassigned');check();
+      const selection=task.sellSelection,refs=[];
+      if(['all','club'].includes(selection.pile)){
+        if(typeof inventory.scanPlayers!=='function')fail('SELL_SCAN_UNAVAILABLE');
+        try{refs.push(...await inventory.scanPlayers({beforeRead:async()=>{check();await pace();check();},onProgress}));}
+        catch(error){const code=Number(error.message?.match(/^FC27_CLUB_HTTP_(\d+)$/)?.[1]);if(code)error.code=code;throw error;}check();
+      }
+      for(const [pile,items] of [['transfer',repository.getTransferItems()],['unassigned',repository.getUnassignedItems()]]){
+        if(selection.pile==='all'||selection.pile===pile)for(const item of items)if(item.type==='player')refs.push({id:item.id,definitionId:item.definitionId,pile});
+      }
+      const seen=new Set(),rows=[];
+      for(const ref of refs){
+        check();if(seen.has(ref.id))continue;seen.add(ref.id);
+        const row={itemId:String(ref.id),definitionId:ref.definitionId};let result;
+        try{result=exact(row);}catch(error){if(error.message==='MARKET_HOLDING_UNAVAILABLE')continue;throw error;}
+        const candidate=result.candidate;
+        if(!marketSellMatches(selection,{...candidate.item,rating:candidate.rating})||!galleryListingCandidateAllowed(candidate)||assertProtected(candidate.item,candidate)!==true)continue;
+        rows.push({...row,pile:candidate.item.pile,rating:candidate.rating,name:candidate.name||`EA ${ref.definitionId}`});
+      }
+      check();return rows;
+    },
+    readAuctions: async rows=>{await guards();return auctions.read(rows);},
     priceTiers: () => root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
-    async inspectOwned(row) {
+    async inspectOwned(row, {task} = {}) {
       await guards(); const result = await owned(row); assert();
+      if(task?.sellSelection&&!marketSellMatches(task.sellSelection,{...result.candidate.item,rating:result.candidate.rating}))fail('HOLDING_PROTECTED');
       const cost = result.purchasePrice;
-      return { eligible: true, itemId: row.itemId, definitionId: row.definitionId, pile: result.candidate.item.pile,
+      return { eligible: true, itemId: row.itemId, definitionId: row.definitionId, pile: result.candidate.item.pile, rating:result.candidate.rating,
         cost: Number.isSafeInteger(cost) && cost > 0 && cost <= 15000000 ? cost : null };
     },
     async preflight({ action, task, executionScope }) {
       await guards();
+      if(marketBuyMode(task??{settings:{}})!=='bin')await auctions.ready();
       const hit=hitSnapshot(action,task,executionScope);
       if (['move', 'list'].includes(action.kind)) {
-        const result = await owned(action), pile = result.candidate.item.pile;
-        if (action.kind === 'list' && pile !== 'transfer' || action.kind === 'move' && !['club', 'unassigned'].includes(pile)) fail('HOLDING_UNAVAILABLE');
+        let result;try{result=await owned(action);}catch(error){if(action.kind!=='move'||!action.wonAuction||!['MARKET_HOLDING_UNAVAILABLE','MARKET_HOLDING_PROTECTED'].includes(error.message))throw error;result=await wonOrigin(action);}
+        const pile = result.candidate.item.pile;
+        if(task?.sellSelection&&!marketSellMatches(task.sellSelection,{...result.candidate.item,rating:result.candidate.rating},{moved:true}))fail('HOLDING_PROTECTED');
+        if (action.kind === 'list' && pile !== 'transfer' || action.kind === 'move' && !['club', 'unassigned','watch'].includes(pile)) fail('HOLDING_UNAVAILABLE');
         if (action.kind === 'list') {
           checkRelist(action);
           await pace(); const limits = await bounded(() => trade.inspectPriceLimits(result.candidate.item, { refresh: true })); assert();
           readable({ ...limits, status: limits.refreshStatus });
           const limit = limits.after;
+          try {
+            Promise.resolve(onDiagnostic?.({area:'trading',event:'task-native',phase:'list',transportPhase:'price-limits',
+              status:'observed',definitionId:action.definitionId,startPrice:action.listing?.startPrice,buyNow:action.listing?.buyNow,
+              durationSeconds:action.listing?.durationSeconds,minimumPrice:limit?.minimum,maximumPrice:limit?.maximum})).catch(()=>{});
+          } catch { /* A diagnostic failure cannot prevent listing. */ }
           if (!limit?.hasPriceLimits || purchasePriceCap({ maxBuy: action.coins, eaLimits: limit,
-            priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS }) !== action.coins) fail('PRICE_LIMIT');
+            priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS }) !== action.coins
+            || !Number.isSafeInteger(action.listing?.startPrice) || action.listing.startPrice < limit.minimum
+            || action.listing.startPrice > action.listing.buyNow
+            || purchasePriceCap({maxBuy:action.listing.startPrice,eaLimits:limit,priceTiers:root.UTCurrencyInputControl?.PRICE_TIERS}) !== action.listing.startPrice) fail('PRICE_LIMIT');
         }
       } else if (!hit) { await refresh('unassigned'); await refresh('transfer'); }
       const cap = capabilities();
-      if ((task?.schedule || task && !marketTaskAutoLists(task)) && ['search','buy','move'].includes(action.kind) && cap.freeSlots < 1) fail('TRANSFER_FULL');
-      if (action.kind === 'buy' || action.kind === 'search') {
+      if ((task?.schedule || task && !marketTaskAutoLists(task)) && ['search','buy','bid','move'].includes(action.kind) && cap.freeSlots < 1) fail('TRANSFER_FULL');
+      if (['buy','bid','search'].includes(action.kind)) {
         const count = repository.numItemsInCache(6), max = root.MAX_NEW_ITEMS;
         if (!Number.isSafeInteger(count) || !Number.isSafeInteger(max) || count < 0 || count >= max || cap.freeSlots < 1) fail('FUNDS_OR_CAPACITY');
         if (action.kind === 'buy' && trade.inspectPurchase(refFor(action)).status === 'loaded') fail('ITEM_OCCUPIED');
@@ -181,13 +288,15 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       return cap;
     },
     async send({ action, task, beforeDispatch, beforeRequest, executionScope }) {
+      const mode=marketBuyMode(task);
+      if(action.kind==='bid'&&mode==='bin'||action.kind==='buy'&&mode==='bid')fail('BUY_RULE_CHANGED');
       const hit=hitSnapshot(action,task,executionScope);
       if(!hit)await pace();
       await guards();
       const taskTrade = forTask(task.id), { adapter, dispatch } = taskTrade;
       let dispatched = false, reply = null, blocked = null, dispatchAt = null;
       const diagnostic = (transportPhase, value = null) => {
-        if (!['buy', 'move', 'list'].includes(action.kind)) return;
+        if (!['buy', 'bid', 'move', 'list'].includes(action.kind)) return;
         // Keep transport status separate from EA's business error. No raw
         // response/message, account, entity ID or auction ID enters the log.
         try {
@@ -197,8 +306,10 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
           const permissionDenied = errorCode !== null && errorCode === root.UtasErrorCode?.PERMISSION_DENIED;
           Promise.resolve(onDiagnostic?.({ area: 'trading', event: 'task-native', phase: action.kind, transportPhase,
             method: `service.${action.kind === 'buy' ? 'bid' : action.kind}`, definitionId: action.definitionId,
-            actualPrice: action.kind === 'buy' ? action.coins : undefined,
-            capturedAt: action.kind === 'buy' ? taskTrade.lastSearchAt : undefined,
+            actualPrice: ['buy','bid'].includes(action.kind) ? action.coins : undefined,
+            ...(action.kind === 'list' ? { startPrice: action.listing?.startPrice, buyNow: action.listing?.buyNow,
+              durationSeconds: action.listing?.durationSeconds } : {}),
+            capturedAt: ['buy','bid'].includes(action.kind) ? taskTrade.lastSearchAt : undefined,
             durationMs: dispatchAt === null ? undefined : Math.max(0, now() - dispatchAt),
             status: value === null ? 'dispatch-approved' : value?.success === false ? 'rejected' : 'received',
             httpStatus, errorCode, ...(permissionDenied ? { localReason: 'FC27_MARKET_PERMISSION_DENIED' } : {}) })).catch(() => {});
@@ -206,26 +317,31 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       };
       const options = { beforeRequest, beforeDispatch: item => {
         assert();
-        if (action.kind === 'buy') {
+        if (['buy','bid'].includes(action.kind)) {
           if(hit)hitSnapshot(action,task,executionScope);
           if (task.mode === 'filter') {
             const facts = readTradingTaskCard(item);
             if (!facts || !taskCandidateAllowed(facts, task) || task.ratingPrices&&facts.rating!==action.rating) fail('CANDIDATE_CHANGED');
           }
           const auction = item?.getAuctionData?.();
+          const chosen=action.kind==='bid'?chooseMarketOffer({offer:marketAuctionOffer(item),buyMode:'bid',bidCap:action.coins,
+            bidExact:task.settings.bidExact,bidExpires:task.settings.bidExpires,priceTiers:root.UTCurrencyInputControl?.PRICE_TIERS}):null;
           if (item?.id !== Number(action.itemId) || item.definitionId !== action.definitionId || String(auction?.tradeId) !== action.tradeId
-            || auction.buyNowPrice !== action.coins || auction.canBuy?.(capabilities().balance) !== true
+            || (action.kind==='buy'?(auction.buyNowPrice !== action.coins || auction.canBuy?.(capabilities().balance) !== true)
+              :chosen?.coins!==action.coins||auction.tradeOwner!==false||auction.isHighestBid?.()===true||auction.canBid?.(action.coins,capabilities().balance)!==true)
             || !(auction.getSecondsRemaining?.() > 0) || purchasePriceCap({ maxBuy: action.coins,
               eaLimits: item._itemPriceLimits ?? item.itemPriceLimits ?? null,
               priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS }) !== action.coins) fail('OFFER_CHANGED');
         }
         if (['move', 'list'].includes(action.kind)) {
           checkRelist(action);
-          const c = exact(action).candidate;
+          let c;try{c=exact(action).candidate;}catch(error){if(action.kind!=='move'||!action.wonAuction)throw error;c=auctions.won(action.wonAuction).candidate;}
+          if(task.sellSelection&&!marketSellMatches(task.sellSelection,{...c.item,rating:c.rating},{moved:true}))fail('HOLDING_PROTECTED');
+          if(action.kind==='move'&&action.wonAuction&&c.item.pile==='unassigned'&&!galleryListingCandidateAllowed(c))c=auctions.won(action.wonAuction).candidate;
           if(task.ratingPrices&&action.kind==='list'&&!(action.previousTradeId&&task.settings.relist==='original')&&readTradingTaskCard(repository.getTransferItems().find(i=>i.id===Number(action.itemId)))?.rating!==action.rating)fail('CANDIDATE_CHANGED');
-          if (!galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true
+          if (!(c.item.pile==='watch'&&action.kind==='move')&&!galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true
             || action.kind === 'list' && c.item.pile !== 'transfer'
-            || action.kind === 'move' && !['club', 'unassigned'].includes(c.item.pile)) fail('HOLDING_PROTECTED');
+            || action.kind === 'move' && !['club', 'unassigned','watch'].includes(c.item.pile)) fail('HOLDING_PROTECTED');
         }
         beforeDispatch(); dispatched = true;
         if(hit){hit.used=true;lastRequest=now();}
@@ -233,6 +349,22 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       }, onResponse: value => { reply = value; diagnostic('native-response', value); }, onBlocked: error => { blocked=error; } };
       let result;
       if (action.kind === 'search') {
+        if(mode!=='bin'){
+          await auctions.ready();
+          const criteria=new root.UTSearchCriteriaDTO();criteria.defId=[action.definitionId];criteria.type=root.SearchType.PLAYER;criteria.category=root.SearchCategory.ANY;
+          if(action.searchMode==='bid')criteria.maxBid=action.maxBid;else if(action.searchMode==='bin')criteria.maxBuy=action.maxBuy;else fail('ACTION_CHANGED');
+          service.clearTransferMarketCache();
+          const response=await dispatch(options,()=>observeFc27TrafficResult(taskTrade.runtime.services.Item.searchTransferMarket(criteria,1)));
+          assert();if(blocked)throw blocked;readable({status:'completed',response});
+          const items=(response.data??response.response)?.items;
+          if(!Array.isArray(items)||items.length>21)fail('SEARCH_UNCONFIRMED');
+          for(const key of marketItems.keys())if(key.startsWith(task.id+':'))marketItems.delete(key);
+          const offers=[];for(const item of items){const offer=marketAuctionOffer(item);
+            if(item.definitionId!==action.definitionId||item.getAuctionData?.()?.isActiveTrade?.()!==true)continue;
+            marketItems.set(marketKey(task,offer),item);offers.push(offer);
+          }
+          taskTrade.lastSearchAt=now();return {sent:dispatched,status:'confirmed',responseCount:items.length,offers};
+        }
         result = await dispatch(options, () => bounded(() => adapter.searchMarket({ definitionId: action.definitionId, maxBuyNow: action.maxBuy, page: 1 })));
         assert();if(blocked)throw blocked;
         const ok = result.status === 'completed' && result.response?.success === true && result.response.status >= 200 && result.response.status < 300;
@@ -244,6 +376,16 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
             && Number.isSafeInteger(c.auction.tradeId) && c.auction.tradeId > 0).map(c => ({ itemId: String(c.item.id),
             definitionId: c.item.definitionId, tradeId: String(c.auction.tradeId), coins: c.auction.buyNowPrice })) : [] };
       }
+      if(action.kind==='bid'||action.kind==='buy'&&mode!=='bin'){
+        const item=action.rebid?auctions.find(action):marketItems.get(marketKey(task,action));
+        if(!item)fail('OFFER_CHANGED');
+        result={status:'completed',response:await dispatch(options,()=>observeFc27TrafficResult(taskTrade.runtime.services.Item.bid(item,action.coins)))};
+      }else if(action.kind==='move'&&action.wonAuction&&(()=>{try{exact(action);return false;}catch{return true;}})()){
+        const result=await wonOrigin(action);
+        const response=await dispatch(options,()=>observeFc27TrafficResult(taskTrade.runtime.services.Item.move(result.entity,root.ItemPile.TRANSFER)));
+        // Keep transport errors for the account-wide stop classifier below.
+        reply=response;
+      }else{
       const permit = await adapter.acquireRequestPermit(action.kind === 'move' ? 'purchase-route' : action.kind);
       assert(); if (permit.status !== 'acquired') return { status: 'rejected', receipt: null, ...errorResult(permit) };
       const permitOptions = { requestPermit: permit.permit };
@@ -251,9 +393,11 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       else if (action.kind === 'move') result = await dispatch(options, () => bounded(() => adapter.routePurchasedItem(exact(action).candidate.item, 'transfer', permitOptions)));
       else if (action.kind === 'list') result = await dispatch(options, () => bounded(() => adapter.listItem(refFor(action, 'transfer'), action.listing, permitOptions)));
       else fail('ACTION_CHANGED');
+      }
+      if(!result&&reply)result={status:'completed',response:reply};
       assert();if(blocked)throw blocked;
       if (!dispatched) return { status: 'rejected', receipt: null, ...errorResult(result) };
-      const buyResponse = action.kind === 'buy' ? marketTaskBuyResponse(reply) : null;
+      const buyResponse = ['buy','bid'].includes(action.kind) ? marketTaskBuyResponse(reply) : null;
       if (buyResponse?.rejected) return { status: 'rejected', receipt: null, ...buyResponse };
       const evidence = reply?.data?.itemIds;
       const contradictory = evidence != null && (!Array.isArray(evidence) || evidence.length > 0);
@@ -262,23 +406,19 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       }
       const acknowledged = reply?.success === true && Number.isSafeInteger(reply.status) && reply.status >= 200 && reply.status < 300
         && (action.kind === 'list' || Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId));
+      if(action.kind==='bid'&&acknowledged)return {status:'confirmed',acknowledged:true,receipt:{itemId:action.itemId,definitionId:action.definitionId,tradeId:action.tradeId,coins:action.coins}};
       const checked = await reconcile({ ...action, ...(acknowledged ? { acknowledged: true } : {}) });
       return { ...checked, ...(acknowledged ? { acknowledged: true } : {}), code: buyResponse?.code ?? checked.code ?? codeOf(result),
         category: buyResponse?.category ?? checked.category ?? errorResult(result).category };
     },
     reconcile,
     async readSales(holdings) {
-      assert(); await refresh('transfer'); await pace();
+      assert(); await refresh('transfer');
       const items = repository.getTransferItems();
       if (!Array.isArray(items)) fail('READ_UNCONFIRMED');
       const selected = items.filter(item => holdings.some(h => Number(h.itemId) === item.id && h.definitionId === item.definitionId));
       if (!selected.length) return [];
-      const value = await bounded(() => new Promise((resolve, reject) => {
-        const owner = {}; let observable;
-        try { observable = service.refreshAuctions(selected); observable.observe(owner, (_sender, reply) => { observable.unobserve?.(owner); resolve(reply); }); }
-        catch (error) { observable?.unobserve?.(owner); reject(error); }
-      }));
-      assert(); readable({ status: 'completed', response: value });
+      await refreshAuctions(selected);
       const receipts = [];
       for (const item of selected) {
         const auction = item.getAuctionData?.(), holding = holdings.find(h => Number(h.itemId) === item.id);
@@ -298,13 +438,31 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     sessionHealth: () => ({ lastOnlineAt }),
     async maintainSession({ beforeDispatch }) {
       assert(); beforeDispatch();
+      const check = () => { assert(); beforeDispatch(); };
+      const diagnostic = row => {
+        try { Promise.resolve(onDiagnostic?.({area:'trading',event:'task-native',phase:'session-check',...row})).catch(()=>{}); }
+        catch { /* Never change maintenance due to logging. */ }
+      };
       try {
-        const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
-        assert(); beforeDispatch();
-        const result = await reader.readSessionHealth({ beforeDispatch: () => { assert(); beforeDispatch(); } });
-        assert();
+        const read = async () => {
+          check(); const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
+          check(); return reader.readSessionHealth({ beforeDispatch: check });
+        };
+        let result;
+        try { result = await read(); }
+        catch (error) {
+          const details = error.marketFailure;
+          if (details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error;
+          check(); diagnostic({transportPhase:'session-expired',status:'received',httpStatus:401});
+          try { await renewSession(root, { beforeDispatch: check, onPhase: diagnostic }); }
+          catch (renewalError) { throw Object.assign(Error('MARKET_SESSION_RENEWAL_FAILED'), { code: renewalError.code ?? 401 }); }
+          check(); diagnostic({transportPhase:'session-renew-verify',status:'started'});
+          result = await read(); // One new GET only; a second 401 is terminal.
+        }
+        check();
         if (result?.status !== 'online') fail('SESSION_UNVERIFIED');
         lastOnlineAt = now();
+        diagnostic({transportPhase:'session-online',status:'completed'});
         return { status: 'online', observedAt: lastOnlineAt };
       } catch (error) {
         const http = error.marketFailure?.httpStatus, ea = error.marketFailure?.eaCode;

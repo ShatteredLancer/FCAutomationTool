@@ -9,6 +9,7 @@ import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
 import { defaultTradingTaskSettings } from '../../src/trading/task-model.js';
 import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
 import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
+import listingIncident from '../fixtures/trading-list-rejection-20261116.json';
 
 async function fixture(mode = 'sell', shared = false, rating = 84) {
   const f = marketNativeRuntime(), data = new Map(), context = { scope: traditionalJournalScope(readFc27Context(f.root)), season: '27', platform: 'pc' };
@@ -55,6 +56,95 @@ async function batchFixture(afterBuy = 'list', settings = {}) {
   });
   return { ...f, snapshot, overflow: () => overflow };
 }
+it('pauses an initial 400 listing rejection once, retaining the holding for an explicit retry', async () => {
+  const f = await fixture('sell',true); let sends=0;
+  const event=listingIncident.events[0];
+  f.hooks.list=()=>{
+    // Prevent the broken implementation from looping forever in the red control.
+    if(++sends===3)f.runtime.pauseAll();
+    return {success:false,status:event.httpStatus,error:{code:event.errorCode}};
+  };
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(sends).toBe(1);
+  expect(f.runtime.inspect().tasks[0]).toMatchObject({state:'paused',reason:'MARKET_LIST_REJECTED'});
+  let ledger=(await f.coordinator.inspect()).ledger;
+  expect(ledger.holdings[0]).toMatchObject({phase:'transfer',cost:null});
+  expect(ledger.intents.map(i=>i.phase)).toEqual(['rejected']);
+  await f.runtime.recover(); expect(sends).toBe(1);
+  f.hooks.list=null; let stopped=false;
+  f.runtime.subscribe(s=>{if(!stopped&&s.evidence?.some(e=>e.counts[1]===1)){stopped=true;f.runtime.pauseAll();}});
+  await f.runtime.run({approved:true,snapshot:await f.store.read(),taskIds:['sell']});
+  ledger=(await f.coordinator.inspect()).ledger;
+  expect(ledger.intents.map(i=>i.phase)).toEqual(['rejected','confirmed']);
+  expect(f.calls.filter(c=>c[0]==='bid')).toEqual([]);
+  expect(f.calls.filter(c=>c[0]==='list').at(-1)).toEqual(['list',201,650,700,3600]);
+});
+it('keeps a 512 listing unresolved and blocks clearing the global pause without a receipt',async()=>{
+  const f=await fixture('sell',true);
+  const response=listingIncident.events[2];f.hooks.list=()=>({success:false,status:response.httpStatus,error:{code:response.errorCode}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(1);
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+  for(let check=0;check<listingIncident.followupRecovery.count;check++)await f.runtime.recover();
+  await expect(f.runtime.acknowledgeStop({approved:true})).rejects.toThrow('MARKET_RECOVERY_REQUIRED');
+  expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(1);
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+});
+it.each([false,true])('resolves an old pending listing from fresh unlisted evidence without inventing a receipt (auction %s)',async hasAuction=>{
+  const f=await fixture('sell',true);
+  f.hooks.list=()=>({success:false,status:512,error:{code:512}});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  const before=(await f.coordinator.inspect()).ledger;
+  f.advance(120000);
+  f.transfer[0].auction={tradeState:'inactive',currentBid:0,isSold:()=>false,isActiveTrade:()=>false,
+    ...(hasAuction?{tradeId:19201}: {tradeId:0})};
+  await f.runtime.recover();
+  const after=(await f.coordinator.inspect()).ledger;
+  expect(after.intents[0]).toMatchObject({phase:'resolved',receipt:null,resolution:{kind:'unlisted'}});
+  expect(after.intents[0].listing).toEqual(before.intents[0].listing);
+  expect(after.holdings).toEqual(before.holdings);
+  expect(after.stopped).not.toBeNull();
+  expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(1);
+  await f.runtime.acknowledgeStop({approved:true});
+  expect((await f.coordinator.inspect()).ledger.stopped).toBeNull();
+  expect((await f.traffic.inspect()).ledger.stopped).toBeNull();
+  await f.runtime.recover();
+  expect(f.calls.filter(c=>['list','bid','move'].includes(c[0]))).toHaveLength(1);
+});
+it.each(['cancel','save-failed','401'])('retains the pending listing and shared pause when recovery is %s',async fault=>{
+  const f=await fixture('sell',true);
+  f.hooks.list=()=>({success:false,status:512});
+  await f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+  f.advance(120000);
+  f.transfer[0].auction={tradeId:19201,tradeState:'inactive',currentBid:0,isSold:()=>false,isActiveTrade:()=>false};
+  if(fault==='cancel')f.hooks.auctions=()=>f.runtime.pauseAll();
+  if(fault==='save-failed')f.hooks.persist=(_k,v)=>{if(v.ledger?.intents.some(i=>i.phase==='resolved'))throw Error('storage unavailable');};
+  if(fault==='401')f.hooks.readStatus=401;
+  if(fault==='401')await f.runtime.recover();
+  else await expect(f.runtime.recover()).rejects.toThrow();
+  expect((await f.coordinator.inspect()).ledger.intents[0].phase).toBe('pending');
+  await expect(f.runtime.acknowledgeStop({approved:true})).rejects.toThrow('MARKET_RECOVERY_REQUIRED');
+  expect((await f.traffic.inspect()).ledger.stopped).not.toBeNull();
+  expect(f.calls.filter(c=>['list','move','bid'].includes(c[0]))).toHaveLength(1);
+  expect(f.diagnosticLog.record.mock.calls.map(c=>c[0])).toContainEqual(expect.objectContaining({phase:'resume-check',reason:'MARKET_RECOVERY_REQUIRED'}));
+});
+it('pauses only the rejected listing task while another explicitly started task can finish',async()=>{
+ const f=await fixture('sell',true);f.makeCard(202,902,'transfer');
+ const settings=f.snapshot.store.tasks[0].settings;
+ const snapshot=await f.store.saveTask({...f.snapshot,input:{name:'Other sale',mode:'sell',settings,players:[],excluded:[],
+   owned:[{itemId:'202',definitionId:902,name:'Other',pile:'transfer'}]}});
+ let calls=0;f.hooks.list=card=>{
+   if(++calls>3)f.runtime.pauseAll();
+   if(card.id===201)return {success:false,status:400};
+   card.auction={tradeId:19202,tradeState:'active',startingBid:650,buyNowPrice:700,currentBid:0};
+   return {success:true,status:200};
+ };
+ let stopped=false;
+ f.runtime.subscribe(s=>{if(!stopped&&s.evidence?.some(e=>e.counts[1]===1)){stopped=true;f.runtime.pauseAll();}});
+ await f.runtime.run({approved:true,snapshot,taskIds:['sell','task2']});
+ expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1])).toEqual([201,202]);
+ expect((await f.coordinator.inspect()).ledger.holdings.map(h=>h.phase)).toEqual(['transfer','listed']);
+});
 it.each(['list', 'hold'])('finishes the search purchase batch before moving or listing (%s)', async afterBuy => {
   const f = await batchFixture(afterBuy); let stopped = false;
   f.hooks.persist = (_key, value) => {
@@ -172,7 +262,7 @@ it.each([false,true])('holds a native purchase on Transfer List, then lists that
  let listed=false;f.runtime.subscribe(s=>{if(!listed&&s.evidence?.some(e=>e.counts[1]===1)){listed=true;f.runtime.pauseAll();}});
  await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
  expect(f.calls.filter(c=>['bid','move','list'].includes(c[0])).map(c=>c[0])).toEqual(['bid','move','list']);
- expect(f.calls.filter(c=>c[0]==='list')[0]).toEqual(['list',101,1400,1400,3600]);
+ expect(f.calls.filter(c=>c[0]==='list')[0]).toEqual(['list',101,1300,1400,3600]);
  expect(f.gmRequest).not.toHaveBeenCalled();
 });
 it.each(['full','budget'])('stops immediate hold-only buying at %s without listing or another payment',async limit=>{
@@ -257,7 +347,7 @@ it.each([false,true])('composes production protections/store/provider/native thr
   await f.runtime.run({ approved: true, snapshot: f.snapshot, taskIds: ['sell'] });
   const ledger = (await f.coordinator.inspect()).ledger;
   expect(ledger.holdings).toMatchObject([{ itemId: '201', phase: 'listed', cost: null }]);
-  expect(f.calls.filter(c => ['bid', 'move', 'list'].includes(c[0]))).toEqual([['list', 201, 700, 700, 3600]]);
+  expect(f.calls.filter(c => ['bid', 'move', 'list'].includes(c[0]))).toEqual([['list', 201, 650, 700, 3600]]);
   await f.runtime.recover(); expect(f.calls.filter(c => c[0] === 'list')).toHaveLength(1);
   expect(f.gmRequest).not.toHaveBeenCalled();
   if(shared)expect((await f.traffic.inspect()).writes.list).toBe(1);
@@ -381,7 +471,7 @@ it.each([false,true])('executes rating-specific fixed buy/list rules or blocks n
  await f.runtime.run({approved:true,snapshot,taskIds:['sell']});
  const writes=f.calls.filter(c=>['bid','move','list'].includes(c[0]));
  if(drift)expect(writes).toEqual([]);
- else{expect(writes.map(c=>c[0])).toEqual(['bid','move','list']);expect(writes.at(-1)).toEqual(['list',101,1400,1400,3600]);}
+ else{expect(writes.map(c=>c[0])).toEqual(['bid','move','list']);expect(writes.at(-1)).toEqual(['list',101,1300,1400,3600]);}
  expect(f.gmRequest).not.toHaveBeenCalled();
 });
 it.each([false,true])('carries scheduled purchase and sale through production native composition (common gate=%s)', async shared => {

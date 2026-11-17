@@ -71,17 +71,37 @@ export function createMarketTaskCatalog({ readRows, context, yieldControl = paus
 
 export async function taskCandidatePage(snapshot, task, { cursor = 0, limit = 20, isCurrent = () => true, yieldControl = pause } = {}) {
   const rows = [], source = snapshot.candidates; let next = cursor, scanned = 0;
-  if (cursor === 0) {
+  if (cursor === 0 && !snapshot.ratingRotation) {
     let end = source.length;
     while (next < end) { const mid = (next + end) >>> 1; if (source[mid].rating < task.settings.ratingMin) next = mid + 1; else end = mid; }
   }
   for (; next < source.length; next++) {
     if (!isCurrent()) throw Error('MARKET_USER_STOP');
     const card = source[next]; scanned++;
-    if (card.rating > task.settings.ratingMax) { next = source.length; break; }
+    if (card.rating > task.settings.ratingMax && !snapshot.ratingRotation) { next = source.length; break; }
     if (taskCandidateAllowed(card, task)) rows.push(card);
     if (rows.length === limit) { next++; break; }
     if (scanned % 256 === 0) { await yieldControl(); if (!isCurrent()) throw Error('MARKET_USER_STOP'); }
   }
   return { rows, next, done: next >= source.length };
+}
+
+// One candidate per rating in turn. Large rating groups cannot starve another
+// configured rating. Only public references are rearranged, without EA IO.
+export async function rotateMarketRatings(snapshot,task,isCurrent){
+ if(!isCurrent())throw Error('MARKET_USER_STOP');
+ const lanes=new Map();
+ for(let i=0;i<snapshot.candidates.length;i++){
+  const row=snapshot.candidates[i];
+  if(taskCandidateAllowed(row,task)){if(!lanes.has(row.rating))lanes.set(row.rating,[]);lanes.get(row.rating).push(row);}
+  if(i%256===255){await pause();if(!isCurrent())throw Error('MARKET_USER_STOP');}
+ }
+ const groups=[...lanes.values()],candidates=[];let offset=0;
+ while(groups.some(g=>offset<g.length)){
+  for(const group of groups)if(offset<group.length)candidates.push(group[offset]);
+  offset++;
+  if(offset%256===0){await pause();if(!isCurrent())throw Error('MARKET_USER_STOP');}
+ }
+ if(!isCurrent())throw Error('MARKET_USER_STOP');
+ return Object.freeze({...snapshot,candidates:Object.freeze(candidates),ratingRotation:true});
 }

@@ -8,6 +8,7 @@ import { createMarketTaskScheduler } from '../../src/trading/market-task-schedul
 import { createTradingTaskStore } from '../../src/adapters/browser/fc27-trading-task-store.js';
 import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-coordinator.js';
 import { createMarketTaskCatalog } from '../../src/trading/market-task-catalog.js';
+import { FC27_MARKET_SESSION_METHODS } from '../../src/adapters/ea/fc27-market-session-renewal.js';
 
 async function fixture(mode = 'fixed', extra = {}) {
   const f = marketNativeRuntime();
@@ -47,6 +48,133 @@ async function fixture(mode = 'fixed', extra = {}) {
 }
 
 describe('native session maintenance', () => {
+  it('composes the production renewal adapter with maintenance, preserves holdings and makes no trade calls', async () => {
+    const f = marketNativeRuntime(), renewal = [], pending = [];
+    const response = (kind, dto) => ({ observe(owner, callback) { pending.push(owner); callback(this, dto); }, unobserve(owner) { pending.splice(pending.indexOf(owner), 1); } });
+    class Auth {
+      authenticate() { renewal.push('auth'); return response('auth', { success: true, response: { environment: 1 } }); }
+      authUTAS() {}
+      getUtasSession() { throw Error('do not read credentials'); }
+      requestTelemetry() { renewal.push('telemetry'); return response('telemetry', { success: true }); }
+    }
+    f.root.FCAuthenticationService = Auth; f.root.AuthEnvironment = { UTAS: 1 };
+    f.root.services.Item.itemDao = { authDelegate: new Auth() };
+    const digest = f.root.crypto.subtle.digest;
+    const hashes = new Map(FC27_MARKET_SESSION_METHODS.map(([path, hash]) => [String(Auth.prototype[path.split('.').at(-1)]), hash]));
+    f.root.crypto.subtle.digest = async (algorithm, bytes) => {
+      const hash = hashes.get(new TextDecoder().decode(bytes)); return hash ? Buffer.from(hash, 'hex') : digest(algorithm, bytes);
+    };
+    let attempts = 0;
+    const native = await createFc27MarketTaskNative({ ...f, assertCurrent: () => {}, assertProtected: () => true, checkOtherTransactions: async () => {},
+      sessionReaderFactory: async () => ({ readSessionHealth: async ({ beforeDispatch }) => {
+        beforeDispatch(); if (++attempts === 1) throw Object.assign(Error('expired'), { marketFailure: { httpStatus: 401 } });
+        return { status: 'online' };
+      } }) });
+    await expect(native.maintainSession({ beforeDispatch: () => {} })).resolves.toMatchObject({ status: 'online' });
+    expect(attempts).toBe(2); expect(renewal).toEqual(['auth','telemetry']); expect(pending).toEqual([]); expect(f.calls).toEqual([]);
+  });
+  it('does not renew a 401 carrying an explicit EA restriction', async () => {
+    const renewSession = vi.fn();
+    const f = await fixture('fixed', { renewSession, sessionReaderFactory: async () => ({ readSessionHealth: async () => {
+      throw Object.assign(Error('restriction'), { marketFailure: { httpStatus: 401, eaCode: 459 } });
+    } }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toThrow();
+    expect(renewSession).not.toHaveBeenCalled();
+  });
+  it('renews one expired waiting session and verifies with a new reader without trading', async () => {
+    const reads = vi.fn().mockRejectedValueOnce(Object.assign(Error('expired'), { marketFailure: { httpStatus: 401 } }))
+      .mockResolvedValue({ status: 'online' });
+    const renewSession = vi.fn(async (_root, { beforeDispatch }) => { beforeDispatch(); });
+    const factory = vi.fn(async () => ({ readSessionHealth: reads }));
+    const f = await fixture('fixed', { sessionReaderFactory: factory, renewSession });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).resolves.toMatchObject({ status: 'online' });
+    expect(renewSession).toHaveBeenCalledTimes(1); expect(factory).toHaveBeenCalledTimes(2);
+    expect(f.calls).toEqual([]);
+  });
+  it.each([401, 403, 429])('never loops on repeated %s or renews restrictions', async status => {
+    const reads = vi.fn(async () => { throw Object.assign(Error('denied'), { marketFailure: { httpStatus: status } }); });
+    const renewSession = vi.fn(async () => {});
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }), renewSession });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ code: status });
+    expect(renewSession).toHaveBeenCalledTimes(status === 401 ? 1 : 0);
+    expect(reads).toHaveBeenCalledTimes(status === 401 ? 2 : 1);
+    expect(f.native.sessionHealth().lastOnlineAt).toBeNull();
+  });
+  it('does not recheck or resume after the user stops during renewal', async () => {
+    let active = true;
+    const reads = vi.fn(async () => { throw Object.assign(Error('expired'), { marketFailure: { httpStatus: 401 } }); });
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }),
+      renewSession: async () => { active = false; } });
+    await expect(f.native.maintainSession({ beforeDispatch: () => { if (!active) throw Error('stop'); } })).rejects.toThrow();
+    expect(reads).toHaveBeenCalledTimes(1); expect(f.native.sessionHealth().lastOnlineAt).toBeNull();
+  });
+  it('invalidates Transfer cache after pacing even if another reader refreshed it during the wait', async () => {
+    const f=await fixture(), card=f.makeCard(201,901,'transfer');
+    card.auction={tradeState:'inactive',currentBid:0,isSold:()=>false,isActiveTrade:()=>false};
+    await f.native.verifySession();
+    const original=f.root.services.Item.requestTransferItems;
+    f.hooks.sleep=async()=>{original.call(f.root.services.Item);};
+    f.hooks.readStatus=undefined;
+    const dirty=f.root.repositories.Item.isDirty;
+    Object.defineProperty(f.hooks,'readStatus',{get:()=>dirty(5)?200:304});
+    const result=await f.native.reconcile({kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}},{recovery:true});
+    expect(result.status).toBe('resolved');
+    expect(f.calls.some(c=>['bid','move','list'].includes(c[0]))).toBe(false);
+  });
+  it('reports the exact recovery read stage without leaking owned identities',async()=>{
+    const onDiagnostic=vi.fn(),f=await fixture('fixed',{onDiagnostic});
+    f.hooks.readStatus=401;
+    const result=await f.native.reconcile({kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}},{recovery:true});
+    expect(result).toMatchObject({status:'unknown',code:401,reason:'MARKET_AUTHENTICATION'});
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({event:'task-native',phase:'recover',transportPhase:'transfer-read',httpStatus:401}));
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toMatch(/itemId|tradeId|"201"/);
+  });
+  it('distinguishes a missing exact card from a failed EA read without clearing the intent',async()=>{
+    const onDiagnostic=vi.fn(),f=await fixture('fixed',{onDiagnostic});
+    const entry={kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}},before=structuredClone(entry);
+    expect(await f.native.reconcile(entry,{recovery:true})).toMatchObject({status:'unknown',reason:'MARKET_RECOVERY_ITEM_MISSING'});
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({transportPhase:'item-match',localReason:'FC27_MARKET_RECOVERY_ITEM_MISSING'}));
+    expect(entry).toEqual(before);expect(f.calls.some(c=>['bid','move','list'].includes(c[0]))).toBe(false);
+  });
+  it.each(['throw','reject'])('recovery diagnostics cannot change a confirmed fresh disposition: %s',async mode=>{
+    const onDiagnostic=()=>{if(mode==='throw')throw Error('private');return Promise.reject(Error('private'));};
+    const f=await fixture('fixed',{onDiagnostic}),card=f.makeCard(201,901,'transfer');
+    card.auction={tradeState:'inactive',currentBid:0,isSold:()=>false,isActiveTrade:()=>false};
+    expect(await f.native.reconcile({kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}},{recovery:true})).toMatchObject({status:'resolved'});
+  });
+  it.each(['active','closed','sold','bid','missing','unknown','invalid-id','too-recent','not-recovery','read-failed','auction-changed'])('does not resolve a listing from insufficient fresh evidence: %s',async fault=>{
+    const f=await fixture();
+    const card=f.makeCard(201,901,'transfer');
+    card.auction={tradeId:19201,tradeState:'inactive',currentBid:0,isSold:()=>false,isActiveTrade:()=>false};
+    const entry={kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}};
+    if(fault==='active')Object.assign(card.auction,{tradeState:'active',isActiveTrade:()=>true});
+    if(fault==='closed')card.auction.tradeState='closed';
+    if(fault==='sold')card.auction.isSold=()=>true;
+    if(fault==='bid')card.auction.currentBid=650;
+    if(fault==='missing')f.transfer.length=0;
+    if(fault==='unknown')delete card.auction.isSold;
+    if(fault==='invalid-id')card.auction.tradeId=-1;
+    if(fault==='too-recent')entry.at=f.now();
+    if(fault==='read-failed')f.hooks.readStatus=401;
+    if(fault==='auction-changed')f.hooks.auctions=()=>{card.auction.isActiveTrade=()=>true;};
+    const result=await f.native.reconcile(entry,{recovery:fault!=='not-recovery'});
+    expect(result.status).toBe('unknown');
+    expect(f.calls.filter(c=>['bid','move','list'].includes(c[0]))).toEqual([]);
+  });
+  it.each(['expired','inactive'])('retains a historical acknowledgement while reporting only the present unlisted state (%s)',async tradeState=>{
+    const f=await fixture(),card=f.makeCard(201,901,'transfer');
+    card.auction={tradeId:19201,tradeState,currentBid:0,isSold:()=>false,isActiveTrade:()=>false,isInactive:()=>true};
+    const entry={kind:'list',itemId:'201',definitionId:901,coins:700,at:f.now()-120000,acknowledged:true,
+      listing:{startPrice:650,buyNow:700,durationSeconds:3600}};
+    expect(await f.native.reconcile(entry,{recovery:true})).toMatchObject({status:'resolved',receipt:null,resolution:{tradeId:'19201'}});
+    expect(entry.acknowledged).toBe(true);
+    expect(f.calls).toContainEqual(['read','auctions']);
+  });
   it('records only successful native reads and cancels at the final health send boundary', async () => {
     const f = await fixture();
     expect(f.provider.sessionHealth()).toEqual({ lastOnlineAt: null });
@@ -74,6 +202,20 @@ describe('native session maintenance', () => {
 });
 
 describe('market task relisting with the production native port', () => {
+  it.each([[200,150],[700,650],[1000,950],[1100,1000],[8700,8600],[10000,9900],[14000,13750],[50000,49750],[100000,99500]])('lists %s with the previous EA price tier %s',async(buyNow,startPrice)=>{
+    const f=await fixture('sell'),card=f.makeCard(101,901,'transfer');
+    card._itemPriceLimits.maximum=15000000;
+    f.task.owned=[{itemId:'101',definitionId:901,pile:'transfer'}];f.task.settings.sellValue=buyNow;
+    await f.step();const result=await f.step();
+    expect(result.action.listing).toEqual({startPrice,buyNow,durationSeconds:3600});
+    expect(result.response.status).toBe('confirmed');
+  });
+  it('does not silently raise a 150 buy-now price when the lower start is below the EA minimum',async()=>{
+    const f=await fixture('sell');f.makeCard(101,901,'transfer');f.task.settings.sellValue=150;
+    f.task.owned=[{itemId:'101',definitionId:901,pile:'transfer'}];await f.step();
+    await expect(f.step()).rejects.toThrow('MARKET_PRICE_LIMIT');
+    expect(f.calls.some(c=>c[0]==='list')).toBe(false);
+  });
   it.each(['original','reference'])('restarts a rating task and relists at %s price with the exact native entity',async relist=>{
     const f=await fixture('filter'),card=f.makeCard(101,901,'transfer');
     f.task.ratingPrices={84:{buy:800,sell:1400}};f.task.settings.relist=relist;
@@ -119,7 +261,7 @@ describe('market task relisting with the production native port', () => {
     const result = await f.step();
     expect(result.action).toMatchObject({ previousTradeId: '19101', coins: 700 });
     expect(result.response).toMatchObject({ status: 'confirmed', receipt: { tradeId: '19102' } });
-    expect(f.calls.filter(c => c[0] === 'list').map(c => c.slice(2))).toEqual([[700, 700, 3600], [700, 700, 3600]]);
+    expect(f.calls.filter(c => c[0] === 'list').map(c => c.slice(2))).toEqual([[650, 700, 3600], [650, 700, 3600]]);
     expect(f.ledger.holdings[0]).toMatchObject({ cost: null, phase: 'listed', listingTradeId: '19102' });
     expect(f.loadQuotes).not.toHaveBeenCalled(); expect(f.calls.some(c => c[0] === 'bid')).toBe(false);
   });
@@ -201,7 +343,7 @@ describe('market task native port with synthetic EA services', () => {
     await f.step(); await f.step(); await f.step(); await f.step();
     expect(f.ledger.holdings.map(h => [h.itemId, h.phase, h.cost])).toEqual([['101', 'listed', 600], ['102', 'listed', 650]]);
     expect(f.calls.filter(c => c[0] === 'search')).toEqual([['search', 901, 800]]);
-    expect(f.calls.filter(c => c[0] === 'list')).toEqual([['list', 101, 700, 700, 3600], ['list', 102, 700, 700, 3600]]);
+    expect(f.calls.filter(c => c[0] === 'list')).toEqual([['list', 101, 650, 700, 3600], ['list', 102, 650, 700, 3600]]);
     for (const item of [a, b]) item.auction = { ...item.auction, tradeState: 'closed', currentBid: 700, isSold: () => true };
     f.advance(30000); await f.step();
     expect(f.ledger.holdings.map(h => h.salePrice)).toEqual([700, 700]); expect(f.loadQuotes).not.toHaveBeenCalled();

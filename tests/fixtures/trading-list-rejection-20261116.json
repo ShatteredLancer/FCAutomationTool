@@ -1,0 +1,12 @@
+{
+  "source": "Redacted FCAT 27.0.110 diagnostic, 2026-11-16; no raw response or request parameters were captured",
+  "events": [
+    {"phase":"list","transportPhase":"native-response","status":"rejected","httpStatus":400,"errorCode":400,"definitionId":248822},
+    {"phase":"list","transportPhase":"native-response","status":"rejected","httpStatus":400,"errorCode":400,"definitionId":233746},
+    {"phase":"list","transportPhase":"native-response","status":"rejected","httpStatus":512,"errorCode":512,"definitionId":233746},
+    {"phase":"list","status":"blocked","reason":"MARKET_THROTTLED","errorCode":512,"pendingWriteCount":1,"ownedCount":2,"spent":17750}
+  ],
+  "countsInRetainedWindow":{"list400":99,"list512":1},
+  "requestPricesKnown":false,
+  "followupRecovery":{"count":5,"pendingWriteCount":1,"ownedCount":2,"spent":17750,"puzzleLocalStops":6,"newRestrictionResponse":false}
+}

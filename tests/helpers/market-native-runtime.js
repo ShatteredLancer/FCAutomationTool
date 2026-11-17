@@ -28,7 +28,8 @@ export function marketNativeRuntime() {
       return observable({ success: true, status: 200, data: { itemIds: [card.id] } });
     }
     move(card, pile) {
-      calls.push(['move', card.id, pile]); card.pile = pile;
+      calls.push(['move', card.id, pile]);if(hooks.move)return observable(hooks.move(card,pile));
+      card.pile = pile; card.auction = {tradeState:'inactive'};
       for (const list of [club, unassigned]) { const index = list.indexOf(card); if (index >= 0) list.splice(index, 1); }
       transfer.push(card); return observable({ success: true, status: 200, data: { itemIds: [card.id] } });
     }
@@ -46,7 +47,7 @@ export function marketNativeRuntime() {
     }
     clearTransferMarketCache() {}
     requestUnassignedItems() { calls.push(['read', 'unassigned']); dirty.delete(6); return observable({ success: true, status: 200, response: { items: unassigned } }); }
-    requestTransferItems() { calls.push(['read', 'transfer']); dirty.delete(5); return observable({ success: true, status: hooks.readStatus ?? 200 }); }
+    requestTransferItems() { calls.push(['read', 'transfer']); const status=hooks.readStatus ?? 200; dirty.delete(5); return observable({ success: true, status }); }
     requestMarketData() { return observable({ success: true, status: 200 }); }
     refreshAuctions(items) { calls.push(['read', 'auctions']); hooks.auctions?.(items); return observable({ success: true, status: 200 }); }
   }
@@ -60,7 +61,10 @@ export function marketNativeRuntime() {
     const hash = hashes.get(new TextDecoder().decode(bytes));
     return hash ? Uint8Array.from(Buffer.from(hash, 'hex')).buffer : digest(algorithm, bytes);
   };
-  const inventoryFactory = () => ({ clubItems: () => club, async validate(ref) {
+  const inventoryFactory = () => ({ clubItems: () => club, async scanPlayers({beforeRead,onProgress}){
+    await beforeRead();calls.push(['read','club-scan']);hooks.scan?.();onProgress(club.length,club.length);
+    return club.map(c=>({id:c.id,definitionId:c.definitionId,pile:'club'}));
+  }, async validate(ref) {
     calls.push(['read', 'club']); if (!club.some(c => c.id === ref.id && c.definitionId === ref.definitionId)) throw Error('MARKET_HOLDING_UNAVAILABLE');
   } });
   const sessionReaderFactory = async () => ({ readSessionHealth: async ({ beforeDispatch }) => {

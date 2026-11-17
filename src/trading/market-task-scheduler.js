@@ -1,10 +1,13 @@
+import { marketSellMatches } from './market-sell-selection.js';
+import { marketUnresolved, marketIsolated, isolateMarketIntent, markMarketManuallyHandled } from './market-recovery.js';
 import { advanceMarketSchedule, marketScheduleGate, marketScheduleWake } from './market-task-schedule.js';
 import { marketRatingRow, completeMarketRatingRow } from './market-rating-prices.js';
 import { readTradingTasks } from './task-model.js';
+import { activeMarketAuctions, settleMarketAuction } from './market-auctions.js';
 import { reserveMarketClock, closeMarketClock, marketElapsed } from './market-task-clock.js';
 import { marketTaskFailureReason } from './market-task-messages.js';
 import { marketSearchGate, marketOccupancy, nextMarketTask, reserveMarketSearch, settleMarketSearch,
-  reserveMarketWrite, settleMarketWrite, claimMarketHolding, settleMarketSale, settleMarketUnsold, transferMarketHoldings, marketLastListing, marketRelistAllowed } from './market-coordination.js';
+  reserveMarketWrite, settleMarketWrite, resolveMarketUnlisted, claimMarketHolding, settleMarketSale, settleMarketUnsold, transferMarketHoldings, marketLastListing, marketRelistAllowed } from './market-coordination.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const actionable = row => ['queued', 'waiting', 'running'].includes(row.state);
@@ -60,8 +63,9 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     evidence = [...new Set([...state.intents.map(i => i.taskId), ...state.holdings.map(h => h.taskId),
       ...(state.handoffs ?? []).flatMap(h => [h.fromTaskId, h.toTaskId])])].map(taskId => {
       const entries = state.intents.filter(i => i.taskId === taskId);
-      return { taskId, hasEvidence: true, unresolved: entries.some(i => i.phase === 'pending'),
-        counts: [entries.filter(i => i.kind === 'buy' && i.phase === 'confirmed').length,
+      return { taskId, hasEvidence: true, unresolved: entries.some(marketUnresolved),
+        auctions: Object.fromEntries(['leading','outbid','won','lost'].map(k=>[k,(state.auctions??[]).filter(a=>a.taskId===taskId&&a.state===k).length])),
+        counts: [entries.filter(i => i.kind === 'buy' && i.phase === 'confirmed').length+(state.auctions??[]).filter(a=>a.taskId===taskId&&a.state==='won').length,
           entries.filter(i => i.kind === 'list' && i.phase === 'confirmed').length,
           state.holdings.filter(h => h.taskId === taskId && h.phase === 'sold').length] };
     });
@@ -146,7 +150,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       const schedule=proposed.schedules.find(r=>r.taskId===row.id);
       if(row.schedule?.startAt!==schedule.startAt)row.initialized=false;
       row.schedule=schedule;
-      const wake=marketScheduleWake(taskConfig(row.id),schedule,ledger.holdings,now(),h=>marketRelistAllowed(ledger,taskConfig(row.id),h));
+      const wake=activeMarketAuctions(ledger).some(a=>a.taskId===row.id)?now()
+        :marketScheduleWake(taskConfig(row.id),schedule,ledger.holdings,now(),h=>marketRelistAllowed(ledger,taskConfig(row.id),h));
       row.scheduleSleep=wake===null||wake>now();
       if(wake===null){const unsold=ledger.holdings.some(h=>h.taskId===row.id&&h.phase==='unsold');stateOf(row.id,unsold?'paused':'completed',unsold?'MARKET_RELIST_PAUSED':null);}
       else if(wake>now())stateOf(row.id,'waiting','MARKET_SCHEDULE_WAIT',wake);
@@ -292,6 +297,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             await delay(Math.min(...pending.map(row => row.nextAt)) - now()); continue;
           }
           const selected = nextMarketTask(structuredClone(ledger), ready), task = taskConfig(selected);
+          if (marketIsolated(ledger, selected).length) { stateOf(selected, 'review', 'MARKET_RECOVERY_ISOLATED'); continue; }
           currentTask = selected; phase = 'prepare'; stateOf(selected, 'running');
           let action;
           try {
@@ -319,7 +325,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
           if (action?.kind === 'done') {
             stateOf(selected, action.reason === 'MARKET_RELIST_PAUSED' ? 'paused' : 'completed', action.reason === 'MARKET_RELIST_PAUSED' ? action.reason : null); continue;
           }
-          if (!['search', 'buy', 'move', 'list', 'claim', 'sales'].includes(action?.kind) || !validAt(action)) {
+          if (!['search', 'buy', 'bid', 'auctions', 'inventory', 'move', 'list', 'claim', 'sales'].includes(action?.kind) || !validAt(action)) {
             stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); continue;
           }
           if (action.kind === 'search') {
@@ -334,14 +340,26 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 for (let hitStep=0; hitStep<2; hitStep++) {
                 if (!allowed(selected) || !validAt(action)) return;
                 if(!marketScheduleGate(fresh,tasks.get(selected).schedule,action.kind,action,now())) {stateOf(selected,'queued');return;}
-                phase = 'preflight'; publish();
+                phase = action.kind==='inventory'?'inventory':'preflight'; publish();
                 const preflight = await provider.preflight({ task: fresh, settings, action: structuredClone(action), ledger: turn.inspect(), executionScope }); current();
                 if (!allowed(selected)) return;
                 if (await applyError(turn, preflight)) return;
                 if (preflight?.ready !== true) { stateOf(selected, 'paused', 'MARKET_PREFLIGHT_BLOCKED'); return; }
                 if (!validAt(action)) { stateOf(selected, 'paused', 'MARKET_ACTION_EXPIRED_OR_INVALID'); return; }
+                if(action.kind==='inventory'){
+                  if(fresh.mode!=='sell'||!fresh.sellSelection)throw Error('MARKET_SELL_SELECTION_INVALID');
+                  await provider.accept({action,response:{status:'observed',inventory:preflight.inventory},ledger:turn.inspect()});
+                  diagnostic(turn.inspect());stateOf(selected,'queued');return;
+                }
+                if(action.kind==='auctions'){
+                  if(!Array.isArray(preflight.auctions)||preflight.auctions.some(r=>!turn.inspect().auctions?.some(a=>a.tradeId===r.tradeId&&a.taskId===selected)))throw Error('MARKET_RECEIPT_CONFLICT');
+                  await turn.checkpoint(state=>{for(const r of preflight.auctions)settleMarketAuction(state,r);});
+                  await provider.accept({action,response:{status:'observed'},ledger:turn.inspect()});
+                  diagnostic(turn.inspect());stateOf(selected,'queued');return;
+                }
                 if (action.kind === 'claim') {
-                  const selectedItem = fresh.owned.find(row => row.itemId === action.itemId && row.definitionId === action.definitionId);
+                  if(preflight.skip===true&&fresh.mode==='sell'&&fresh.sellSelection){await provider.accept({action,response:{skip:true},ledger:turn.inspect()});stateOf(selected,'queued');return;}
+                  const selectedItem = fresh.sellSelection?(marketSellMatches(fresh.sellSelection,preflight.selectionFacts??{})?action:null):fresh.owned.find(row => row.itemId === action.itemId && row.definitionId === action.definitionId);
                   const h = preflight.holding;
                   if (fresh.mode !== 'sell' || !selectedItem || h?.itemId !== selectedItem.itemId
                     || h.definitionId !== selectedItem.definitionId || h.taskId !== selected) throw Error('MARKET_ITEM_OCCUPIED');
@@ -364,19 +382,21 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId ?? null, coins: action.coins, at: now(),
                   ...(action.kind === 'list' && action.listing ? { listing: structuredClone(action.listing) } : {}) };
                 if (action.previousTradeId) command.previousTradeId = action.previousTradeId;
-                if (command?.kind === 'buy' && fresh.schedule) command.sellAt=tasks.get(selected).schedule.sellAt;
-                if (command?.kind === 'buy') {
+                if (['buy','bid'].includes(command?.kind) && fresh.schedule) command.sellAt=tasks.get(selected).schedule.sellAt;
+                if (['buy','bid'].includes(command?.kind)) {
+                  if(command.kind==='bid'&&(fresh.settings.buyMode??'bin')==='bin'||command.kind==='buy'&&fresh.settings.buyMode==='bid')throw Error('MARKET_BUY_RULE_CHANGED');
                   const row = fresh.mode === 'fixed' ? fresh.players.find(p => p.definitionId === command.definitionId) : null;
+                  const rule=command.kind==='bid'?fresh.settings.bidRule:fresh.settings.buyRule,value=command.kind==='bid'?fresh.settings.bidValue:fresh.settings.buyValue;
                   if (fresh.mode === 'sell' || fresh.mode === 'fixed' && !row
                     || fresh.settings.hardCap !== null && command.coins > fresh.settings.hardCap
-                    || !fresh.ratingPrices && row?.cap == null && fresh.settings.buyRule === 'fixed' && command.coins > fresh.settings.buyValue
+                    || !fresh.ratingPrices && row?.cap == null && rule === 'fixed' && command.coins > value
                     || row?.cap != null && command.coins > row.cap) throw Error('MARKET_BUY_RULE_CHANGED');
                 }
                 if (command?.kind === 'list' && !(action.previousTradeId && fresh.settings.relist === 'original')
                   && !fresh.ratingPrices && fresh.settings.sellRule === 'fixed' && command.coins !== fresh.settings.sellValue) throw Error('MARKET_SELL_RULE_CHANGED');
-                if(fresh.ratingPrices&&['search','buy','list'].includes(action.kind)&&!(action.previousTradeId&&fresh.settings.relist==='original')){
+                if(fresh.ratingPrices&&['search','buy','bid','list'].includes(action.kind)&&!(action.previousTradeId&&fresh.settings.relist==='original')){
                   const prices=marketRatingRow(fresh,action.rating);
-                  if(!completeMarketRatingRow(prices,fresh)||action.kind==='search'&&action.maxBuy>prices.buy||action.kind==='buy'&&command.coins>prices.buy||action.kind==='list'&&command.coins!==prices.sell)throw Error('MARKET_RATING_PRICE_UNAVAILABLE');
+                  if(!completeMarketRatingRow(prices,fresh)||action.kind==='search'&&(action.maxBuy>prices.buy||action.maxBid>prices.bid)||action.kind==='buy'&&command.coins>prices.buy||action.kind==='bid'&&command.coins>prices.bid||action.kind==='list'&&command.coins!==prices.sell)throw Error('MARKET_RATING_PRICE_UNAVAILABLE');
                 }
                 phase = action.kind; publish();
                 if (action.kind === 'search') await turn.checkpoint(state => reserveMarketSearch(state, { requestId, now: now(), settings, random, externalGate: Boolean(traffic) }));
@@ -389,7 +409,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                   // A predictable limit is not a failed durable checkpoint.
                   // Validate on a copy before persisting; the same guard runs
                   // again inside the checkpoint under these unchanged locks.
-                  if (command.kind === 'buy') reserveMarketWrite(turn.inspect(), command, funds);
+                  if (['buy','bid'].includes(command.kind)) reserveMarketWrite(turn.inspect(), command, funds);
                   await turn.checkpoint(state => reserveMarketWrite(state, command, funds));
                 }
                 // This is the final synchronous boundary before invoking send.
@@ -448,6 +468,12 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 }
                 if(task.schedule&&action.kind==='move'&&response?.status==='confirmed'&&preflight.freeSlots===1)await closeBuy(turn,selected);
                 const halted = await applyError(turn, response);
+                if (!halted && allowed(selected) && response?.status === 'rejected'
+                  && ['move','list'].includes(action.kind) && boundaryFailure === null) {
+                  // A definite refusal leaves the same holding eligible. Do not
+                  // queue it again in this run; only an explicit start may retry.
+                  stateOf(selected, 'paused', action.kind === 'list' ? 'MARKET_LIST_REJECTED' : 'MARKET_MOVE_REJECTED');
+                }
                 if (!halted && ['insufficient-funds','destination-full'].includes(response?.category)) {
                   stateOf(selected, 'paused', response.category === 'insufficient-funds' ? 'MARKET_INSUFFICIENT_FUNDS' : 'MARKET_DESTINATION_FULL');
                 }
@@ -461,10 +487,10 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 if (action.kind === 'search') {
                   const count = value => Number.isSafeInteger(value) && value >= 0 && value <= 21 ? value : null;
                   const returned = count(response?.responseCount), eligible = count(accepted?.acceptedCount);
-                  searchDetails = { definitionId: action.definitionId, searchCeiling: action.maxBuy, rating: action.rating,
+                  searchDetails = { definitionId: action.definitionId, searchCeiling: action.searchMode==='bid'?action.maxBid:action.maxBuy, rating: action.rating,
                     ...(returned !== null ? { responseCount: returned } : {}),
                     ...(eligible !== null ? { acceptedCount: eligible } : {}) };
-                  lastSearch = { definitionId: action.definitionId, searchCeiling: action.maxBuy,
+                  lastSearch = { definitionId: action.definitionId, searchCeiling: action.searchMode==='bid'?action.maxBid:action.maxBuy,
                     responseCount: returned, acceptedCount: eligible, sent: dispatched || response?.sent === true,
                     confirmed: response?.status === 'confirmed', at: now() };
                 }
@@ -474,7 +500,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
                 if (hitStep !== 0 || action.kind !== 'search' || response?.status !== 'confirmed'
                   || !allowed(selected) || !accepted?.acceptedCount || !provider.nextPurchase) break;
                 const hit = provider.nextPurchase({task:fresh,settings,ledger:turn.inspect()});
-                if (!hit || hit.kind !== 'buy' || !validAt(hit)) break;
+                if (!hit || !['buy','bid'].includes(hit.kind) || !validAt(hit)) break;
                 action=structuredClone(hit);
                 }
               }); } catch (error) {
@@ -526,6 +552,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     const prepare = owner => owner.control(async turn => {
       check();
       if (turn.inspect().intents.some(i => i.phase === 'pending')) throw Error('MARKET_RECOVERY_REQUIRED');
+      if (marketIsolated(turn.inspect(), taskId).length) throw Error('MARKET_RECOVERY_ISOLATED');
       if (turn.inspect().stopped) throw Error('MARKET_STOPPED');
       const shared = await provider.traffic?.(); check();
       if (shared?.ledger.stopped) throw Error('MARKET_TRAFFIC_STOPPED');
@@ -568,16 +595,29 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     const ticket = controlGeneration;
     runContext = structuredClone(taskStore.context()); busy = true; phase = 'recover'; publish();
     try {
-      return await coordinator.withOwner(session => session.control(async turn => {
-        const pending = turn.inspect().intents.filter(i => i.phase === 'pending');
+      const recovered = await coordinator.withOwner(session => session.control(async turn => {
+        const pending = turn.inspect().intents.filter(marketUnresolved);
+        let unresolvedReason = null;
         for (const entry of pending) {
           if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
           current(); const response = await provider.reconcile(structuredClone(entry)); current();
+          if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
           if (['confirmed', 'rejected'].includes(response?.status)) await turn.checkpoint(state => settleMarketWrite(state, entry.id,
             { status: response.status, receipt: response.receipt ?? null }));
+          else if (response?.status === 'resolved') await turn.checkpoint(state => resolveMarketUnlisted(state, entry.id, response.resolution));
+          else unresolvedReason = ['MARKET_LISTING_STATE_UNCONFIRMED','MARKET_READ_UNCONFIRMED','MARKET_AUTHENTICATION','MARKET_RECOVERY_ITEM_MISSING'].includes(response?.reason)
+            ? response.reason : 'MARKET_RECOVERY_REQUIRED';
           await applyError(turn, response);
         }
         if (!turn.inspect().intents.some(i => i.phase === 'pending') && typeof provider.readHoldings === 'function') {
+          const auctions=activeMarketAuctions(turn.inspect());
+          if(auctions.length){
+            if(typeof provider.readAuctions!=='function')throw Error('MARKET_BID_RUNTIME_UNAVAILABLE');
+            const result=await provider.readAuctions(auctions);current();
+            if(disposed||ticket!==controlGeneration)throw Error('MARKET_USER_STOP');
+            if(!Array.isArray(result?.receipts))throw Error('MARKET_RECEIPT_CONFLICT');
+            await turn.checkpoint(state=>{for(const r of result.receipts)settleMarketAuction(state,r);});
+          }
           const ledger = turn.inspect(), listed = ledger.holdings.filter(h => h.phase === 'listed');
           for (let index = 0; index < listed.length; index += 40) {
             current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
@@ -590,27 +630,68 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             diagnostic(turn.inspect()); publish();
           }
         }
-        lastReason = turn.inspect().intents.some(i => i.phase === 'pending') ? 'MARKET_RECOVERY_REQUIRED' : null;
-        diagnostic(turn.inspect()); return turn.inspect();
+        lastReason = unresolvedReason === 'MARKET_AUTHENTICATION' ? unresolvedReason : turn.inspect().intents.some(i => i.phase === 'pending') ? unresolvedReason ?? 'MARKET_RECOVERY_REQUIRED'
+          : marketIsolated(turn.inspect()).length ? 'MARKET_RECOVERY_ISOLATED' : null;
+        diagnostic(turn.inspect(), lastReason); return turn.inspect();
       }));
+      if (recovered?.status === 'busy') throw Error('MARKET_BUSY');
+      return recovered;
+    } finally { busy = false; phase = 'idle'; publish(); }
+  }
+  // Explicit local isolation retains financial evidence and never clears a pause.
+  async function manageRecovery({ approved = false, context, revision, requestId, action } = {}) {
+    ensureProvider();
+    if (approved !== true) throw Error('MARKET_APPROVAL_REQUIRED');
+    if (busy) throw Error('MARKET_BUSY');
+    if (!same(context, taskStore.context())) throw Error('TASKS_CONTEXT_CHANGED');
+    if (!['isolate','handled'].includes(action)) throw Error('MARKET_RECOVERY_INVALID');
+    const ticket = controlGeneration;
+    runContext = structuredClone(context); busy = true; phase = 'recovery-manage'; publish();
+    const check = () => { current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP'); };
+    try {
+      const result = await coordinator.withOwner(owner => owner.control(async turn => {
+        check();
+        if (turn.inspect().revision !== revision) throw Error('MARKET_STALE');
+        await turn.checkpoint(state => {
+          check();
+          (action === 'isolate' ? isolateMarketIntent : markMarketManuallyHandled)(state, { requestId, at: now() });
+        });
+        check(); lastReason = 'MARKET_RECOVERY_ISOLATED'; diagnostic(turn.inspect(), lastReason);
+        return turn.inspect();
+      }));
+      if (result?.status === 'busy') throw Error('MARKET_BUSY');
+      return result;
     } finally { busy = false; phase = 'idle'; publish(); }
   }
   async function acknowledgeStop({ approved = false } = {}) {
     ensureProvider(); if (approved !== true) throw Error('MARKET_APPROVAL_REQUIRED');
     if (busy) throw Error('MARKET_BUSY');
     if (typeof provider.verifySession !== 'function') throw Error('MARKET_SESSION_UNVERIFIED');
+    const ticket = controlGeneration;
     runContext = structuredClone(taskStore.context()); busy = true; phase = 'resume-check'; publish();
     try {
-      return await coordinator.withOwner(session => session.control(async turn => {
-        if (turn.inspect().intents.some(i => i.phase === 'pending')) throw Error('MARKET_RECOVERY_REQUIRED');
+      const released = await coordinator.withOwner(session => session.control(async turn => {
+        if (turn.inspect().intents.some(i => i.phase === 'pending')) {
+          lastReason = 'MARKET_RECOVERY_REQUIRED'; diagnostic(turn.inspect(), lastReason); throw Error(lastReason);
+        }
         const result = await provider.verifySession(); current();
+        if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
         if (result?.ready !== true || stopReason(result)) throw Error('MARKET_SESSION_UNVERIFIED');
         await provider.clearTraffic?.();
         traffic=await provider.traffic?.()??null;
-        await turn.checkpoint(state => { state.stopped = null; });
+        current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
+        await turn.checkpoint(state => {
+          current(); if (disposed || ticket !== controlGeneration) throw Error('MARKET_USER_STOP');
+          state.stopped = null;
+        });
         lastReason = null;
+        diagnostic(turn.inspect());
         return turn.inspect();
       }));
+      if (released?.status === 'busy') throw Error('MARKET_BUSY');
+      return released;
+    } catch (error) {
+      lastReason = safeReason(error); reportFailure(lastReason); throw error;
     } finally { busy = false; phase = 'idle'; publish(); }
   }
   async function handoff({ approved = false, snapshot: requested, fromTaskId, toTaskId, itemIds } = {}) {
@@ -649,7 +730,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
       })));
     } finally { busy = false; phase = 'idle'; publish(); }
   }
-  return Object.freeze({ run, enqueue, reopen, recover, acknowledgeStop, handoff, inspect, pause, stop, pauseAll,
+  return Object.freeze({ run, enqueue, reopen, recover, manageRecovery, acknowledgeStop, handoff, inspect, pause, stop, pauseAll,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() { disposed = true; pauseAll(); } });
 }

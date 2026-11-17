@@ -3,7 +3,7 @@
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const config = t => normalizeTradingTaskInput({ name: t.name, mode: t.mode, settings: t.settings,
-  players: t.players, owned: t.owned, excluded: t.excluded, schedule: t.schedule, ratingPrices: t.ratingPrices });
+  players: t.players, owned: t.owned, excluded: t.excluded, schedule: t.schedule, ratingPrices: t.ratingPrices, sellSelection: t.sellSelection });
 export const tradingTaskKey = context => {
   const c = tradingTaskContext(context);
   return `fcat-fc27-market-tasks-v1:${encodeURIComponent(c.scope)}:${c.season}:${c.platform}`;
@@ -83,7 +83,7 @@ export function createTradingTaskStore({ context, get, set, locks, now = () => D
         if (options.id) {
           const task = find(store, options.id);
           if (!['ready', 'paused', 'stopped'].includes(task.state) || (await evidence(task, c)).unresolved) throw Error('TASKS_EDIT_BLOCKED');
-          delete task.schedule; delete task.ratingPrices; Object.assign(task, input); touch(task);
+          delete task.schedule; delete task.ratingPrices; delete task.sellSelection; Object.assign(task, input); touch(task);
         } else store.tasks.push({ id: id(), revision: 0, ...input, state: 'ready',
           createdAt: now(), updatedAt: now(), activity: emptyTaskActivity() });
       });

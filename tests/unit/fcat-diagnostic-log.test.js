@@ -21,6 +21,17 @@ function harness(options = {}) {
   const log = createFcatDiagnosticLog({ gmGetValue: get, gmSetValue: set, version: '27.0.2', now: () => time, ...options });
   return { log, store, get, set, advance: value => { time += value; } };
 }
+it('exports listing parameters and pause reasons without private response or item identifiers',async()=>{
+ const t=harness();
+ await t.log.record({area:'trading',event:'task-native',phase:'list',transportPhase:'price-limits',status:'observed',method:'service.list',
+   startPrice:13750,buyNow:14000,durationSeconds:3600,minimumPrice:650,maximumPrice:50000,
+   itemId:123,tradeId:'private-id',response:{secret:true}});
+ await t.log.record({area:'trading',event:'task-scheduler',phase:'list',status:'blocked',reason:'MARKET_LIST_REJECTED',errorCode:400});
+ const out=await t.log.exportPayload();
+ expect(out.entries[0]).toMatchObject({method:'service.list',startPrice:13750,buyNow:14000,durationSeconds:3600,minimumPrice:650,maximumPrice:50000});
+ expect(out.criticalEntries.at(-1)).toMatchObject({reason:'MARKET_LIST_REJECTED',errorCode:400});
+ expect(JSON.stringify(out)).not.toMatch(/private-id|itemId|tradeId|secret/);
+});
 
 it('retains separate native buy rejection codes and public price facts without private auction data', async () => {
   const t = harness();

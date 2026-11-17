@@ -11,6 +11,11 @@ const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', '
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
 const marketTaskReasons = new Set(['MARKET_PROVIDER_FAILED','MARKET_AUTHENTICATION','MARKET_CAPTCHA','MARKET_THROTTLED',
+  'MARKET_BIDDING_UNAVAILABLE','MARKET_BID_RUNTIME_UNAVAILABLE',
+  'MARKET_LISTING_STATE_UNCONFIRMED','MARKET_READ_UNCONFIRMED','MARKET_RECOVERY_ITEM_MISSING',
+  'MARKET_RECOVERY_ISOLATED','MARKET_RECOVERY_CHANGED','MARKET_RECOVERY_INVALID',
+  'MARKET_SELL_SCAN_UNAVAILABLE','MARKET_SELL_SELECTION_INVALID','TASKS_SELL_SELECTION_INVALID',
+  'MARKET_LIST_REJECTED','MARKET_MOVE_REJECTED',
   'MARKET_SESSION_UNVERIFIED','MARKET_TRAFFIC_STOPPED',
   'MARKET_RESTART_TIME_LIMIT','MARKET_TASK_SELECTION_INVALID','MARKET_PURCHASE_DENIED','MARKET_INSUFFICIENT_FUNDS','MARKET_DESTINATION_FULL',
   'TASKS_STALE','TASKS_UNRESOLVED','TASKS_SAVE_UNVERIFIED',
@@ -21,7 +26,7 @@ const marketTaskReasons = new Set(['MARKET_PROVIDER_FAILED','MARKET_AUTHENTICATI
   'TASKS_AUTHORIZATION_CHANGED','TASKS_CONTEXT_CHANGED','TASKS_NOT_FOUND']);
 
 const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transportPhase', 'status', 'reason', 'localReason', 'route', 'mismatch', 'priceSource', 'objective', 'requestedObjective', 'endpoint', 'incumbentRejectReason']);
-const NUMBER_FIELDS = Object.freeze(['httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'reservedCoins', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
+const NUMBER_FIELDS = Object.freeze(['startPrice','buyNow','durationSeconds','minimumPrice','maximumPrice','httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'reservedCoins', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
   'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
   'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
@@ -63,7 +68,7 @@ function sanitizeEntry(input, now) {
   const at = now();
   if (!Number.isSafeInteger(at) || at < 0) return null;
   const entry = { at };
-  if (['service.bid', 'service.move', 'UTHttpRequest', 'EAHttpRequest', 'UTHttpRequest.prototype.setPath',
+  if (['service.bid', 'service.move', 'service.list', 'UTHttpRequest', 'EAHttpRequest', 'UTHttpRequest.prototype.setPath',
     'UTHttpRequest.prototype.send', 'EAHttpRequest.prototype.send', 'EAHttpRequest.prototype.setRequestBody',
     'EAHttpRequest.prototype.abort', 'UTItemDAO.prototype.searchConceptItems', 'UTItemDAO.prototype.searchTransferMarket',
     'FCAuthenticationService.prototype.getIdentifier', 'Identification.prototype.handleRequest', 'Identification.prototype.handleResponse',

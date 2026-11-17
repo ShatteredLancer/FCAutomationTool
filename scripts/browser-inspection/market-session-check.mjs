@@ -6,15 +6,26 @@ import path from 'node:path';
 // account data export, market search, purchase, movement or listing.
 export async function checkMarketSession(page, directory) {
   const bundle = await build({ stdin: { resolveDir: path.resolve(import.meta.dirname, '../..'),
-    contents: "export { createFc27MarketReadTransport } from './src/adapters/ea/fc27-market-read.js';" },
+    contents: `export { createFc27MarketReadTransport } from './src/adapters/ea/fc27-market-read.js';
+      export { FC27_MARKET_SESSION_METHODS } from './src/adapters/ea/fc27-market-session-renewal.js';
+      export { verifyFc27Methods } from './src/adapters/ea/fc27-transaction-transport.js';` },
   bundle: true, write: false, format: 'iife', globalName: 'SessionCheck' });
   const result = await page.evaluate(`(async () => { ${bundle.outputFiles[0].text}
+    let runtimeComparison = null;
     try {
+      const itemAuth = globalThis.services?.Item?.itemDao?.authDelegate;
+      const userAuth = globalThis.services?.User?.userDao?.authDelegate;
+      const nativeRequest = itemAuth ? new globalThis.UTHttpRequest(itemAuth) : null;
+      runtimeComparison = { itemAuthAvailable: !!itemAuth, userAuthAvailable: !!userAuth,
+        sameAuthDelegate: !!itemAuth && itemAuth === userAuth,
+        nativeReauthDefault: nativeRequest?.doReauth === true, nativeRetryDefault: nativeRequest?.doRetry === true };
       const reader = await SessionCheck.createFc27MarketReadTransport(globalThis, { quotesOnly: true, maxRequests: 1 });
+      await SessionCheck.verifyFc27Methods(globalThis, SessionCheck.FC27_MARKET_SESSION_METHODS);
       const result = await reader.readSessionHealth({ beforeDispatch: () => {} });
-      return { ...result, requests: reader.getRequestCount(), marketSearches: 0, eaMutations: 0 };
+      return { ...result, runtimeComparison, renewalMethodsVerified: true, renewalInvoked: false, requests: reader.getRequestCount(), marketSearches: 0, eaMutations: 0 };
     } catch (error) {
       return { status: 'blocked', reason: /^FC27_MARKET_[A-Z0-9_]+$/.test(error.message) ? error.message : 'UNVERIFIED',
+        runtimeComparison, dtoStatus: error.marketFailure?.httpStatus ?? null,
         httpStatus: error.marketFailure?.httpStatus ?? null, eaCode: error.marketFailure?.eaCode ?? null };
     }
   })()`);

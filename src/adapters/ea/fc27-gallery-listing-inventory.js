@@ -22,6 +22,24 @@ export function createFc27GalleryListingInventory(root, { createTransport = crea
       const item = entities.get(ref.id);
       return item?.definitionId === ref.definitionId ? { item, pile: 'club' } : null;
     },
+    async scanPlayers({ beforeRead = () => {}, onProgress = () => {} } = {}) {
+      await beforeRead(); assertCurrent();
+      const count=await (await reader()).readCount(); assertCurrent();
+      const seen=new Set(), refs=[];
+      for(let start=0;start<count;start+=250){
+        await beforeRead();assertCurrent();
+        const size=Math.min(250,count-start),rows=await read({start,count:size,definitionIds:[]});
+        if(rows.length!==size)fail('FC27_GALLERY_LISTING_CLUB_INCOMPLETE');
+        for(const row of rows){
+          if(seen.has(row.id)||!entities.has(row.id))fail('FC27_GALLERY_LISTING_CLUB_INCOMPLETE');
+          seen.add(row.id);refs.push({id:row.id,definitionId:row.definitionId,pile:'club'});
+        }
+        onProgress(refs.length,count);
+      }
+      await beforeRead();assertCurrent();
+      if(await (await reader()).readCount()!==count)fail('FC27_GALLERY_LISTING_CLUB_INCOMPLETE');
+      assertCurrent();return refs;
+    },
     async scan(target) {
       if (!target?.set?.id || !['futgg', 'fodder'].includes(target.source)
         || !target.set.id.startsWith(`${target.source}:`)) fail('FC27_GALLERY_LISTING_SET_UNAVAILABLE');

@@ -77,5 +77,12 @@ export function inspectFc27Navigation() {
   const fcatEntries = [...document.querySelectorAll('[id^="fcat-"], .fcat-navigation-entry')].slice(0, 20).map(element => ({
     ...elementSummary(element), version: element.dataset?.version ?? null,
   }));
-  return { chain, roots, buttons, fcatEntries };
+  const publicBidMethods = ['UTItemService.prototype.refreshAuctions','UTItemService.prototype.requestTransferItems','UTItemDAO.prototype.getTransferPile','UTItemDomainRepository.prototype.setDirty','UTItemService.prototype.requestWatchedItems','UTItemDAO.prototype.getWatchPile','services.Item.itemDao.getWatchPile','UTItemService.prototype.move','UTItemDAO.prototype.move','UTItemDomainRepository.prototype.getWatchedItems','UTAuctionEntity.prototype.isWon','UTAuctionEntity.prototype.canBid','UTAuctionEntity.prototype.isBought','UTAuctionEntity.prototype.isHighestBid','UTAuctionEntity.prototype.isExpired'].map(path => {
+    const fn=path.split('.').reduce((o,k)=>o?.[k],w);
+    const source=typeof fn==='function'?String(fn):null;
+    const fallback=w[String(w.UTHttpRequest).match(/=(a0_0x[\da-f]+)/)?.[1]];
+    const decoded=source?.replace(/(_0x[\da-f]+|a0_0x[\da-f]+)\((0x[\da-f]+)\)/g,(call,name,n)=>{const d=w[name]??fallback;return typeof d==='function'?JSON.stringify(d(Number(n))):call;});
+    return {path,source,decoded};
+  });
+  return { chain, roots, buttons, fcatEntries, publicBidMethods };
 }

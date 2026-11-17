@@ -1,5 +1,6 @@
 import { createFc27MarketReadTransport } from './fc27-market-read.js';
 import { normalizeTaskCatalogCard } from '../../trading/market-task-catalog.js';
+import { mountFc27MarketPlayerSearchControl } from './fc27-market-player-search-control.js';
 
 // EA's own name engine handles prefixes/diacritics and sorts by rating.
 // Name results are identities, never permission to buy a guessed version.
@@ -19,7 +20,8 @@ export function createFc27MarketPlayerPicker({root,context,createTransport=creat
   if(!Array.isArray(next)||!next.length||next.length>100000||root.ItemIdMask?.DATABASE!==0xffffff||typeof root.UTPlayerSearchEngine!=='function')fail('DATA_UNAVAILABLE');
   if(data!==next){data=next;engine=new root.UTPlayerSearchEngine(next);}
  };
- return Object.freeze({
+ const picker={
+  mountSearchControl(options){return mountFc27MarketPlayerSearchControl({...options,root,search:query=>picker.search(query)});},
   search(query){check();if(typeof query!=='string'||query.trim().length<2)return [];if(query.length>100)fail('QUERY_INVALID');source();
    const rows=engine.getEntriesForString(query.trim(),5);if(!Array.isArray(rows)||rows.length>5)fail('DATA_UNAVAILABLE');
    return rows.map(identity).filter(Boolean);
@@ -43,5 +45,5 @@ export function createFc27MarketPlayerPicker({root,context,createTransport=creat
     return structuredClone(value);
    }finally{busy=false;}
   },
- });
+ };return Object.freeze(picker);
 }

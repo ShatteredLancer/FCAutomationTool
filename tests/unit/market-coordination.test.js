@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defaultTradingPublicSettings } from '../../src/trading/task-model.js';
 import { emptyMarketCoordination, readMarketCoordination, marketSearchGate, reserveMarketSearch,
   settleMarketSearch, marketOccupancy, claimMarketHolding, reserveMarketWrite, settleMarketWrite,
-  settleMarketSale, nextMarketTask } from '../../src/trading/market-coordination.js';
+  settleMarketSale, nextMarketTask, resolveMarketUnlisted } from '../../src/trading/market-coordination.js';
 
 const settings = { ...defaultTradingPublicSettings(), gapMin: 7, gapMax: 7, cycleMin: 2, cycleMax: 2, restMin: 5, restMax: 5 };
 const funds = { balance: 10000, reserve: null, totalCap: null, taskCap: null, spendCap: null, freeSlots: 10 };
@@ -11,6 +11,35 @@ const receipt = entry => ({ itemId: entry.itemId, definitionId: entry.definition
 const confirm = (state, entry) => settleMarketWrite(state, entry.id, { status: 'confirmed', receipt: receipt(entry) });
 
 describe('account-wide market pacing and ledger primitives', () => {
+  it('persists an unlisted resolution separately from historical outcomes and keeps holding cost and stop',()=>{
+    const state=emptyMarketCoordination();
+    claimMarketHolding(state,{taskId:'A',itemId:'101',definitionId:1001,cost:500},'transfer');
+    reserveMarketWrite(state,{...buy(),kind:'list',tradeId:null,listing:{startPrice:750,buyNow:800,durationSeconds:3600}},funds);
+    settleMarketWrite(state,'buy-1',{status:'unknown',receipt:null,acknowledged:true});
+    const proof={kind:'unlisted',itemId:'101',definitionId:1001,at:60100,tradeId:'601'};
+    resolveMarketUnlisted(state,'buy-1',proof);
+    const loaded=readMarketCoordination(state);
+    expect(loaded.intents[0]).toMatchObject({phase:'resolved',acknowledged:true,receipt:null,resolution:proof});
+    expect(loaded.holdings[0]).toMatchObject({cost:500,phase:'transfer',salePrice:null});
+    expect(loaded.stopped).toBe('unknown-write');
+    expect(marketOccupancy(loaded)).toMatchObject({count:1,holdingCoins:500});
+    resolveMarketUnlisted(loaded,'buy-1',proof);
+    expect(loaded).toEqual(state);
+    expect(()=>settleMarketWrite(loaded,'buy-1',{status:'rejected',receipt:null})).toThrow();
+  });
+  it.each(['buy','identity','recent','holding','phase'])('rejects invalid unlisted evidence: %s',fault=>{
+    const state=emptyMarketCoordination();
+    if(fault!=='buy')claimMarketHolding(state,{taskId:'A',itemId:'101',definitionId:1001,cost:500},'transfer');
+    reserveMarketWrite(state,fault==='buy'?buy():{...buy(),kind:'list',tradeId:null,listing:{startPrice:750,buyNow:800,durationSeconds:3600}},funds);
+    const proof={kind:'unlisted',itemId:'101',definitionId:1001,at:60100,tradeId:null};
+    if(fault==='identity')proof.definitionId=1002;
+    if(fault==='recent')proof.at=60099;
+    if(fault==='holding')state.holdings[0].phase='held';
+    if(fault==='phase')settleMarketWrite(state,'buy-1',{status:'rejected',receipt:null});
+    const before=structuredClone(state);
+    expect(()=>resolveMarketUnlisted(state,'buy-1',proof)).toThrow();
+    expect(state).toEqual(before);
+  });
   it('reserves remaining Transfer capacity for held cards belonging to any task', () => {
     const state = emptyMarketCoordination(), first = buy();
     reserveMarketWrite(state, first, { ...funds, freeSlots: 1 }); confirm(state, first);

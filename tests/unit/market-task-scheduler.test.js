@@ -6,6 +6,16 @@ import { defaultTradingTaskSettings } from '../../src/trading/task-model.js';
 import { marketTaskEvidence } from '../../src/trading/market-coordination.js';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+it('stops after a definite move rejection without dropping the purchased holding',async()=>{
+ const f=await fixture();f.queues.set(f.ids[0],[buy(),{kind:'move',itemId:'100',definitionId:1001,coins:0}]);
+ const send=f.provider.send.getMockImplementation();
+ f.provider.send.mockImplementation(args=>args.action.kind==='move'?{status:'rejected',receipt:null,code:400}:send(args));
+ await f.run();
+ expect(f.scheduler.inspect().tasks[0]).toMatchObject({state:'paused',reason:'MARKET_MOVE_REJECTED'});
+ const ledger=(await f.coordinator.inspect()).ledger;
+ expect(ledger.intents.map(i=>[i.kind,i.phase])).toEqual([['buy','confirmed'],['move','rejected']]);
+ expect(ledger.holdings[0]).toMatchObject({itemId:'100',phase:'held',cost:800});
+});
 async function fixture(options = {}) {
   const data = new Map([['old-journal', { unknown: true }]]), held = new Map(), events = [], statuses = [], diagnostics = [];
   let account = { scope: 'A', season: '27', platform: 'console' }, clock = 1000, serial = 0, taskSerial = 0;
@@ -51,6 +61,57 @@ async function fixture(options = {}) {
 }
 const search = { kind: 'search' };
 const buy = (itemId = '100') => ({ kind: 'buy', definitionId: 1001, itemId, tradeId: 'offer-' + itemId, coins: 800 });
+
+describe('explicit unresolved transaction isolation',()=>{
+  async function pending(){
+    const f=await fixture();f.queues.set(f.ids[0],[buy()]);
+    f.provider.send.mockResolvedValue({status:'unknown',receipt:null});await f.run();f.advance(60000);
+    const record=await f.coordinator.inspect();
+    return {...f,record,request:{approved:true,context:record.context,revision:record.ledger.revision,requestId:record.ledger.intents[0].id,action:'isolate'}};
+  }
+  it('retains funds and the old task, allows an unrelated task only after separate release, and later resolves exact evidence',async()=>{
+    const f=await pending();const writes=f.provider.send.mock.calls.length;
+    const isolated=await f.scheduler.manageRecovery(f.request);
+    expect(isolated.stopped).toBe('unknown-write');expect(isolated.intents[0].phase).toBe('isolated');
+    expect(f.provider.send).toHaveBeenCalledTimes(writes);expect(f.provider.reconcile).not.toHaveBeenCalled();
+    expect(f.scheduler.inspect().evidence.find(e=>e.taskId===f.ids[0]).unresolved).toBe(true);
+    await f.scheduler.recover();expect(f.scheduler.inspect().reason).toBe('MARKET_RECOVERY_ISOLATED');
+    await f.scheduler.acknowledgeStop({approved:true});
+    f.provider.prepare.mockClear();await f.scheduler.run({approved:true,snapshot:f.snapshot,taskIds:[f.ids[0]]});
+    expect(f.provider.prepare).not.toHaveBeenCalled();expect(f.provider.send).toHaveBeenCalledTimes(writes);
+    await f.scheduler.run({approved:true,snapshot:f.snapshot,taskIds:[f.ids[1]]});
+    expect(f.provider.prepare).toHaveBeenCalledTimes(1);
+    f.provider.reconcile.mockResolvedValue({status:'confirmed',receipt:{itemId:'100',definitionId:1001,tradeId:'offer-100',coins:800}});
+    await f.scheduler.recover();const settled=(await f.coordinator.inspect()).ledger;
+    expect(settled.intents[0]).toMatchObject({phase:'confirmed',isolation:{source:'user'}});
+    expect(settled.holdings[0]).toMatchObject({cost:800,itemId:'100'});
+    expect(f.scheduler.inspect().evidence.find(e=>e.taskId===f.ids[0]).unresolved).toBe(false);
+    expect(f.provider.send).toHaveBeenCalledTimes(writes);
+  });
+  it('requires approval, current context and revision, and persists manual notes without settlement',async()=>{
+    const f=await pending();
+    for(const patch of [{approved:false},{context:{...f.account,scope:'other'}},{revision:0}])await expect(f.scheduler.manageRecovery({...f.request,...patch})).rejects.toThrow();
+    await f.scheduler.manageRecovery(f.request);
+    await expect(f.scheduler.manageRecovery(f.request)).rejects.toThrow('MARKET_STALE');
+    const before=(await f.coordinator.inspect()).ledger;f.advance(1000);
+    const note=await f.scheduler.manageRecovery({...f.request,revision:before.revision,action:'handled'});
+    expect(note.intents[0]).toMatchObject({phase:'isolated',receipt:null,isolation:{handledAt:f.now()}});
+    expect(note.holdings).toEqual(before.holdings);expect(note.stopped).toBe(before.stopped);
+  });
+  it('does not mutate when a different owner holds the lock or storage fails',async()=>{
+    const f=await pending();
+    await f.coordinator.withOwner(async()=>{await expect(f.scheduler.manageRecovery(f.request)).rejects.toThrow('MARKET_BUSY');});
+    f.hooks.write=()=>{throw Error('disk failed');};
+    await expect(f.scheduler.manageRecovery(f.request)).rejects.toThrow('disk failed');
+    expect((await f.coordinator.inspect()).ledger).toEqual(f.record.ledger);
+  });
+  it('does not isolate after a stop during checkpoint read',async()=>{
+    const f=await pending();f.scheduler.pauseAll();
+    // A disposed owner cannot be revived by an outstanding recovery confirmation.
+    f.scheduler.dispose();await expect(f.scheduler.manageRecovery(f.request)).rejects.toThrow('MARKET_OWNER_CLOSED');
+    expect((await f.coordinator.inspect()).ledger).toEqual(f.record.ledger);
+  });
+});
 
 describe('shared session maintenance during approved scheduled waiting', () => {
   async function waiting() {
