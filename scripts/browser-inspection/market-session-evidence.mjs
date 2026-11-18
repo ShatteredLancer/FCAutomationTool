@@ -22,19 +22,40 @@ export function marketSessionRoute(address) {
 export function observeMarketSessionEvidence(page, directory) {
   if (observers.has(page)) return observers.get(page);
   const rows = []; let persisted = Promise.resolve();
+  const started = new WeakMap();
+  const save = row => {
+    rows.push(row); if (rows.length > 100) rows.shift();
+    const text = JSON.stringify(snapshot(), null, 2);
+    persisted = persisted.then(() => writeFile(path.join(directory, 'market-session-http-evidence.json'), text)).catch(() => {});
+  };
+  const begin = request => {
+    try { if (marketSessionRoute(request.url())) started.set(request, Date.now()); } catch { /* Passive only. */ }
+  };
+  const timing = request => {
+    const at = started.get(request);
+    return Number.isFinite(at) ? { startedAt: at, durationMs: Math.max(0, Date.now() - at) } : {};
+  };
   const snapshot = () => ({ schema: 1, passive: true, rawHttpStatuses: true, requestsInitiated: 0, rows: rows.map(row => ({ ...row })) });
   const receive = response => {
     try {
       const route = marketSessionRoute(response.url()); if (!route) return;
-      const status = response.status(), method = response.request().method();
+      const status = response.status(), request = response.request(), method = request.method();
       if (!Number.isSafeInteger(status) || status < 100 || status > 599 || !['GET','POST','PUT','DELETE'].includes(method)) return;
-      rows.push({ at: Date.now(), route, method, status }); if (rows.length > 100) rows.shift();
-      const text = JSON.stringify(snapshot(), null, 2);
-      persisted = persisted.then(() => writeFile(path.join(directory, 'market-session-http-evidence.json'), text)).catch(() => {});
+      save({ at: Date.now(), route, method, status, ...timing(request) });
     } catch { /* Inspection must never affect page requests. */ }
   };
+  const failed = request => {
+    try {
+      const route = marketSessionRoute(request.url()), method = request.method();
+      if (!route || !['GET','POST','PUT','DELETE'].includes(method)) return;
+      const raw = request.failure()?.errorText;
+      const networkError = typeof raw === 'string' && /^net::ERR_[A-Z_]{1,80}$/.test(raw) ? raw : 'NETWORK_FAILED';
+      save({ at: Date.now(), route, method, status: null, networkError, ...timing(request) });
+    } catch { /* Never log arbitrary error messages. */ }
+  };
+  page.on('request', begin); page.on('requestfailed', failed);
   page.on('response', receive);
-  const observer = { snapshot, stop() { page.off('response', receive); observers.delete(page); } };
+  const observer = { snapshot, stop() { page.off('response', receive); page.off('request', begin); page.off('requestfailed', failed); observers.delete(page); } };
   page.once('close', () => observer.stop()); observers.set(page, observer);
   return observer;
 }

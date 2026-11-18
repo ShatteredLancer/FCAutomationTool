@@ -10658,6 +10658,11 @@
             httpStatus: valid(status, 100, 599) ? status : null,
             eaCode: valid(code2, 0, 2147483647) ? code2 : null
           };
+          if (kind === "session" && status === 0) {
+            if (ownData(req, "timedout") === true) throw error("READ_TIMEOUT");
+            if (ownData(req, "errored") === true) throw error("READ_NETWORK_ERROR");
+            if (ownData(req, "aborted") === true) throw error("READ_ABORTED");
+          }
           throw error(valid(status, 100, 599) ? `HTTP_${status}` : "RESPONSE_UNVERIFIED");
         }
         failurePhase = "payload";
@@ -29974,7 +29979,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   var states3 = { ready: "\u5F85\u542F\u52A8", running: "\u8FD0\u884C\u4E2D", queued: "\u6392\u961F\u4E2D", waiting: "\u7B49\u5F85\u4E2D", completed: "\u5DF2\u5B8C\u6210", paused: "\u5DF2\u6682\u505C", stopped: "\u5DF2\u505C\u6B62", archived: "\u5DF2\u5F52\u6863", review: "\u5F85\u6838\u5BF9" };
   var inputOf = (t) => ({ name: t.name, mode: t.mode, settings: structuredClone(t.settings), players: structuredClone(t.players), owned: structuredClone(t.owned), excluded: structuredClone(t.excluded), schedule: t.schedule ? structuredClone(t.schedule) : null, ratingPrices: t.ratingPrices ? structuredClone(t.ratingPrices) : null, sellSelection: t.sellSelection ? structuredClone(t.sellSelection) : null });
   var errors = { ...marketTaskMessages, TASKS_STALE: "\u4EFB\u52A1\u5DF2\u5728\u5176\u4ED6\u7A97\u53E3\u4FEE\u6539\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u65B0\u7F16\u8F91\u3002", TASKS_CONTEXT_CHANGED: "\u8D26\u53F7\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u4EFB\u52A1\u3002", TASKS_SAVE_UNVERIFIED: "\u4FDD\u5B58\u56DE\u8BFB\u672A\u786E\u8BA4\uFF0C\u8BF7\u5237\u65B0\u6838\u5BF9\uFF0C\u52FF\u91CD\u590D\u6DFB\u52A0\u3002", TASKS_INVALID: "\u8BF7\u68C0\u67E5\u4EF7\u683C\u3001\u8BC4\u5206\u548C\u6570\u91CF\u8BBE\u7F6E\u3002", TASKS_SELECTION_EMPTY: "\u8BF7\u5148\u9009\u62E9\u5177\u4F53\u7248\u672C\u6216\u6301\u4ED3\u5361\u3002", TASKS_STORAGE_LIMIT: "\u4EFB\u52A1\u8BB0\u5F55\u8FBE\u5230\u5B58\u50A8\u5BB9\u91CF\u9650\u5236\uFF0C\u539F\u8BB0\u5F55\u5DF2\u4FDD\u7559\u3002", TASKS_UNRESOLVED: "\u6709\u5F85\u6838\u5BF9\u7684\u4EA4\u6613\uFF0C\u4E0D\u80FD\u5220\u9664\u8BB0\u5F55\u3002", TASKS_EDIT_BLOCKED: "\u8BE5\u4EFB\u52A1\u5F53\u524D\u4E0D\u80FD\u7F16\u8F91\uFF0C\u8BF7\u5148\u6682\u505C\u5E76\u6838\u5BF9\u4EA4\u6613\u3002", TASKS_EXECUTION_UNAVAILABLE: "\u81EA\u52A8\u6267\u884C\u5C1A\u672A\u5F00\u653E\u3002" };
-  function mountFc27MarketTasks({ document, parent, tab, service, legacyService = null, readCatalog = () => [], readInventory = () => [], readCoordination = null, runtime = null, playerPicker = null }) {
+  function mountFc27MarketTasks({ document, parent, tab, service, legacyService = null, readCatalog = () => [], readInventory = () => [], readCoordination = null, runtime = null, playerPicker = null, backgroundStatus = null }) {
     parent.replaceChildren();
     const element = document.createElement("section");
     element.className = "market-task-manager";
@@ -29985,6 +29990,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const currencyStyle = document.createElement("style");
     currencyStyle.textContent = currencyInputStyles + " .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]),#market-session-status:not([hidden]),#market-search-status:not([hidden]){display:block;margin:6px 0}";
     shadow.append(currencyStyle);
+    const statusField = document.createElement("label");
+    statusField.className = "check";
+    statusField.innerHTML = '<span>\u663E\u793A\u4EA4\u6613\u72B6\u6001\u6D6E\u6761</span><input id="marketStatusVisible" type="checkbox"><small>\u5173\u95ED\u540E\u4E0D\u663E\u793A\uFF1B\u53EF\u76F4\u63A5\u62D6\u52A8\u6D6E\u6761\u79FB\u52A8\u4F4D\u7F6E</small>';
+    $("globalSettings").querySelector(".fields")?.append(statusField);
     const scheduleEditor = mountMarketScheduleEditor({ document, parent: $("moreRules").parentElement });
     const ratingEditor = mountMarketRatingEditor({ document, $, onChange: () => {
       readInputs();
@@ -30173,6 +30182,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       }
       if (syncSettings) for (const key2 of Object.keys(defaultTradingPublicSettings())) $(key2).value = String(snapshot.store.settings[key2] ?? "");
+      if (syncSettings && backgroundStatus) $("marketStatusVisible").checked = backgroundStatus.isVisible();
       $("settingsBrief").textContent = `${snapshot.store.settings.source.toUpperCase()} \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 ${snapshot.store.settings.gapMin}\u2013${snapshot.store.settings.gapMax} \u79D2`;
     };
     const reload = async () => {
@@ -30719,6 +30729,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return result;
       });
     };
+    $("marketStatusVisible").onchange = (event) => {
+      if (event.isTrusted) backgroundStatus?.setVisible($("marketStatusVisible").checked);
+    };
     $("addPlayer").onclick = (event) => {
       if (event.isTrusted && !busy) openPicker("fixed");
     };
@@ -30882,26 +30895,109 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/adapters/browser/fc27-market-background-view.js
-  function mountMarketBackgroundStatus({ document, runtime, id: id16 }) {
+  var positionNumber = (value) => Number.isFinite(Number(value)) ? Math.max(8, Math.round(Number(value))) : null;
+  function mountMarketBackgroundStatus({ document, runtime, id: id16, preferenceKey = id16, storage = null }) {
     if (!runtime || !document?.body) return;
     const host = document.createElement("aside");
     host.id = id16;
     host.hidden = true;
-    host.style.cssText = "position:fixed;right:12px;bottom:76px;z-index:10000;max-width:calc(100vw - 24px)";
+    host.style.cssText = "position:fixed;right:max(12px, env(safe-area-inset-right, 0px));bottom:max(76px, calc(env(safe-area-inset-bottom, 0px) + 12px));z-index:10000;max-width:calc(100vw - 24px);pointer-events:auto";
+    const storageKey = `fcat-market-status:${String(preferenceKey).slice(0, 180)}`;
+    const readPreferences = () => {
+      try {
+        const value = JSON.parse(storage?.getItem(storageKey) ?? "null");
+        return { visible: value?.visible !== false, position: value?.position ?? null };
+      } catch {
+        return { visible: true, position: null };
+      }
+    };
+    const preferences = readPreferences();
+    const savePreferences = () => {
+      try {
+        storage?.setItem(storageKey, JSON.stringify(preferences));
+      } catch {
+      }
+    };
+    const applyPosition = () => {
+      const left = positionNumber(preferences.position?.left), top = positionNumber(preferences.position?.top);
+      if (left === null || top === null) return;
+      host.style.left = `${left}px`;
+      host.style.top = `${top}px`;
+      host.style.right = "auto";
+      host.style.bottom = "auto";
+    };
+    applyPosition();
     const shadow = host.attachShadow({ mode: "closed" });
     shadow.innerHTML = `<style>
     :host([hidden]){display:none!important}*{box-sizing:border-box}
-    .bar{display:flex;align-items:center;gap:10px;max-width:100%;padding:8px 10px;border:1px solid #48606d;border-radius:8px;background:#172b36;color:#edf8fc;box-shadow:0 2px 8px #0005;font:13px/1.4 Arial,sans-serif}
+    .bar{display:flex;align-items:center;gap:10px;max-width:100%;padding:8px 10px;border:1px solid #48606d;border-radius:8px;background:#172b36;color:#edf8fc;box-shadow:0 2px 8px #0005;font:13px/1.4 Arial,sans-serif;pointer-events:auto;cursor:move;user-select:none;touch-action:none}
     output{min-width:0;overflow-wrap:anywhere}button{flex:none;padding:6px 9px;border:1px solid #86d7c8;border-radius:5px;background:#23483f;color:#e9fff9;cursor:pointer;font:inherit}button:disabled{opacity:.55;cursor:default}
+    @media(max-width:520px){.bar{gap:7px;padding:6px 8px;font-size:12px}.bar button{padding:5px 7px}}
   </style><div class="bar"><output role="status" aria-live="polite"></output><button type="button">Pause all</button></div>`;
     const output = shadow.querySelector("output"), pause2 = shadow.querySelector("button");
     let status = runtime.inspect();
+    let dragging = null;
+    const clampPosition = (left, top) => {
+      const width = host.offsetWidth || 240, height = host.offsetHeight || 40;
+      return {
+        left: Math.max(8, Math.min(Math.round(left), Math.max(8, document.defaultView.innerWidth - width - 8))),
+        top: Math.max(8, Math.min(Math.round(top), Math.max(8, document.defaultView.innerHeight - height - 8)))
+      };
+    };
+    const keepInViewport = () => {
+      if (!preferences.position) return;
+      const position = clampPosition(preferences.position.left, preferences.position.top);
+      preferences.position = position;
+      host.style.left = `${position.left}px`;
+      host.style.top = `${position.top}px`;
+      host.style.right = "auto";
+      host.style.bottom = "auto";
+      savePreferences();
+    };
+    const finishDrag = (event) => {
+      if (!dragging || event && event.pointerId !== void 0 && dragging.pointerId !== null && event.pointerId !== dragging.pointerId) return;
+      try {
+        shadow.querySelector(".bar").releasePointerCapture?.(dragging.pointerId);
+      } catch {
+      }
+      dragging = null;
+      savePreferences();
+    };
+    const moveDrag = (clientX, clientY, pointerId = null) => {
+      if (!dragging || pointerId !== null && pointerId !== dragging.pointerId) return;
+      const position = clampPosition(clientX - dragging.dx, clientY - dragging.dy);
+      host.style.left = `${position.left}px`;
+      host.style.top = `${position.top}px`;
+      host.style.right = "auto";
+      host.style.bottom = "auto";
+      preferences.position = position;
+    };
+    const beginDrag = (event) => {
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      if (dragging || event.button !== 0 || path.some((node) => node?.tagName === "BUTTON") || event.target?.closest?.("button")) return;
+      const rect = host.getBoundingClientRect();
+      dragging = { pointerId: event.pointerId ?? null, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      if (event.pointerId !== void 0) bar.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    };
+    const bar = shadow.querySelector(".bar");
+    const view = document.defaultView;
+    bar.addEventListener("pointerdown", beginDrag);
+    bar.addEventListener("mousedown", beginDrag);
+    host.addEventListener("pointerdown", beginDrag);
+    host.addEventListener("mousedown", beginDrag);
+    bar.addEventListener("pointermove", (event) => moveDrag(event.clientX, event.clientY, event.pointerId));
+    view?.addEventListener("mousemove", (event) => moveDrag(event.clientX, event.clientY));
+    bar.addEventListener("pointerup", finishDrag);
+    bar.addEventListener("pointercancel", finishDrag);
+    view?.addEventListener("mouseup", finishDrag);
+    view?.addEventListener("resize", keepInViewport);
     const render = () => {
       const rows = status?.tasks ?? [];
       const active = rows.filter((row) => ["running", "queued", "waiting"].includes(row.state));
       const review = rows.some((row) => row.state === "review");
       const paused = rows.some((row) => row.state === "paused");
-      host.hidden = !status?.busy && !active.length && !review && !paused && !status?.reason;
+      host.hidden = preferences.visible === false || !status?.busy && !active.length && !review && !paused && !status?.reason;
       pause2.disabled = !status?.busy && !active.length;
       const scheduled = active.length && active.every((row) => row.reason === "MARKET_SCHEDULE_WAIT");
       output.textContent = `FCAT \xB7 ${review ? "Trading needs review" : active.length ? `Trading ${scheduled ? "scheduled" : "active"} \xB7 ${active.length}` : status?.busy ? status.phase === "initialize" ? "Starting trading" : "Finishing current operation" : "Trading paused"}`;
@@ -30917,10 +31013,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       render();
     });
     render();
-    return () => {
-      unsubscribe?.();
-      host.remove();
-    };
+    return Object.freeze({
+      isVisible: () => preferences.visible !== false,
+      setVisible(value) {
+        preferences.visible = value !== false;
+        savePreferences();
+        render();
+      },
+      resetPosition() {
+        delete preferences.position;
+        host.style.left = "";
+        host.style.top = "";
+        host.style.right = "max(12px, env(safe-area-inset-right, 0px))";
+        host.style.bottom = "max(76px, calc(env(safe-area-inset-bottom, 0px) + 12px))";
+        savePreferences();
+      },
+      element: host,
+      dispose() {
+        unsubscribe?.();
+        view?.removeEventListener("mousemove", moveDrag);
+        view?.removeEventListener("mouseup", finishDrag);
+        view?.removeEventListener("resize", keepInViewport);
+        host.remove();
+      }
+    });
   }
 
   // src/adapters/browser/fc27-acceptance-panel.js
@@ -30980,7 +31096,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector("#settings-bottom"), service: publicPrices2 });
     const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryTradePreferences2 });
     const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector("#page-settings .feature-grid"), service: galleryPlanningSettings2 });
-    const trading = tradingTasks2 ? mountFc27MarketTasks({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), ...tradingTasks2, legacyService: tradingDesk2 }) : mountFc27TradingView({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), service: tradingDesk2 });
+    const marketStatusPreferenceKey = (() => {
+      try {
+        return `scope:${tradingTasks2?.service?.context?.().scope ?? "global"}`;
+      } catch {
+        return "scope:global";
+      }
+    })();
+    const backgroundStatus = mountMarketBackgroundStatus({
+      document,
+      runtime: tradingTasks2?.runtime,
+      id: `${hostId}-market-status`,
+      preferenceKey: marketStatusPreferenceKey,
+      storage: tradingTasks2?.statusStorage
+    });
+    const trading = tradingTasks2 ? mountFc27MarketTasks({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), ...tradingTasks2, legacyService: tradingDesk2, backgroundStatus }) : mountFc27TradingView({ document, parent: shadow.getElementById("page-trading"), tab: shadow.getElementById("tab-trading"), service: tradingDesk2 });
     const selectTab = bindFc27WorkbenchTabs(shadow, host, (id16) => {
       gallery.setActive(id16 === "gallery");
       trading.setActive(id16 === "trading");
@@ -30990,7 +31120,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         void planningSettings.refresh();
       }
     });
-    mountMarketBackgroundStatus({ document, runtime: tradingTasks2?.runtime, id: `${hostId}-market-status` });
     const node = (id16) => shadow.getElementById(id16);
     const renderPuzzleObjective = () => {
       node("puzzle-objective-note").textContent = node("puzzle-objective").value === "additional-coins" ? "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u8D2D\u5361\u652F\u51FA\uFF1A\u5E93\u5B58\u5361\u4E0D\u8BA1\u65B0\u589E\u652F\u51FA\uFF0C\u53EF\u80FD\u4F7F\u7528\u9AD8\u4EF7\u503C\u5E93\u5B58\u3002\u8981\u4FDD\u7559\u8D35\u5E93\u5B58\uFF0C\u8BF7\u6539\u9009\u300C\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\u300D\u5E76\u4FDD\u5B58\uFF1B\u66F4\u65B0\u4E0D\u4F1A\u81EA\u52A8\u6539\u53D8\u4EE5\u524D\u4FDD\u5B58\u7684\u9009\u9879\u3002" : "\u5F53\u524D\u9009\u62E9\u6700\u4F4E\u6750\u6599\u603B\u4EF7\u503C\uFF1A\u540C\u65F6\u6BD4\u8F83\u5E93\u5B58\u4F30\u503C\u4E0E\u5F85\u8D2D\u5361\u4EF7\u683C\uFF0C\u53EF\u80FD\u591A\u4E70\u4FBF\u5B9C\u5361\u4EE5\u4FDD\u7559\u8D35\u5E93\u5B58\uFF1B\u4ECD\u9075\u5B88\u539F\u91C7\u8D2D\u9650\u4EF7\u548C\u4FDD\u62A4\uFF0C\u4E0D\u4FDD\u8BC1\u5168\u5E02\u573A\u6700\u4F4E\u3002";
@@ -42002,10 +42131,28 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           } catch {
           }
         };
+        const startedAt = now();
+        let stage = "session-reader-create";
+        const failureDiagnostic = (error2) => {
+          try {
+            diagnostic({
+              transportPhase: stage,
+              status: "blocked",
+              localReason: marketReadReason(error2),
+              durationMs: Math.max(0, now() - startedAt),
+              httpStatus: error2.marketFailure?.httpStatus,
+              errorCode: error2.marketFailure?.eaCode ?? error2.code
+            });
+          } catch {
+          }
+        };
         try {
+          diagnostic({ transportPhase: "session-check-start", status: "started" });
           const read = async () => {
+            stage = "session-reader-create";
             check();
             const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
+            stage = "session-read";
             check();
             return reader.readSessionHealth({ beforeDispatch: check });
           };
@@ -42017,6 +42164,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error2;
             check();
             diagnostic({ transportPhase: "session-expired", status: "received", httpStatus: 401 });
+            stage = "session-renewal";
             try {
               await renewSession(root, { beforeDispatch: check, onPhase: diagnostic });
             } catch (renewalError) {
@@ -42032,6 +42180,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           diagnostic({ transportPhase: "session-online", status: "completed" });
           return { status: "online", observedAt: lastOnlineAt };
         } catch (error2) {
+          failureDiagnostic(error2);
           const http = error2.marketFailure?.httpStatus, ea = error2.marketFailure?.eaCode;
           throw Object.assign(Error("MARKET_SESSION_UNVERIFIED"), { code: http === 401 ? http : [403, 427, 429, 512, 521, 426, 459].includes(ea) ? ea : http ?? error2.code ?? null });
         }
@@ -53113,7 +53262,7 @@ ${detail.join(" \xB7 ")}`;
     galleryPriceLoader: (ids2) => publicPrices.load(ids2, { purpose: "display" }),
     publicPrices,
     tradingDesk,
-    tradingTasks,
+    tradingTasks: { ...tradingTasks, statusStorage: safeBoot("market-status-storage", () => unsafeWindow.localStorage) },
     galleryPlanningPrices: (ids2, options = {}) => publicPrices.load(ids2, options),
     galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
     galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),

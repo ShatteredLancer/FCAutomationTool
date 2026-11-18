@@ -1,0 +1,21 @@
+{
+  "source": "Public EA method sources captured 2026-11-17; no account or response data. Reviewed request-local failure flags and status-zero notification.",
+  "methods": {
+    "UTHttpRequest.prototype._notify": {
+      "decoded": "function(){var _0x383ff=_0x512d02,_0x103e0c=new UTHttpResponseDTO();_0x103e0c[\"status\"]=this[\"convertUtasCodeToHttpStatus\"](this[\"http\"][\"status\"]);if(JSUtils[\"isString\"](this[\"http\"][\"response\"])){var _0x3faedc=this[\"http\"][\"response\"];if(_0x3faedc[\"match\"](UtasErrorReason[\"MULTIPLE_SESSION\"]))_0x103e0c[\"status\"]=HttpStatusCode[\"FORBIDDEN\"],_0x103e0c[\"error\"]=new UTServerErrorVO(UtasErrorCode[\"LOGGED_IN_ON_CONSOLE\"],_0x3faedc);else{if(_0x3faedc[\"match\"](UtasErrorReason[\"WRONG_CREDENTIALS\"])||_0x3faedc[\"match\"](UtasErrorReason[\"INVALID_CREDENTIALS\"]))_0x103e0c[\"status\"]=HttpStatusCode[\"UNAUTHORIZED\"];else{if(_0x3faedc[\"match\"](UtasErrorReason[\"BANNED\"]))_0x103e0c[\"status\"]=HttpStatusCode[\"FORBIDDEN\"],_0x103e0c[\"error\"]=new UTServerErrorVO(UtasErrorCode[\"ACCOUNT_BANNED\"],_0x3faedc);else{if(_0x3faedc[\"match\"](UtasErrorReason[\"CLIENT_VERSION_EXPIRED\"])||_0x3faedc[\"match\"](UtasErrorReason[\"CLIENT_VERSION_UNKNOWN\"]))_0x103e0c[\"status\"]=HttpStatusCode[\"FORBIDDEN\"],_0x103e0c[\"error\"]=new UTServerErrorVO(UtasErrorCode[\"UPDATE_REQUIRED\"],_0x3faedc);else _0x3faedc[\"match\"](UtasErrorReason[\"GEOIP_DENIED\"])?(_0x103e0c[\"status\"]=HttpStatusCode[\"LEGAL_UNAVAILABLE\"],_0x103e0c[\"error\"]=new UTServerErrorVO(UtasErrorCode[\"GEOIP_DENIED\"],_0x3faedc)):_0x103e0c[\"error\"]=new UTServerErrorVO(this[\"http\"][\"status\"],_0x3faedc);}}}}else{var _0x3faedc=this[\"generateErrorReason\"](this[\"http\"][\"status\"]);_0x103e0c[\"error\"]=new UTServerErrorVO(this[\"http\"][\"status\"],_0x3faedc);}var _0x337b56=this[\"http\"][\"getResponseHeader\"](\"Retry-After\");_0x103e0c[\"retryAfter\"]=_0x337b56?parseInt(_0x337b56,0xa):0x0,this[\"notify\"](_0x103e0c);}",
+      "sha256": "46880ddf6340a33abef895d930707025dbd7f555f695ea636b90250532f861ad"
+    },
+    "EAHttpRequest.prototype.onAbort": {
+      "decoded": "function(_0x61033c){var _0x653337=_0x37b64a;this[\"aborted\"]=!![];}",
+      "sha256": "0994755da00350467a1feeb868d26a5d4dfd7d6fde15a01fac4f3f9452a2a990"
+    },
+    "EAHttpRequest.prototype.onError": {
+      "decoded": "function(_0x5629ea){var _0x5cb53a=_0x37b64a;this[\"errored\"]=!![];}",
+      "sha256": "e961da0370ac441d95c2ab47f08a2638e8554f1d7bfb5b8c19c2ee8685fec503"
+    },
+    "EAHttpRequest.prototype.onTimeout": {
+      "decoded": "function(_0x1d7c0e){var _0x474367=_0x37b64a;this[\"timedout\"]=!![];}",
+      "sha256": "c6200def811472fd392a9d57995fc07e30de821f3311797099fc137950271a61"
+    }
+  }
+}

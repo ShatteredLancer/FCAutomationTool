@@ -1,4 +1,7 @@
 import { expect, it, vi } from 'vitest';
+import { runInNewContext } from 'node:vm';
+import { createHash } from 'node:crypto';
+import requestFailures from '../fixtures/fc27-request-failure-public-methods.json';
 import { FC27_MARKET_READ_METHODS, createFc27MarketReadTransport, probeFc27MarketRuntime, readFc27MarketPlayerName } from '../../src/adapters/ea/fc27-market-read.js';
 import { createFc27ClubReadTransport } from '../../src/adapters/ea/fc27-club-read.js';
 import { verifyFc27Methods } from '../../src/adapters/ea/fc27-transaction-transport.js';
@@ -113,6 +116,51 @@ it.each([401, 429, 500])('session check exposes only numeric HTTP %s and never r
   const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
   await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ marketFailure: { httpStatus: status } });
   await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toThrow('READ_BLOCKED');
+  expect(f.calls).toHaveLength(1);
+});
+it.each([
+  ['timedout', 'FC27_MARKET_READ_TIMEOUT'],
+  ['errored', 'FC27_MARKET_READ_NETWORK_ERROR'],
+  ['aborted', 'FC27_MARKET_READ_ABORTED'],
+  [null, 'FC27_MARKET_RESPONSE_UNVERIFIED'],
+])('distinguishes native status-zero session %s without retry or response export', async (flag, message) => {
+  const f = fixture(); f.control.status = 0; f.control.error = { code: 0, message: 'private response' };
+  f.control.onSend = () => { if (flag) f.calls.at(-1)[flag] = true; };
+  const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ message,
+    marketFailure: { httpStatus: null, eaCode: 0 } });
+  expect(f.calls).toHaveLength(1); expect(f.calls[0].doReauth).toBe(false); expect(f.calls[0].doRetry).toBe(false);
+});
+it('does not let timeout flags hide an explicit session rejection', async () => {
+  const f = fixture(); f.control.status = 429;
+  f.control.onSend = () => { f.calls.at(-1).timedout = true; };
+  const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'FC27_MARKET_HTTP_429',
+    marketFailure: { httpStatus: 429 } });
+});
+it.each([
+  ['onTimeout', 'FC27_MARKET_READ_TIMEOUT'], ['onError', 'FC27_MARKET_READ_NETWORK_ERROR'], ['onAbort', 'FC27_MARKET_READ_ABORTED'],
+])('replays original EA %s and _notify through the real session reader', async (event, message) => {
+  const sandbox = { _0x37b64a: null, _0x512d02: null, JSUtils: { isString: value => typeof value === 'string' },
+    UTHttpResponseDTO: class {}, UTServerErrorVO: class { constructor(code) { this.code = code; } } };
+  const method = name => {
+    const row = requestFailures.methods[name];
+    expect(createHash('sha256').update(row.decoded).digest('hex')).toBe(row.sha256);
+    return runInNewContext(`(${row.decoded})`, sandbox);
+  };
+  const onEvent = method(`EAHttpRequest.prototype.${event}`), notify = method('UTHttpRequest.prototype._notify');
+  const f = fixture(); f.control.timeout = true;
+  f.control.onSend = () => {
+    const request = f.calls.at(-1);
+    request.http = { status: 0, response: null, getResponseHeader: () => null };
+    request.convertUtasCodeToHttpStatus = status => status;
+    request.generateErrorReason = () => 'native status zero';
+    request.notify = dto => request.callback(request, dto);
+    onEvent.call(request); notify.call(request);
+  };
+  const reader = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  await expect(reader.readSessionHealth({ beforeDispatch: () => {} })).rejects.toMatchObject({ message,
+    marketFailure: { httpStatus: null, eaCode: 0 } });
   expect(f.calls).toHaveLength(1);
 });
 it('retains native error subcodes so a mapped 401 is not mistaken for ordinary session expiry', async () => {

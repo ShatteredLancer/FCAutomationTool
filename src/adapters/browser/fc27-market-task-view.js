@@ -19,10 +19,12 @@ const modes={fixed:'固定名单',filter:'条件选卡',sell:'持仓出售'},sta
 const inputOf=t=>({name:t.name,mode:t.mode,settings:structuredClone(t.settings),players:structuredClone(t.players),owned:structuredClone(t.owned),excluded:structuredClone(t.excluded),schedule:t.schedule?structuredClone(t.schedule):null,ratingPrices:t.ratingPrices?structuredClone(t.ratingPrices):null,sellSelection:t.sellSelection?structuredClone(t.sellSelection):null});
 const errors={...marketTaskMessages,TASKS_STALE:'任务已在其他窗口修改，请刷新后重新编辑。',TASKS_CONTEXT_CHANGED:'账号已变化，请刷新任务。',TASKS_SAVE_UNVERIFIED:'保存回读未确认，请刷新核对，勿重复添加。',TASKS_INVALID:'请检查价格、评分和数量设置。',TASKS_SELECTION_EMPTY:'请先选择具体版本或持仓卡。',TASKS_STORAGE_LIMIT:'任务记录达到存储容量限制，原记录已保留。',TASKS_UNRESOLVED:'有待核对的交易，不能删除记录。',TASKS_EDIT_BLOCKED:'该任务当前不能编辑，请先暂停并核对交易。',TASKS_EXECUTION_UNAVAILABLE:'自动执行尚未开放。'};
 
-export function mountFc27MarketTasks({document,parent,tab,service,legacyService=null,readCatalog=()=>[],readInventory=()=>[],readCoordination=null,runtime=null,playerPicker=null}){
+export function mountFc27MarketTasks({document,parent,tab,service,legacyService=null,readCatalog=()=>[],readInventory=()=>[],readCoordination=null,runtime=null,playerPicker=null,backgroundStatus=null}){
  parent.replaceChildren();const element=document.createElement('section');element.className='market-task-manager';parent.append(element);
  const shadow=element.attachShadow({mode:'closed'});shadow.innerHTML=marketTaskMarkup;const $=id=>shadow.getElementById(id);
  const currencyStyle=document.createElement('style');currencyStyle.textContent=currencyInputStyles+' .listing-currency{width:100%;background:#253945;border-color:#48606d} .task-table td:nth-child(4):before{content:none} #market-coordination-status:not([hidden]),#market-runtime-status:not([hidden]),#market-session-status:not([hidden]),#market-search-status:not([hidden]){display:block;margin:6px 0}';shadow.append(currencyStyle);
+ const statusField=document.createElement('label');statusField.className='check';statusField.innerHTML='<span>显示交易状态浮条</span><input id="marketStatusVisible" type="checkbox"><small>关闭后不显示；可直接拖动浮条移动位置</small>';
+ $('globalSettings').querySelector('.fields')?.append(statusField);
  const scheduleEditor=mountMarketScheduleEditor({document,parent:$('moreRules').parentElement});
  const ratingEditor=mountMarketRatingEditor({document,$,onChange:()=>{readInputs();renderDraft();}});
  const biddingEditor=mountMarketBiddingEditor({document,$,onChange:()=>{readInputs();renderDraft();}});
@@ -95,6 +97,7 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
    const rating=runtimeRow(task)?.candidateScope?.currentRating;if(rating){const note=document.createElement('small');note.textContent=`当前评分 ${rating}`;row.children[1].append(note);}
   }
   if(syncSettings)for(const key of Object.keys(defaultTradingPublicSettings()))$(key).value=String(snapshot.store.settings[key]??'');
+  if(syncSettings&&backgroundStatus) $('marketStatusVisible').checked=backgroundStatus.isVisible();
   $('settingsBrief').textContent=`${snapshot.store.settings.source.toUpperCase()} · 跟随账号平台 · 搜索 ${snapshot.store.settings.gapMin}–${snapshot.store.settings.gapMax} 秒`;
  };
  const reload=async()=>{if(busy||!active)return;closeDialogs();const ticket=++epoch;busy=true;coordination=null;coordinationStatus.hidden=true;message('读取本地任务…');try{const [result,ledger]=await Promise.all([service.read(),readCoordination?readCoordination():null]);if(ticket!==epoch||!active)return;snapshot=result;check();if(ledger&&JSON.stringify(ledger.context)!==JSON.stringify(snapshot.context))throw Error('TASKS_CONTEXT_CHANGED');coordination=ledger;render();message('任务已加载；保存不会启动交易。');}catch(error){if(ticket===epoch){snapshot=null;coordination=null;coordinationStatus.hidden=true;$('tasks').replaceChildren();message(errors[error.message]??'任务或执行记录读取失败，原数据未清除。');}}finally{if(ticket===epoch)busy=false;}};
@@ -235,6 +238,7 @@ export function mountFc27MarketTasks({document,parent,tab,service,legacyService=
  for(const [key,rule]of [['buyValue','buyRule'],['sellValue','sellRule']])bindCurrencyArrows({document,input:$(key),label:key==='buyValue'?'买入价格':'挂牌价格',enabled:()=>draft?.settings[rule]==='fixed',onStep:value=>{$(key).value=String(value);readInputs();renderDraft();}});
  bindCurrencyArrows({document,input:$('hardCap'),label:'单卡绝对买入上限',onStep:value=>{$('hardCap').value=String(value);readInputs();}});
  $('saveGlobal').onclick=event=>{if(!event.isTrusted)return;runtime?.pauseAll();const settings=Object.fromEntries(Object.keys(defaultTradingPublicSettings()).map(key=>[key,key==='source'?$(key).value:$(key).value===''?null:Number($(key).value)]));void run(async()=>{const result=await service.saveSettings({...snapshot,settings});message('公共设置已保存。');return result;});};
+ $('marketStatusVisible').onchange=event=>{if(event.isTrusted)backgroundStatus?.setVisible($('marketStatusVisible').checked);};
  $('addPlayer').onclick=event=>{if(event.isTrusted&&!busy)openPicker('fixed');};$('editExclusions').onclick=event=>{if(event.isTrusted&&!busy)openPicker('exclude');};
  $('previewPool').onclick=event=>{if(!event.isTrusted)return;$('poolPreview').classList.toggle('hidden');void queryPool(true);};
  $('poolSearch').oninput=()=>{cancelQuery();queryTimer=setTimeout(()=>{void queryPool(true)},250);};if(!namePicker?.native)$('playerSearch').oninput=()=>{cancelQuery();queryTimer=setTimeout(()=>{void queryPicker()},250);};

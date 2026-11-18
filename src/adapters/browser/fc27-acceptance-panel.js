@@ -24,10 +24,14 @@ export function mountFc27AcceptancePanel({ document, targets, inspectCatalog = n
   const priceSettings = mountFc27PriceSettings({ document, parent: shadow.querySelector('#settings-bottom'), service: publicPrices });
   const tradeSettings = mountGalleryTradeSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryTradePreferences });
   const planningSettings = mountGalleryPlanningSettings({ document, parent: shadow.querySelector('#page-settings .feature-grid'), service: galleryPlanningSettings });
-  const trading=tradingTasks?mountFc27MarketTasks({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),...tradingTasks,legacyService:tradingDesk})
+  const marketStatusPreferenceKey = (() => {
+    try { return `scope:${tradingTasks?.service?.context?.().scope ?? 'global'}`; } catch { return 'scope:global'; }
+  })();
+  const backgroundStatus = mountMarketBackgroundStatus({ document, runtime: tradingTasks?.runtime,
+    id: `${hostId}-market-status`, preferenceKey: marketStatusPreferenceKey, storage: tradingTasks?.statusStorage });
+  const trading=tradingTasks?mountFc27MarketTasks({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),...tradingTasks,legacyService:tradingDesk,backgroundStatus})
     :mountFc27TradingView({document,parent:shadow.getElementById('page-trading'),tab:shadow.getElementById('tab-trading'),service:tradingDesk});
   const selectTab = bindFc27WorkbenchTabs(shadow, host, id => { gallery.setActive(id === 'gallery');trading.setActive(id==='trading'); if (id === 'settings') { void priceSettings.refresh(); void tradeSettings.refresh(); void planningSettings.refresh(); } });
-  mountMarketBackgroundStatus({ document, runtime: tradingTasks?.runtime, id: `${hostId}-market-status` });
   const node = id => shadow.getElementById(id);
   const renderPuzzleObjective = () => {
     node('puzzle-objective-note').textContent = node('puzzle-objective').value === 'additional-coins'

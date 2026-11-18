@@ -1,7 +1,7 @@
 import { marketTaskAutoLists } from '../../trading/market-task-policy.js';
 import { marketSellMatches } from '../../trading/market-sell-selection.js';
 import { fc27MarketTraffic } from '../ea/fc27-market-traffic.js';
-import { createFc27MarketReadTransport } from '../ea/fc27-market-read.js';
+import { createFc27MarketReadTransport, marketReadReason } from '../ea/fc27-market-read.js';
 import { renewFc27MarketSession } from '../ea/fc27-market-session-renewal.js';
 import { createEaTradeAdapter } from '../ea/trade.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
@@ -443,9 +443,21 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         try { Promise.resolve(onDiagnostic?.({area:'trading',event:'task-native',phase:'session-check',...row})).catch(()=>{}); }
         catch { /* Never change maintenance due to logging. */ }
       };
+      const startedAt = now();
+      let stage = 'session-reader-create';
+      const failureDiagnostic = error => {
+        try {
+          diagnostic({ transportPhase: stage, status: 'blocked', localReason: marketReadReason(error),
+            durationMs: Math.max(0, now() - startedAt), httpStatus: error.marketFailure?.httpStatus,
+            errorCode: error.marketFailure?.eaCode ?? error.code });
+        } catch { /* Reading diagnostic properties cannot replace the original failure. */ }
+      };
       try {
+        diagnostic({ transportPhase: 'session-check-start', status: 'started' });
         const read = async () => {
+          stage = 'session-reader-create';
           check(); const reader = await sessionReaderFactory(root, { quotesOnly: true, maxRequests: 1 });
+          stage = 'session-read';
           check(); return reader.readSessionHealth({ beforeDispatch: check });
         };
         let result;
@@ -454,6 +466,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
           const details = error.marketFailure;
           if (details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error;
           check(); diagnostic({transportPhase:'session-expired',status:'received',httpStatus:401});
+          stage = 'session-renewal';
           try { await renewSession(root, { beforeDispatch: check, onPhase: diagnostic }); }
           catch (renewalError) { throw Object.assign(Error('MARKET_SESSION_RENEWAL_FAILED'), { code: renewalError.code ?? 401 }); }
           check(); diagnostic({transportPhase:'session-renew-verify',status:'started'});
@@ -465,6 +478,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         diagnostic({transportPhase:'session-online',status:'completed'});
         return { status: 'online', observedAt: lastOnlineAt };
       } catch (error) {
+        failureDiagnostic(error);
         const http = error.marketFailure?.httpStatus, ea = error.marketFailure?.eaCode;
         throw Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: http === 401 ? http
           : [403, 427, 429, 512, 521, 426, 459].includes(ea) ? ea : http ?? error.code ?? null });

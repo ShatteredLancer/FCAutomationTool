@@ -389,7 +389,7 @@ const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePa
   galleryPriceLoader: ids => publicPrices.load(ids, { purpose: 'display' }),
   publicPrices,
   tradingDesk,
-  tradingTasks,
+  tradingTasks: { ...tradingTasks, statusStorage: safeBoot('market-status-storage', () => unsafeWindow.localStorage) },
   galleryPlanningPrices: (ids, options = {}) => publicPrices.load(ids, options),
   galleryTargetStore: createGalleryTargetStore({ get: GM_getValue, set: GM_setValue }),
   galleryPlanStore: createGalleryPlanStore({ get: GM_getValue, set: GM_setValue }),

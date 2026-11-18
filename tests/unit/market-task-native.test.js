@@ -9,6 +9,7 @@ import { createTradingTaskStore } from '../../src/adapters/browser/fc27-trading-
 import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-coordinator.js';
 import { createMarketTaskCatalog } from '../../src/trading/market-task-catalog.js';
 import { FC27_MARKET_SESSION_METHODS } from '../../src/adapters/ea/fc27-market-session-renewal.js';
+import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 
 async function fixture(mode = 'fixed', extra = {}) {
   const f = marketNativeRuntime();
@@ -48,6 +49,31 @@ async function fixture(mode = 'fixed', extra = {}) {
 }
 
 describe('native session maintenance', () => {
+  it.each([
+    ['FC27_MARKET_READ_TIMEOUT', null, 'session-read', 16000, null],
+    ['FC27_MARKET_HTTP_429', { httpStatus: 429, eaCode: 429 }, 'session-read', 0, 429],
+    ['FC27_MARKET_METHOD_0_CHANGED', null, 'session-reader-create', 0, null],
+    ['private token or account data', null, 'session-read', 0, null],
+  ])('exports the actual bounded session failure for %s without changing pause semantics', async (message, details, stage, elapsed, code) => {
+    const pending = [], log = createFcatDiagnosticLog({ gmGetValue: async () => null, gmSetValue: async () => {}, version: '27.0.114' });
+    const renewSession = vi.fn(), error = Object.assign(Error(message), { marketFailure: details });
+    let advance;
+    const f = await fixture('fixed', { renewSession, onDiagnostic: row => { const promise = log.record(row); pending.push(promise); return promise; },
+      sessionReaderFactory: async () => {
+        if (stage === 'session-reader-create') throw error;
+        return { readSessionHealth: async () => { advance(elapsed); throw error; } };
+      } });
+    advance = f.advance;
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'MARKET_SESSION_UNVERIFIED', code });
+    await Promise.all(pending);
+    const out = await log.exportPayload();
+    expect(out.entries.at(-1)).toMatchObject({ area: 'trading', event: 'task-native', phase: 'session-check',
+      transportPhase: stage, status: 'blocked', durationMs: elapsed,
+      localReason: message.startsWith('FC27_') ? message : 'FC27_MARKET_READ_FAILED' });
+    expect(JSON.stringify(out)).not.toMatch(/private token|account data/);
+    expect(renewSession).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
+    expect(f.native.sessionHealth().lastOnlineAt).toBeNull();
+  });
   it('composes the production renewal adapter with maintenance, preserves holdings and makes no trade calls', async () => {
     const f = marketNativeRuntime(), renewal = [], pending = [];
     const response = (kind, dto) => ({ observe(owner, callback) { pending.push(owner); callback(this, dto); }, unobserve(owner) { pending.splice(pending.indexOf(owner), 1); } });
@@ -72,6 +98,15 @@ describe('native session maintenance', () => {
       } }) });
     await expect(native.maintainSession({ beforeDispatch: () => {} })).resolves.toMatchObject({ status: 'online' });
     expect(attempts).toBe(2); expect(renewal).toEqual(['auth','telemetry']); expect(pending).toEqual([]); expect(f.calls).toEqual([]);
+  });
+  it.each(['throw', 'reject'])('preserves a read timeout when diagnostics %s', async mode => {
+    const error = Error('FC27_MARKET_READ_TIMEOUT'), reads = vi.fn(async () => { throw error; });
+    const f = await fixture('fixed', { onDiagnostic: () => {
+      if (mode === 'throw') throw Error('logging unavailable');
+      return Promise.reject(Error('logging unavailable'));
+    }, sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'MARKET_SESSION_UNVERIFIED', code: null });
+    expect(reads).toHaveBeenCalledTimes(1); expect(f.calls).toEqual([]);
   });
   it('does not renew a 401 carrying an explicit EA restriction', async () => {
     const renewSession = vi.fn();

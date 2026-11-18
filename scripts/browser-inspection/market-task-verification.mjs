@@ -43,8 +43,17 @@ export async function verifyMarketTaskPage(context, page, directory) {
   // optionally one concept selection after a new login. Never repeats health.
   const localRequest=path.join(directory,'market-player-ui-request.json');
   const local=await readFile(localRequest,'utf8').then(JSON.parse).catch(()=>null);
-  if(['local-names','player-versions','evidence-only','version-recovery','version-read'].includes(local?.mode)&&Number.isSafeInteger(local.at)&&Date.now()-local.at>=0&&Date.now()-local.at<60000){
+  if(['local-names','player-versions','evidence-only','version-recovery','version-read','session-background','session-foreground'].includes(local?.mode)&&Number.isSafeInteger(local.at)&&Date.now()-local.at>=0&&Date.now()-local.at<60000){
     await unlink(localRequest);
+    if(['session-background','session-foreground'].includes(local.mode)){
+      const {setSessionMonitorBackground}=await import(`./market-session-visibility.mjs?revision=${Date.now()}`);
+      const result=await setSessionMonitorBackground(context,page,local.mode==='session-background');
+      return {...result,visibilityEvidence:await page.evaluate(()=>({
+        ownVisibilityOverride:Object.hasOwn(globalThis.document,'visibilityState'),
+        nativeVisibility:Object.getOwnPropertyDescriptor(globalThis.Document.prototype,'visibilityState')?.get?.call(globalThis.document)??null,
+        hidden:globalThis.document.hidden,focused:globalThis.document.hasFocus()
+      }))};
+    }
     if(['version-recovery','version-read'].includes(local.mode)){
       const {inspectMarketPlayerRenewal}=await import(`./market-player-session-check.mjs?revision=${Date.now()}`);
       const result=await inspectMarketPlayerRenewal(page,{renew:local.mode==='version-recovery'});return {...result,httpEvidence:evidence.snapshot()};

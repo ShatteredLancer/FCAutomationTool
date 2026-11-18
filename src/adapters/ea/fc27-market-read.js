@@ -240,6 +240,14 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
         const code = typeof rawCode === 'string' && /^\d{1,10}$/.test(rawCode) ? Number(rawCode) : rawCode;
         failureDetails = { httpStatus: valid(status, 100, 599) ? status : null,
           eaCode: valid(code, 0, 0x7fffffff) ? code : null };
+        // Native onTimeout/onError/onAbort set these request-local booleans,
+        // then onLoadEnd may notify DTO status 0. Only classify the session
+        // diagnostic; do not renew, retry, or reinterpret real HTTP errors.
+        if (kind === 'session' && status === 0) {
+          if (ownData(req, 'timedout') === true) throw error('READ_TIMEOUT');
+          if (ownData(req, 'errored') === true) throw error('READ_NETWORK_ERROR');
+          if (ownData(req, 'aborted') === true) throw error('READ_ABORTED');
+        }
         throw error(valid(status, 100, 599) ? `HTTP_${status}` : 'RESPONSE_UNVERIFIED');
       }
       failurePhase = 'payload';

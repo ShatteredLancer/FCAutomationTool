@@ -65,7 +65,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       } });
       state.runtime = runtime;
       state.panel = api.mountFc27AcceptancePanel({ document: globalThis.document, hostId: 'scheduler-test', targets: () => [],
-        tradingTasks: { service, runtime, readCoordination: () => coordinator.inspect() } });
+        tradingTasks: { service, runtime, statusStorage: globalThis.localStorage, readCoordination: () => coordinator.inspect() } });
       state.panel.open();
     });
     const host = page.locator('#scheduler-test'), view = host.locator('.market-task-manager');
@@ -83,6 +83,36 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await start('task-1');
     await page.waitForFunction(() => !!globalThis.marketSchedulerUI.releaseFactory);
     assert.match(await background.locator('output').innerText(), /Starting trading/);
+    await view.locator('#globalSettings > summary').click();
+    const statusToggle = view.locator('#marketStatusVisible');
+    assert.equal(await statusToggle.isChecked(), true);
+    await statusToggle.uncheck();
+    assert.equal(await background.isVisible(), false);
+    await statusToggle.check();
+    assert.equal(await background.isVisible(), true);
+    const barBox = await background.locator('.bar').boundingBox();
+    assert.ok(barBox);
+    await page.evaluate(({ x, y }) => {
+      const host = globalThis.document.querySelector('#scheduler-test-market-status');
+      const bar = host?.shadowRoot?.querySelector('.bar');
+      bar?.dispatchEvent(new globalThis.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y }));
+      globalThis.window.dispatchEvent(new globalThis.MouseEvent('mousemove', { bubbles: true, clientX: x + 30, clientY: y + 22 }));
+      globalThis.window.dispatchEvent(new globalThis.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x + 30, clientY: y + 22 }));
+    }, { x: barBox.x + 12, y: barBox.y + 12 });
+    assert.match(await background.getAttribute('style'), /(?:left:|inset:)/);
+    assert.equal(await page.evaluate(() => Object.keys(globalThis.localStorage).some(key => key.startsWith('fcat-market-status:'))), true);
+    // The compact host and its Pause all control remain interactive after the
+    // user moves the widget; hiding it is handled by the settings toggle.
+    assert.deepEqual(await page.evaluate(() => {
+      const host = globalThis.document.querySelector('#scheduler-test-market-status');
+      const bar = host?.shadowRoot?.querySelector('.bar');
+      const button = bar?.querySelector('button');
+      return {
+        host: host ? globalThis.getComputedStyle(host).pointerEvents : null,
+        bar: bar ? globalThis.getComputedStyle(bar).pointerEvents : null,
+        button: button ? globalThis.getComputedStyle(button).pointerEvents : null,
+      };
+    }), { host: 'auto', bar: 'auto', button: 'auto' });
     // An approved task belongs to the page, not the currently visible FCAT tab.
     await host.locator('#tab-sbc').click();
     await page.evaluate(() => globalThis.marketSchedulerUI.panel.close());
@@ -93,6 +123,7 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     await page.waitForFunction(() => globalThis.marketSchedulerUI.runtime.inspect().tasks.some(row => row.state === 'waiting'));
     assert.match(await background.locator('output').innerText(), /Trading active/);
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => globalThis.dispatchEvent(new Event('resize')));
     assert.equal(await background.evaluate(node => { const r=node.getBoundingClientRect(); return r.width>0 && r.left>=0 && r.right<=globalThis.innerWidth && node.scrollWidth<=r.width+1; }), true);
     await page.screenshot({ path: path.join(directory, 'market-background-mobile.png') });
     await page.setViewportSize({ width: 1366, height: 1000 });
