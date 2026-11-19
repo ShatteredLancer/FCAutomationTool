@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.117
+// @version      27.0.118
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.117", at: Date.now(), status: 'started',
+    state = { version: "27.0.118", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7675,6 +7675,83 @@
     const query = { start: 0, count: 20, level: laneLevel, league: ranked[0].league };
     return usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query)) ? null : query;
   }
+  function cappedPositionSupport(clubs, slots, clubCap) {
+    const slotStart = 2 + clubs.size, graph = Array.from({ length: slotStart + slots.length }, () => []);
+    const add3 = (from, to, remaining) => {
+      const arc = { to, back: graph[to].length, remaining };
+      graph[to].push({ to: from, back: graph[from].length, remaining: 0 });
+      graph[from].push(arc);
+    };
+    slots.forEach((_, i) => add3(slotStart + i, 1, 1));
+    let group = 2;
+    for (const cards of clubs.values()) {
+      add3(0, group, Math.min(cards.length, clubCap));
+      for (const card of cards) {
+        const node = graph.push([]) - 1;
+        add3(group, node, 1);
+        slots.forEach((position, i) => {
+          if (card.positions.includes(position)) add3(node, slotStart + i, 1);
+        });
+      }
+      group++;
+    }
+    let filled = 0;
+    while (filled < slots.length) {
+      const previous = Array(graph.length).fill(null), queue = [0];
+      previous[0] = [];
+      for (let i = 0; i < queue.length && !previous[1]; i++) {
+        const from = queue[i];
+        for (const arc of graph[from]) if (arc.remaining && !previous[arc.to]) {
+          previous[arc.to] = [from, arc];
+          queue.push(arc.to);
+        }
+      }
+      if (!previous[1]) break;
+      for (let node = 1; node !== 0; ) {
+        const [from, arc] = previous[node];
+        arc.remaining--;
+        graph[node][arc.back].remaining++;
+        node = from;
+      }
+      filled++;
+    }
+    return filled;
+  }
+  function planPuzzleCappedLeagueDiscovery({ candidates, rules, slots, levels: levels2, usedQueries, resolveClub }) {
+    const modes2 = { "same-league": "min", "same-club": "max", "distinct-clubs": "max", "distinct-nations": "min" };
+    if (rules.some((rule) => Object.hasOwn(modes2, rule.kind) ? rule.mode !== modes2[rule.kind] : !["min-quality", "min-chemistry"].includes(rule.kind))) return null;
+    const leagueMin = Math.max(0, ...rules.filter((rule) => rule.kind === "same-league" && rule.mode === "min").map((rule) => rule.value));
+    const clubCap = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "same-club" && rule.mode === "max").map((rule) => rule.value));
+    const clubLimit = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "distinct-clubs" && rule.mode === "max").map((rule) => rule.value));
+    const nationMin = Math.max(1, ...rules.filter((rule) => rule.kind === "distinct-nations" && rule.mode === "min").map((rule) => rule.value));
+    const ratingFloor = Math.max(1, ...rules.filter((rule) => rule.kind === "min-quality").map((rule) => rule.minRating));
+    if (leagueMin <= clubCap || clubLimit >= slots.length || clubCap * clubLimit < slots.length || !rules.some((rule) => rule.kind === "min-chemistry" && rule.value > 0) || !usedQueries.some((query2) => !query2.league && !query2.nation && !query2.team && query2.start === 0)) return null;
+    const groups = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
+    for (const card of candidates) {
+      if (seen.has(card.definitionId) || card.rating < ratingFloor || !levels2.includes(level(quality(card.rating))) || !card.positions?.some((position) => slots.includes(position))) continue;
+      seen.add(card.definitionId);
+      const club = resolveClub(card.teamId);
+      if (!Number.isSafeInteger(club) || club <= 0) continue;
+      if (!groups.has(card.leagueId)) groups.set(card.leagueId, /* @__PURE__ */ new Map());
+      const clubs = groups.get(card.leagueId);
+      if (!clubs.has(club)) clubs.set(club, []);
+      clubs.get(club).push(card);
+    }
+    const ranked = [...groups].map(([league, clubs]) => {
+      const cards = [...clubs.values()].flat();
+      const capacity = [...clubs.values()].map((group) => Math.min(group.length, clubCap)).sort((a, b) => b - a).slice(0, clubLimit).reduce((sum2, count3) => sum2 + count3, 0);
+      return {
+        league,
+        cards,
+        clubCount: clubs.size,
+        nationalities: new Set(cards.map((card) => card.nationId)).size,
+        support: Math.min(capacity, cappedPositionSupport(clubs, slots, clubCap))
+      };
+    }).filter((group) => group.support > 0).sort((a, b) => Number(b.clubCount > 1) - Number(a.clubCount > 1) || b.support - a.support || b.clubCount - a.clubCount || b.nationalities - a.nationalities || a.league - b.league);
+    const query = ranked.flatMap(({ league }) => levels2.map((level2) => ({ start: 0, count: 20, level: level2, league }))).find((next) => !usedQueries.some((old) => old.league === next.league && old.level === next.level && old.start === next.start));
+    const focus = ranked.find((group) => group.support === slots.length && group.clubCount <= clubLimit && group.nationalities >= nationMin);
+    return { query: query ?? null, focus: focus ? new Set(focus.cards.map((card) => card.definitionId)) : null };
+  }
   function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
     if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || !Array.isArray(brickIndices)) return null;
     const required2 = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
@@ -8335,6 +8412,21 @@
       academyEnrolled: false,
       catalogRef: `fc27:${item2.definitionId}`
     }));
+  }
+  function discoverFc27PuzzleCappedLeague(input, owned2, entries2, usedQueries) {
+    const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+    const resolveClub = createFc27ClubResolver(input.clubLinks);
+    if (parsed.status !== "observed" || !Array.isArray(input.challenge.formation?.positions) || !resolveClub) return null;
+    const slots = input.challenge.formation.positions.filter((_, index) => !input.challenge.brickIndices.includes(index));
+    if (slots.length !== required(input)) return null;
+    return planPuzzleCappedLeagueDiscovery({
+      candidates: [...owned2, ...puzzleMarketValueCandidates(input, entries2)],
+      rules: parsed.rules,
+      slots,
+      usedQueries,
+      resolveClub,
+      levels: allowedFc27MarketTiers(parsed.rules, input.policy).map((tier) => tier.level)
+    });
   }
   function projectSuggestion(squad, facts2, requirementCount) {
     const purchases = squad.flatMap((item2, slot) => item2?.catalogRef ? [{ ...item2, slot, quantity: 1 }] : []);
@@ -10192,6 +10284,12 @@
             ...item2,
             estimatedUnitPrice: materialPrices.get(item2.definitionId)
           })) }, [], [], input) : [];
+          const cappedLeagueDiscovery = () => loadPublicPrices && adaptiveBudget && jointSearch && !incumbent ? discoverFc27PuzzleCappedLeague(
+            input,
+            ownedPool.filter((card) => !totalValueMode || materialPrices.has(card.definitionId)),
+            [...entries2.values()].filter((card) => !unavailable.has(card.definitionId)),
+            usedQueries
+          ) : null;
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same15(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
             assertOptimization();
@@ -10217,14 +10315,24 @@
             diagnostics.catalogPages++;
             diagnostics.catalogCandidates = entries2.size;
             reportProgress();
+            const discovery = cappedLeagueDiscovery();
+            if (usedQueries.length === 1 && discovery?.query && !discovery.focus) {
+              pendingQueries = [discovery.query, ...pendingQueries.filter((next) => !same15(next, discovery.query))];
+              continue;
+            }
+            let focusedIds = null, deferredPrices = [];
             if (loadPublicPrices) {
               const candidates = marketCandidates(input, [...entries2.values()]).filter((item2) => !references.has(item2.definitionId));
-              await priceCandidates(candidates);
+              if (discovery?.focus) {
+                deferredPrices = candidates.filter((card) => !discovery.focus.has(card.definitionId));
+                if (deferredPrices.length) focusedIds = discovery.focus;
+              }
+              await priceCandidates(focusedIds ? candidates.filter((card) => focusedIds.has(card.definitionId)) : candidates);
             }
             for (; ; ) {
               assertOptimization();
               diagnostics.stage = "local-market-search";
-              const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
+              const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId) && (!focusedIds || focusedIds.has(item2.definitionId)));
               const prices = loadPublicPrices ? new Map([...quotes].map(([id16, quote2]) => [id16, quote2.price])) : null;
               if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
@@ -10234,7 +10342,7 @@
                 diagnostics.localReason = "FC27_PUZZLE_SEARCH_LIMIT";
                 break;
               }
-              const remainingLanes = Math.max(1, 4 - usedQueries.length);
+              const remainingLanes = Math.max(1, 4 - usedQueries.length) + (focusedIds ? 1 : 0);
               const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
               const passBudget = Math.max(1, Math.min(
                 adaptiveBudget && !adaptivePass ? 5e4 : Infinity,
@@ -10384,6 +10492,10 @@
                 return { ...plan, purchases, estimatedCost, ...values8 };
               }).filter((plan) => !totalValueMode || Number.isSafeInteger(plan.materialValue) && (materialCeiling === null || plan.materialValue < materialCeiling)).sort((a, b) => comparePuzzlePlans(a, b, objective()));
               if (priced3.length) {
+                if (focusedIds) {
+                  diagnostics.searchComplete = false;
+                  diagnostics.optimalWithinPool = false;
+                }
                 adaptiveBudget?.markFeasible();
                 if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 3e4);
                 diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
@@ -10399,6 +10511,11 @@
                 }
                 if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
                 break;
+              }
+              if (focusedIds && baseSearchRemaining() > 0) {
+                focusedIds = null;
+                await priceCandidates(deferredPrices);
+                continue;
               }
               if (!removed) break;
               diagnostics.replans++;
@@ -10419,7 +10536,8 @@
                 { usedQueries }
               );
               if (nextRoute.status !== "ready") return finish(nextRoute);
-              pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same15(used, candidate)) && all.findIndex((other) => same15(other, candidate)) === index);
+              const affinity = cappedLeagueDiscovery()?.query;
+              pendingQueries = [...affinity ? [affinity] : [], ...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same15(used, candidate)) && all.findIndex((other) => same15(other, candidate)) === index);
             }
           }
           if (incumbent) return await finishIncumbent();
@@ -52769,7 +52887,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.117" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.118" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53184,8 +53302,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.117"}`,
-    version: "27.0.117",
+    title: `FC Automation Tool ${"27.0.118"}`,
+    version: "27.0.118",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

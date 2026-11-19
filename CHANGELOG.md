@@ -5,6 +5,13 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.118] - 2026-11-19
+
+- For ordinary SBCs with a league minimum above the per-club cap, prefer
+  cross-club league samples with open-position coverage before fetching prices.
+- If the initial shortlist fails, restore the existing candidate pool and reuse
+  the same search budget. See the [116/176 offline regression](docs/releases/27.0.118.md).
+
 ## [27.0.117] - 2026-11-19
 
 - Restore ordinary SBC catalog and market quote reads on EA Web App build 11502.

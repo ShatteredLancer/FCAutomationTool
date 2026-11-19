@@ -1,6 +1,6 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
-  puzzleOwnedValueCandidates, puzzleMarketValueCandidates, refineFc27PuzzleOwnedValue } from './puzzle-procurement.js';
+  puzzleOwnedValueCandidates, puzzleMarketValueCandidates, refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
@@ -732,6 +732,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const baselineQueries = totalValueMode && baselineCards.length === input.challenge.slotCount - input.challenge.brickIndices.length
         ? refinementQueries({ purchaseCount: 0, purchases: baselineCards.map(item => ({ ...item,
           estimatedUnitPrice: materialPrices.get(item.definitionId) })) }, [], [], input) : [];
+      const cappedLeagueDiscovery = () => loadPublicPrices && adaptiveBudget && jointSearch && !incumbent
+        ? discoverFc27PuzzleCappedLeague(input, ownedPool.filter(card => !totalValueMode || materialPrices.has(card.definitionId)),
+          [...entries.values()].filter(card => !unavailable.has(card.definitionId)), usedQueries)
+        : null;
       let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex(old => same(old, query)) === index);
       while (pendingQueries.length && usedQueries.length < 3) {
         assertOptimization();
@@ -757,15 +761,28 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.catalogPages++;
         diagnostics.catalogCandidates = entries.size;
         reportProgress();
+        const discovery = cappedLeagueDiscovery();
+        if (usedQueries.length === 1 && discovery?.query && !discovery.focus) {
+          // Spend the existing next catalog lane on a cross-club positional
+          // anchor before quoting the broad sample or consuming solver nodes.
+          pendingQueries = [discovery.query, ...pendingQueries.filter(next => !same(next, discovery.query))];
+          continue;
+        }
+        let focusedIds = null, deferredPrices = [];
         if (loadPublicPrices) {
           const candidates = marketCandidates(input, [...entries.values()]).filter(item => !references.has(item.definitionId));
-          await priceCandidates(candidates);
+          if (discovery?.focus) {
+            deferredPrices = candidates.filter(card => !discovery.focus.has(card.definitionId));
+            if (deferredPrices.length) focusedIds = discovery.focus;
+          }
+          await priceCandidates(focusedIds ? candidates.filter(card => focusedIds.has(card.definitionId)) : candidates);
         }
         // Each unsuccessful pass removes at least one public version from the
         // bounded catalog. Re-solve locally before requesting another page.
         for (;;) {
           assertOptimization(); diagnostics.stage = 'local-market-search';
-          const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId));
+          const available = [...entries.values()].filter(item => !unavailable.has(item.definitionId)
+            && (!focusedIds || focusedIds.has(item.definitionId)));
           const prices = loadPublicPrices ? new Map([...quotes].map(([id, quote]) => [id, quote.price])) : null;
           if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
             diagnostics.optimizationBudgetExhausted = true;
@@ -778,7 +795,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           // chemistry-heavy joint search could stop at 50k nodes before the
           // league/nation lanes were ever read. Every unresolved lane receives
           // a deterministic share; the final lane gets the remainder.
-          const remainingLanes = Math.max(1, 4 - usedQueries.length);
+          const remainingLanes = Math.max(1, 4 - usedQueries.length) + (focusedIds ? 1 : 0);
           const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
           const passBudget = Math.max(1, Math.min(adaptiveBudget && !adaptivePass ? 50000 : Infinity,
             Math.floor(baseSearchRemaining() / remainingLanes)));
@@ -918,6 +935,10 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
               && (materialCeiling === null || plan.materialValue < materialCeiling))
             .sort((a, b) => comparePuzzlePlans(a, b, objective()));
           if (priced.length) {
+            if (focusedIds) {
+              // The deferred cards may still contain cheaper solutions.
+              diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
+            }
             adaptiveBudget?.markFeasible();
             if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 30000);
             diagnostics.initialEstimatedCost ??= priced[0].estimatedCost;
@@ -942,6 +963,14 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
             break;
           }
+          if (focusedIds && baseSearchRemaining() > 0) {
+            // A full positional pool is only a hint: missing/expensive
+            // quotes or native chemistry can require a different lineup.
+            // Restore the original pool under the same shared node ledger.
+            focusedIds = null;
+            await priceCandidates(deferredPrices);
+            continue;
+          }
           if (!removed) break;
           diagnostics.replans++;
         }
@@ -959,7 +988,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           const nextRoute = planFc27PuzzleShortageQueries(input,
             [...entries.values()].filter(item => !unavailable.has(item.definitionId)), { usedQueries });
           if (nextRoute.status !== 'ready') return finish(nextRoute);
-          pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) =>
+          const affinity = cappedLeagueDiscovery()?.query;
+          pendingQueries = [...(affinity ? [affinity] : []), ...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) =>
             !usedQueries.some(used => same(used, candidate)) && all.findIndex(other => same(other, candidate)) === index);
         }
       }

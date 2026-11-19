@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-19 Puzzle 27.0.118：116/176 的 .117 实机三页目录（广银/队91/队142）45版本、44有报价，0安全库存，冷47秒/暖30秒均20万组合/0摆阵验算。合成同形先红复现两条俱乐部查询，改为按每club cap去重匹配位置、优先跨club的联赛页，再给完整位置候选查价；焦点失价或验算未通过时用同一原节点账本回全池。未改保护/评分/限价或EA执行；三页及5万→10万→20万不变，合成结果不冒充实机。见 docs/releases/27.0.118.md。
+
 2026-11-19 Puzzle 27.0.117：116/176 的 .116 日志四次在候选读取前报 METHOD_9_CHANGED，0请求/0验算。公开 EA 11502 的候选和报价方法新增仅影响 foil 筛选的分支，三个 Identification 相关方法与旧已审核行为一致；五个指纹仅登记在 Market 只读路径。实际公开方法 SHA 先红后绿，离线生产 116/176 七项都通过，旧候选失败缓存可重试，锁卡/主阵容未入选。未改选卡、预算、限价、FSU 或交易/提交保护，未做实机买卡。详见 docs/releases/27.0.117.md。
 
 2026-11-19 Streamlined 27.0.116：.115新20万分库存优先196（Club188/Storage8）、0合格，首要special174/rating22且22评分未投影。EA 11502公开ItemRarity实测NONE0/LOCK2/MANNEQUIN201/MULTI_MANNEQUIN202/DEFAULT999及反向键，没有RARE；原实体继续保存rareflag，FSU/市场正常卡规则0/1。旧shared snapshot要求NONE0/RARE1，造成明确普通卡被special:null误排；仅认精确新枚举及原旧合同，未知及>1特殊、未确认评分、EVO/装饰/锁卡/主阵容继续受保护。合成原生Club/Storage筛选先红后绿，库存优先2库存+1补卡、贯通fresh校验/采购/贡献/恢复0重复。未验证现场具体可用张数，未动FSU/交易、预算或Journal。见docs/releases/27.0.116.md。
