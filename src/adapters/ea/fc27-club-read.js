@@ -23,21 +23,30 @@ export const FC27_CLUB_READ_METHODS = Object.freeze([
 // the owned-request contract; captured public sources are retained in
 // tests/fixtures/fc27-request-method-observation-2026-10-09.json. This approves
 // only these exact request primitives, not service/DAO transaction methods.
+// EA public build 11502 (2026-11-19): decoded bodies match the reviewed
+// October implementations after renaming obfuscator-generated identifiers.
 export const FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
   UTHttpRequest: Object.freeze(['2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925',
-    '873b66b4afb50668ca88b99d5f8dc574a69d0746c2eee16ee24b28ec907670e3']),
+    '873b66b4afb50668ca88b99d5f8dc574a69d0746c2eee16ee24b28ec907670e3',
+    'a7f61b204b3b8eee2961141d126bf71ca67a78376520c3db6eb85fd4c1709ad2']),
   EAHttpRequest: Object.freeze(['76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1',
-    '6462b03eecc934b5adbd080244d072f14472e2490d9c60e806287f9777b79d5f']),
+    '6462b03eecc934b5adbd080244d072f14472e2490d9c60e806287f9777b79d5f',
+    'cb4395e31661f90290ee7207c16579590b42624daf292bb4c3ccc096438f6385']),
   'UTHttpRequest.prototype.setPath': Object.freeze(['a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df',
-    '1f500395395f7880a45b9fbd1e6061f6fe00033f60d38540e7d8740e2e5a42aa']),
+    '1f500395395f7880a45b9fbd1e6061f6fe00033f60d38540e7d8740e2e5a42aa',
+    '4d698f27f14caeaeff448ceef8a982d253afc0e1e8c5dbc8929e3d22f4b55421']),
   'UTHttpRequest.prototype.send': Object.freeze(['da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81',
-    '003bd9ad5714a9d3a32ac0bbf410df551bad71bcda7aee6607cc2624e70de9fa']),
+    '003bd9ad5714a9d3a32ac0bbf410df551bad71bcda7aee6607cc2624e70de9fa',
+    '75f91541a8c7508ea8135828787059c9b1ef83e1f9f3c0d522936da9b718dfeb']),
   'EAHttpRequest.prototype.send': Object.freeze(['d19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452',
-    'bcc3449a7799dd39d8db095d841df121ee58d73ef8756270c3c4e853f36d1d3f']),
+    'bcc3449a7799dd39d8db095d841df121ee58d73ef8756270c3c4e853f36d1d3f',
+    '306bfd535a275b05d9c2bd3d577adab7442f7f1e8a7c3055d4ec8758e9770b54']),
   'EAHttpRequest.prototype.setRequestBody': Object.freeze(['b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9',
-    '45d2e19dd341543d9a3c304c8cd8760e768862cb8984256f46b4d456368c26c9']),
+    '45d2e19dd341543d9a3c304c8cd8760e768862cb8984256f46b4d456368c26c9',
+    'a99d7bdb249d51719676a8c13f95c5eb48839c36d59d089f03e90fe267e71ee4']),
   'EAHttpRequest.prototype.abort': Object.freeze(['a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419',
-    '18ccf8620ae03031d1e2d3305c9fb8446052f2155b50045c89c3bdf99e61f787']),
+    '18ccf8620ae03031d1e2d3305c9fb8446052f2155b50045c89c3bdf99e61f787',
+    'd1640b6b775a4de40eea08d489f3999a807d17ee354708ab28d66df7129eb803']),
   // FC27 runtime review 2026-10-02: observer notification dispatch was
   // obfuscated again while its decoded contract stayed unchanged. This is
   // a local synchronization method, not a request or write method.
@@ -46,6 +55,7 @@ export const FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
   'EAObservable.prototype.notify': Object.freeze([
     '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
     'e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1',
+    '114bf518afacbff43677c2c0d48465606bb51ef26380c4868d9b0c7127a38d35',
   ]),
 });
 

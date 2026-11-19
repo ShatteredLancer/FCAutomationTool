@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.114
+// @version      27.0.118
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.114", at: Date.now(), status: 'started',
+    state = { version: "27.0.118", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -1595,6 +1595,24 @@
       return item2;
     });
   }
+  var itemRarity11502 = Object.entries({
+    NONE: 0,
+    LOCK: 2,
+    MANNEQUIN: 201,
+    MULTI_MANNEQUIN: 202,
+    DEFAULT: 999,
+    0: "NONE",
+    2: "LOCK",
+    201: "MANNEQUIN",
+    202: "MULTI_MANNEQUIN",
+    999: "DEFAULT"
+  });
+  function verifiedPlayerRarityEncoding(root) {
+    const rarity = ownData(root, "ItemRarity");
+    if (ownData(rarity, "NONE") !== 0) return false;
+    if (ownData(rarity, "RARE") === 1) return true;
+    return typeof rarity === "object" && !("RARE" in rarity) && Object.getOwnPropertyNames(rarity).length === itemRarity11502.length && itemRarity11502.every(([key2, value]) => ownData(rarity, key2) === value);
+  }
   function snapshotFc27ClubPlayer(item2, root) {
     const get = (key2) => ownData(item2, key2);
     const id16 = get("id");
@@ -1606,8 +1624,6 @@
     const clubPile = at(root, ["ItemPile", "CLUB"]);
     const evolutionPile = at(root, ["ItemPile", "EVOLUTION"]);
     const baseRarity = integer3(get("_rareflag"), 0, 1e4);
-    const common = at(root, ["ItemRarity", "NONE"]);
-    const rare = at(root, ["ItemRarity", "RARE"]);
     const cosmetics = get("cosmetics");
     const hyper = get("_hyperCosmeticDTOs");
     const cosmetic = Array.isArray(cosmetics) && hyper && typeof hyper === "object" && !Array.isArray(hyper) ? cosmetics.length > 0 || Object.getOwnPropertyNames(hyper).length > 0 : null;
@@ -1641,7 +1657,7 @@
       pile: clubPile !== void 0 && pile === clubPile ? "club" : null,
       rating: noUpgrades ? integer3(get("_rating"), 1, 99) : null,
       rarity: noUpgrades ? baseRarity : null,
-      special: noUpgrades && baseRarity !== null && common === 0 && rare === 1 ? isSpecialPlayerCard({ rareflag: baseRarity }) : null,
+      special: noUpgrades && baseRarity !== null && verifiedPlayerRarityEncoding(root) ? isSpecialPlayerCard({ rareflag: baseRarity }) : null,
       evolution: evolutionPile !== void 0 && pile === evolutionPile ? true : noUpgrades ? false : upgrades === void 0 ? null : true,
       cosmetic,
       concept: boolean(get("concept")),
@@ -2647,31 +2663,38 @@
   var FC27_CLUB_COMPATIBLE_HASHES = Object.freeze({
     UTHttpRequest: Object.freeze([
       "2397854164bed3b80e1250dc595bb87f278beac64afa9a665086b91dcdb35925",
-      "873b66b4afb50668ca88b99d5f8dc574a69d0746c2eee16ee24b28ec907670e3"
+      "873b66b4afb50668ca88b99d5f8dc574a69d0746c2eee16ee24b28ec907670e3",
+      "a7f61b204b3b8eee2961141d126bf71ca67a78376520c3db6eb85fd4c1709ad2"
     ]),
     EAHttpRequest: Object.freeze([
       "76996922678762db2333635fa82497a8cf0c1af13f8faf36222c0257504bc6d1",
-      "6462b03eecc934b5adbd080244d072f14472e2490d9c60e806287f9777b79d5f"
+      "6462b03eecc934b5adbd080244d072f14472e2490d9c60e806287f9777b79d5f",
+      "cb4395e31661f90290ee7207c16579590b42624daf292bb4c3ccc096438f6385"
     ]),
     "UTHttpRequest.prototype.setPath": Object.freeze([
       "a76f0ea6f31e1a7a2183347d5c8f4867a2d85b9eacf083b1dcd58b8dffcce0df",
-      "1f500395395f7880a45b9fbd1e6061f6fe00033f60d38540e7d8740e2e5a42aa"
+      "1f500395395f7880a45b9fbd1e6061f6fe00033f60d38540e7d8740e2e5a42aa",
+      "4d698f27f14caeaeff448ceef8a982d253afc0e1e8c5dbc8929e3d22f4b55421"
     ]),
     "UTHttpRequest.prototype.send": Object.freeze([
       "da2f34a13796aff01549443c202cf642dd03f1b2cb5c59fd7dc97ee128e51e81",
-      "003bd9ad5714a9d3a32ac0bbf410df551bad71bcda7aee6607cc2624e70de9fa"
+      "003bd9ad5714a9d3a32ac0bbf410df551bad71bcda7aee6607cc2624e70de9fa",
+      "75f91541a8c7508ea8135828787059c9b1ef83e1f9f3c0d522936da9b718dfeb"
     ]),
     "EAHttpRequest.prototype.send": Object.freeze([
       "d19611a15440170b86573c0de3ddcc378cdc9990372fcade371af71383175452",
-      "bcc3449a7799dd39d8db095d841df121ee58d73ef8756270c3c4e853f36d1d3f"
+      "bcc3449a7799dd39d8db095d841df121ee58d73ef8756270c3c4e853f36d1d3f",
+      "306bfd535a275b05d9c2bd3d577adab7442f7f1e8a7c3055d4ec8758e9770b54"
     ]),
     "EAHttpRequest.prototype.setRequestBody": Object.freeze([
       "b5a39fadfeba1ca87b2e8c7a8d20b3f211d46a2ea36238bf90e5e59b6fe7a3e9",
-      "45d2e19dd341543d9a3c304c8cd8760e768862cb8984256f46b4d456368c26c9"
+      "45d2e19dd341543d9a3c304c8cd8760e768862cb8984256f46b4d456368c26c9",
+      "a99d7bdb249d51719676a8c13f95c5eb48839c36d59d089f03e90fe267e71ee4"
     ]),
     "EAHttpRequest.prototype.abort": Object.freeze([
       "a683769393a3a6d7116e57e54a08d76308f05b8c0a5afc262036075d59409419",
-      "18ccf8620ae03031d1e2d3305c9fb8446052f2155b50045c89c3bdf99e61f787"
+      "18ccf8620ae03031d1e2d3305c9fb8446052f2155b50045c89c3bdf99e61f787",
+      "d1640b6b775a4de40eea08d489f3999a807d17ee354708ab28d66df7129eb803"
     ]),
     // FC27 runtime review 2026-10-02: observer notification dispatch was
     // obfuscated again while its decoded contract stayed unchanged. This is
@@ -2680,7 +2703,8 @@
     // Exact source and behavior replay: fc27-notify-observation-2026-10-09.json.
     "EAObservable.prototype.notify": Object.freeze([
       "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2",
-      "e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1"
+      "e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1",
+      "114bf518afacbff43677c2c0d48465606bb51ef26380c4868d9b0c7127a38d35"
     ])
   });
   function isFc27ClubCompatibleHash(path, hash) {
@@ -3137,8 +3161,15 @@
   var FC27_STREAMLINED_STORAGE_HASH = "29b26cfe38eed39262f3976c7e122329703b37572dae41d36365966c082fab4e";
   var FC27_STREAMLINED_STORAGE_QUERY_HASH = "2e4fc68dd8d9b1fce716adeb21f09793c836545829ff0a138d4c86e2d06d404c";
   var FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES = Object.freeze({
-    "methods.search": Object.freeze(["77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788"]),
-    "methods.query": Object.freeze(["e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f"])
+    // Public build 11502 decodes to the same reviewed search/query bodies.
+    "methods.search": Object.freeze([
+      "77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788",
+      "54f8dd51a056c108cdf029353c74d413ac0836c5eb402f090ee53c770ac1480a"
+    ]),
+    "methods.query": Object.freeze([
+      "e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f",
+      "4921b8dba2d7b6f59eae99c1eabdedea8f2e94a35e3633e4b231a66cf0446887"
+    ])
   });
   async function createFc27StreamlinedStorageReader(root, { onEntity = null, nativeReauth = false } = {}) {
     const context = readFc27Context(root), dao = root.services?.Item?.itemDao;
@@ -7644,6 +7675,83 @@
     const query = { start: 0, count: 20, level: laneLevel, league: ranked[0].league };
     return usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query)) ? null : query;
   }
+  function cappedPositionSupport(clubs, slots, clubCap) {
+    const slotStart = 2 + clubs.size, graph = Array.from({ length: slotStart + slots.length }, () => []);
+    const add3 = (from, to, remaining) => {
+      const arc = { to, back: graph[to].length, remaining };
+      graph[to].push({ to: from, back: graph[from].length, remaining: 0 });
+      graph[from].push(arc);
+    };
+    slots.forEach((_, i) => add3(slotStart + i, 1, 1));
+    let group = 2;
+    for (const cards of clubs.values()) {
+      add3(0, group, Math.min(cards.length, clubCap));
+      for (const card of cards) {
+        const node = graph.push([]) - 1;
+        add3(group, node, 1);
+        slots.forEach((position, i) => {
+          if (card.positions.includes(position)) add3(node, slotStart + i, 1);
+        });
+      }
+      group++;
+    }
+    let filled = 0;
+    while (filled < slots.length) {
+      const previous = Array(graph.length).fill(null), queue = [0];
+      previous[0] = [];
+      for (let i = 0; i < queue.length && !previous[1]; i++) {
+        const from = queue[i];
+        for (const arc of graph[from]) if (arc.remaining && !previous[arc.to]) {
+          previous[arc.to] = [from, arc];
+          queue.push(arc.to);
+        }
+      }
+      if (!previous[1]) break;
+      for (let node = 1; node !== 0; ) {
+        const [from, arc] = previous[node];
+        arc.remaining--;
+        graph[node][arc.back].remaining++;
+        node = from;
+      }
+      filled++;
+    }
+    return filled;
+  }
+  function planPuzzleCappedLeagueDiscovery({ candidates, rules, slots, levels: levels2, usedQueries, resolveClub }) {
+    const modes2 = { "same-league": "min", "same-club": "max", "distinct-clubs": "max", "distinct-nations": "min" };
+    if (rules.some((rule) => Object.hasOwn(modes2, rule.kind) ? rule.mode !== modes2[rule.kind] : !["min-quality", "min-chemistry"].includes(rule.kind))) return null;
+    const leagueMin = Math.max(0, ...rules.filter((rule) => rule.kind === "same-league" && rule.mode === "min").map((rule) => rule.value));
+    const clubCap = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "same-club" && rule.mode === "max").map((rule) => rule.value));
+    const clubLimit = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "distinct-clubs" && rule.mode === "max").map((rule) => rule.value));
+    const nationMin = Math.max(1, ...rules.filter((rule) => rule.kind === "distinct-nations" && rule.mode === "min").map((rule) => rule.value));
+    const ratingFloor = Math.max(1, ...rules.filter((rule) => rule.kind === "min-quality").map((rule) => rule.minRating));
+    if (leagueMin <= clubCap || clubLimit >= slots.length || clubCap * clubLimit < slots.length || !rules.some((rule) => rule.kind === "min-chemistry" && rule.value > 0) || !usedQueries.some((query2) => !query2.league && !query2.nation && !query2.team && query2.start === 0)) return null;
+    const groups = /* @__PURE__ */ new Map(), seen = /* @__PURE__ */ new Set();
+    for (const card of candidates) {
+      if (seen.has(card.definitionId) || card.rating < ratingFloor || !levels2.includes(level(quality(card.rating))) || !card.positions?.some((position) => slots.includes(position))) continue;
+      seen.add(card.definitionId);
+      const club = resolveClub(card.teamId);
+      if (!Number.isSafeInteger(club) || club <= 0) continue;
+      if (!groups.has(card.leagueId)) groups.set(card.leagueId, /* @__PURE__ */ new Map());
+      const clubs = groups.get(card.leagueId);
+      if (!clubs.has(club)) clubs.set(club, []);
+      clubs.get(club).push(card);
+    }
+    const ranked = [...groups].map(([league, clubs]) => {
+      const cards = [...clubs.values()].flat();
+      const capacity = [...clubs.values()].map((group) => Math.min(group.length, clubCap)).sort((a, b) => b - a).slice(0, clubLimit).reduce((sum2, count3) => sum2 + count3, 0);
+      return {
+        league,
+        cards,
+        clubCount: clubs.size,
+        nationalities: new Set(cards.map((card) => card.nationId)).size,
+        support: Math.min(capacity, cappedPositionSupport(clubs, slots, clubCap))
+      };
+    }).filter((group) => group.support > 0).sort((a, b) => Number(b.clubCount > 1) - Number(a.clubCount > 1) || b.support - a.support || b.clubCount - a.clubCount || b.nationalities - a.nationalities || a.league - b.league);
+    const query = ranked.flatMap(({ league }) => levels2.map((level2) => ({ start: 0, count: 20, level: level2, league }))).find((next) => !usedQueries.some((old) => old.league === next.league && old.level === next.level && old.start === next.start));
+    const focus = ranked.find((group) => group.support === slots.length && group.clubCount <= clubLimit && group.nationalities >= nationMin);
+    return { query: query ?? null, focus: focus ? new Set(focus.cards.map((card) => card.definitionId)) : null };
+  }
   function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
     if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || !Array.isArray(brickIndices)) return null;
     const required2 = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
@@ -8304,6 +8412,21 @@
       academyEnrolled: false,
       catalogRef: `fc27:${item2.definitionId}`
     }));
+  }
+  function discoverFc27PuzzleCappedLeague(input, owned2, entries2, usedQueries) {
+    const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+    const resolveClub = createFc27ClubResolver(input.clubLinks);
+    if (parsed.status !== "observed" || !Array.isArray(input.challenge.formation?.positions) || !resolveClub) return null;
+    const slots = input.challenge.formation.positions.filter((_, index) => !input.challenge.brickIndices.includes(index));
+    if (slots.length !== required(input)) return null;
+    return planPuzzleCappedLeagueDiscovery({
+      candidates: [...owned2, ...puzzleMarketValueCandidates(input, entries2)],
+      rules: parsed.rules,
+      slots,
+      usedQueries,
+      resolveClub,
+      levels: allowedFc27MarketTiers(parsed.rules, input.policy).map((tier) => tier.level)
+    });
   }
   function projectSuggestion(squad, facts2, requirementCount) {
     const purchases = squad.flatMap((item2, slot) => item2?.catalogRef ? [{ ...item2, slot, quantity: 1 }] : []);
@@ -10161,6 +10284,12 @@
             ...item2,
             estimatedUnitPrice: materialPrices.get(item2.definitionId)
           })) }, [], [], input) : [];
+          const cappedLeagueDiscovery = () => loadPublicPrices && adaptiveBudget && jointSearch && !incumbent ? discoverFc27PuzzleCappedLeague(
+            input,
+            ownedPool.filter((card) => !totalValueMode || materialPrices.has(card.definitionId)),
+            [...entries2.values()].filter((card) => !unavailable.has(card.definitionId)),
+            usedQueries
+          ) : null;
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same15(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
             assertOptimization();
@@ -10186,14 +10315,24 @@
             diagnostics.catalogPages++;
             diagnostics.catalogCandidates = entries2.size;
             reportProgress();
+            const discovery = cappedLeagueDiscovery();
+            if (usedQueries.length === 1 && discovery?.query && !discovery.focus) {
+              pendingQueries = [discovery.query, ...pendingQueries.filter((next) => !same15(next, discovery.query))];
+              continue;
+            }
+            let focusedIds = null, deferredPrices = [];
             if (loadPublicPrices) {
               const candidates = marketCandidates(input, [...entries2.values()]).filter((item2) => !references.has(item2.definitionId));
-              await priceCandidates(candidates);
+              if (discovery?.focus) {
+                deferredPrices = candidates.filter((card) => !discovery.focus.has(card.definitionId));
+                if (deferredPrices.length) focusedIds = discovery.focus;
+              }
+              await priceCandidates(focusedIds ? candidates.filter((card) => focusedIds.has(card.definitionId)) : candidates);
             }
             for (; ; ) {
               assertOptimization();
               diagnostics.stage = "local-market-search";
-              const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId));
+              const available = [...entries2.values()].filter((item2) => !unavailable.has(item2.definitionId) && (!focusedIds || focusedIds.has(item2.definitionId)));
               const prices = loadPublicPrices ? new Map([...quotes].map(([id16, quote2]) => [id16, quote2.price])) : null;
               if ((loadPublicPrices || adaptiveBudget) && baseSearchRemaining() === 0) {
                 diagnostics.optimizationBudgetExhausted = true;
@@ -10203,7 +10342,7 @@
                 diagnostics.localReason = "FC27_PUZZLE_SEARCH_LIMIT";
                 break;
               }
-              const remainingLanes = Math.max(1, 4 - usedQueries.length);
+              const remainingLanes = Math.max(1, 4 - usedQueries.length) + (focusedIds ? 1 : 0);
               const adaptivePass = Boolean(adaptiveBudget && !incumbent && jointSearch);
               const passBudget = Math.max(1, Math.min(
                 adaptiveBudget && !adaptivePass ? 5e4 : Infinity,
@@ -10353,6 +10492,10 @@
                 return { ...plan, purchases, estimatedCost, ...values8 };
               }).filter((plan) => !totalValueMode || Number.isSafeInteger(plan.materialValue) && (materialCeiling === null || plan.materialValue < materialCeiling)).sort((a, b) => comparePuzzlePlans(a, b, objective()));
               if (priced3.length) {
+                if (focusedIds) {
+                  diagnostics.searchComplete = false;
+                  diagnostics.optimalWithinPool = false;
+                }
                 adaptiveBudget?.markFeasible();
                 if (totalValueMode) optimizationDeadline = Math.min(optimizationDeadline, now() + 3e4);
                 diagnostics.initialEstimatedCost ??= priced3[0].estimatedCost;
@@ -10368,6 +10511,11 @@
                 }
                 if (!refinementCards(refinementPlan(incumbent[0])).length) return await finishIncumbent();
                 break;
+              }
+              if (focusedIds && baseSearchRemaining() > 0) {
+                focusedIds = null;
+                await priceCandidates(deferredPrices);
+                continue;
               }
               if (!removed) break;
               diagnostics.replans++;
@@ -10388,7 +10536,8 @@
                 { usedQueries }
               );
               if (nextRoute.status !== "ready") return finish(nextRoute);
-              pendingQueries = [...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same15(used, candidate)) && all.findIndex((other) => same15(other, candidate)) === index);
+              const affinity = cappedLeagueDiscovery()?.query;
+              pendingQueries = [...affinity ? [affinity] : [], ...nextRoute.queries, ...pendingQueries].filter((candidate, index, all) => !usedQueries.some((used) => same15(used, candidate)) && all.findIndex((other) => same15(other, candidate)) === index);
             }
           }
           if (incumbent) return await finishIncumbent();
@@ -10426,23 +10575,28 @@
   var compatibleHashes = Object.freeze({
     "UTItemDAO.prototype.searchConceptItems": [
       "edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc",
-      "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1"
+      "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1",
+      "739b5272306a16e776699f37171f4c1ab3d7a88d280f134639dd2ff8de3ed36e"
     ],
     "UTItemDAO.prototype.searchTransferMarket": [
       "dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111",
-      "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2"
+      "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2",
+      "92dde52b00c0fa917d74a691c667dbc677115de454efd7def022b71cbe595b81"
     ],
     "FCAuthenticationService.prototype.getIdentifier": [
       "963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2",
-      "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339"
+      "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339",
+      "4e8f0c7ba03616e7bc1972cacd86011f2608710a8f95083cb0f87b6dffb6b648"
     ],
     "Identification.prototype.handleRequest": [
       "b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949",
-      "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291"
+      "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291",
+      "8fcbcbf0e372d8332450ab1c1c8146312b8ddaff419989aba880210c24123142"
     ],
     "Identification.prototype.handleResponse": [
       "2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4",
-      "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f"
+      "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f",
+      "68851be8fb88440c12968db577d0d8e59f51cd49c4482e3a2e0916e0268bc1b1"
     ]
   });
   var october12Hashes = Object.freeze({
@@ -12146,11 +12300,13 @@
   var FC27_BUY_COMPATIBLE_HASHES = Object.freeze({
     "service.bid": Object.freeze([
       "3d2e79b2534121b761fec1924de8b129270b8cd41243f4a368db49a9857ff98a",
-      "36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2"
+      "36696d61ae035bee3b31c5dbe1b38ad53726bfd56824af110e1f0dc17c0e4dd2",
+      "17a2518ecc156995053ffc6b089529a093a8cef030496942ab5f2faaddfc34ea"
     ]),
     "service.move": Object.freeze([
       "5ab5e0676e5323587ff68b71815fbe031a1e26742defe782c4f2b00a7f1889ef",
-      "92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93"
+      "92a1c1ef0090044843b20b186abf2f8bc9fb1ad7e2b3dd17cdd33948aa038c93",
+      "d756ff4194c9bfb7df9e0ddf181d532732604a0696895bd09a8da323fb5369ad"
     ])
   });
   var same22 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -46265,6 +46421,26 @@ ${version ?? ""}`;
   var roadmapEntry = (entry) => entry?.area === "gallery" && ["roadmap-plan", "roadmap-phase", "roadmap-checkpoint", "roadmap-reconcile", "grade-plan", "grade-overview"].includes(entry.event);
   var performanceEntry = (entry) => entry?.area === "pricing" && ["quote-batch", "futbin-batch-result"].includes(entry.event) || roadmapEntry(entry) || entry?.area === "streamlined" && (["planning-read", "plan"].includes(entry.event) || entry.event?.startsWith("market-quote-"));
   var MAX_STRING_LENGTH = 160;
+  var inventoryExclusionReasons = [
+    "points-unknown",
+    "rating",
+    "fsu-gold-range",
+    "special",
+    "evolution",
+    "cosmetic",
+    "academy",
+    "protected",
+    "league",
+    "pile",
+    "concept",
+    "trade",
+    "loan",
+    "untradeable",
+    "locked",
+    "active-squad",
+    "eligibility-ineligible",
+    "eligibility-unknown"
+  ];
   var marketTaskReasons = /* @__PURE__ */ new Set([
     "MARKET_PROVIDER_FAILED",
     "MARKET_AUTHENTICATION",
@@ -46424,6 +46600,7 @@ ${version ?? ""}`;
     "acceptedInventoryCount",
     "eligibleInventoryCount",
     "filteredInventoryCount",
+    "inventoryReservedCount",
     "reservationExcludedCount",
     "reservationTargetCount",
     "reservationReferenceCount",
@@ -46533,7 +46710,7 @@ ${version ?? ""}`;
       "dao.submitPlayers",
       "dao.initiateOneClickChallenge"
     ].includes(input.method)) entry.method = input.method;
-    if (typeof input.methodPath === "string" && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath) || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath) || ["events.markClubCacheDirty", "call.squad.setPlayers"].includes(input.methodPath))) entry.methodPath = input.methodPath;
+    if (typeof input.methodPath === "string" && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath) || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath) || ["UTHttpRequest", "EAHttpRequest", "events.markClubCacheDirty", "call.squad.setPlayers"].includes(input.methodPath))) entry.methodPath = input.methodPath;
     if (typeof input.observedHash === "string" && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === "oversized")) entry.observedHash = input.observedHash;
     if (typeof input.expectedHash === "string" && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
     for (const key2 of STRING_FIELDS) {
@@ -46547,6 +46724,14 @@ ${version ?? ""}`;
     for (const key2 of BOOLEAN_FIELDS) {
       if (typeof input[key2] === "boolean") entry[key2] = input[key2];
     }
+    if (entry.area === "streamlined" && entry.event === "plan" && input.inventoryExclusions && typeof input.inventoryExclusions === "object") {
+      const counts = {};
+      for (const reason of inventoryExclusionReasons) {
+        const count3 = Object.getOwnPropertyDescriptor(input.inventoryExclusions, reason)?.value;
+        if (Number.isSafeInteger(count3) && count3 > 0 && count3 <= 2e4) counts[reason] = count3;
+      }
+      entry.inventoryExclusions = Object.freeze(counts);
+    }
     if (input.area === "gallery" && Array.isArray(input.pendingTasks)) entry.pendingTasks = input.pendingTasks.slice(0, 13).flatMap((task) => {
       const id16 = Number.isSafeInteger(task?.setId) && task.setId > 0 && task.setId < 1e9 ? task.setId : typeof task?.setId === "string" && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
       if (id16 === null || !["verify", "refine"].includes(task.phase)) return [];
@@ -46559,7 +46744,11 @@ ${version ?? ""}`;
     if (!entry.area || !entry.event) return null;
     return Object.freeze(entry);
   }
-  var copyEntry = (entry) => ({ ...entry, ...entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map((task) => ({ ...task })) } : {} });
+  var copyEntry = (entry) => ({
+    ...entry,
+    ...entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map((task) => ({ ...task })) } : {},
+    ...entry.inventoryExclusions ? { inventoryExclusions: { ...entry.inventoryExclusions } } : {}
+  });
   function validSavedEntry(value) {
     return sanitizeEntry(value, () => value?.at);
   }
@@ -46995,6 +47184,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
       FC27_RECOVERY_REQUIRED: "\u5F53\u524D\u8D26\u53F7\u6709\u5F85\u6838\u5BF9\u7684\u4F20\u7EDF SBC \u63D0\u4EA4\u8BB0\u5F55\uFF0C\u8BF7\u5148\u6062\u590D\u8BE5\u6B21\u63D0\u4EA4\u3002",
       FC27_STREAMLINED_INITIATION_UNVERIFIED: "\u8BF7\u5148\u901A\u8FC7 EA \u539F\u751F\u754C\u9762\u5F00\u59CB\u6B64 SBC\uFF0C\u518D\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002",
       FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: "\u5F53\u524D\u6784\u5EFA\u672A\u542F\u7528\u8D21\u732E\u63A5\u53E3\u3002",
+      FC27_TRANSACTION_METHOD_UNREVIEWED: "EA \u9875\u9762\u7248\u672C\u517C\u5BB9\u6821\u9A8C\u672A\u901A\u8FC7\u3002\u65B9\u6848\u53EF\u4EE5\u67E5\u770B\uFF0C\u4F46\u4E0D\u4F1A\u4E70\u5361\u6216\u8D21\u732E\uFF1B\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
       FC27_STREAMLINED_RECONCILIATION_REQUIRED: "\u672C\u6B21\u6295\u5165\u7ED3\u679C\u5C1A\u5F85\u6838\u5BF9\uFF0C\u8BF7\u70B9\u51FB\u201C\u6838\u5BF9\u5E76\u6062\u590D\u201D\uFF0C\u4E0D\u8981\u91CD\u590D\u6295\u5165\u3002",
       FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: "EA \u5DF2\u8FD4\u56DE\u672C\u6279\u5B8C\u6210\u56DE\u6267\uFF0C\u4F46\u5F52\u96F6\u540E\u7684 SBC \u72B6\u6001\u5B58\u5728\u51B2\u7A81\uFF0C\u6682\u672A\u7ED3\u6E05\u8BB0\u5F55\u3002\u4E0D\u8981\u91CD\u65B0\u4E70\u5361\u6216\u91CD\u590D\u6295\u5165\uFF1B\u4FDD\u7559\u8BB0\u5F55\u5E76\u5BFC\u51FA\u8BCA\u65AD\u3002",
       FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: "EA \u8FD4\u56DE\u7684 SBC \u5B8C\u6210\u6B21\u6570\u683C\u5F0F\u5F02\u5E38\uFF0C\u5DF2\u4FDD\u7559\u672C\u6279\u8BB0\u5F55\u3002\u8BF7\u52FF\u91CD\u590D\u6295\u5165\uFF1B\u53EF\u7A0D\u540E\u6838\u5BF9\u5E76\u6062\u590D\u3002",
@@ -47611,12 +47801,28 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
       if (result.policy?.goldRange?.[1] < 99) {
         add3(output, "small", `FSU \u91D1\u5361\u4E0A\u9650 ${number4(result.policy.goldRange[1])}\uFF1A\u9AD8\u4E8E\u8BE5\u4E0A\u9650\u7684\u5E93\u5B58\u5361\u53D7\u4FDD\u62A4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6295\u5165\uFF1B\u5E02\u573A\u8865\u5361\u4ECD\u6309\u72EC\u7ACB\u5E02\u573A\u4E0A\u9650\u3002`);
       }
-      const exclusionBuckets = result.inventorySelection?.buckets;
+      const stock = result.inventorySelection, exclusionBuckets = stock?.buckets;
+      if (stock) {
+        const reserved = stock.reservedCount ?? 0;
+        const used = result.items?.filter((item2) => item2.source === "inventory").length ?? 0;
+        add3(output, "small", `\u672C\u6B21\u5E93\u5B58\u5FEB\u7167\uFF1A\u8BFB\u53D6 ${number4(stock.readCount + reserved)} \u5F20 \xB7 \u53EF\u7528 ${number4(stock.eligibleCount)} \u5F20 \xB7 \u672C\u65B9\u6848\u4F7F\u7528 ${number4(used)} \u5F20${reserved ? ` \xB7 \u65E7\u8BB0\u5F55\u4FDD\u7559 ${number4(reserved)} \u5F20` : ""}\u3002${stock.eligibleCount === 0 ? "\u5F53\u524D\u6CA1\u6709\u901A\u8FC7\u7B5B\u9009\u7684\u5E93\u5B58\u5361\u3002" : ""}`);
+      }
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
         const details = add3(output, "details");
-        add3(details, "summary", `\u672A\u91C7\u7528\u5E93\u5B58 ${number4(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} \u5F20`);
+        add3(details, "summary", `\u5E93\u5B58\u7B5B\u9009\u6392\u9664 ${number4(stock.readCount - stock.eligibleCount)} \u5F20`);
         const labels2 = {
+          "points-unknown": "\u79EF\u5206\u672A\u9A8C\u8BC1",
+          rating: "\u8D85\u51FA\u5E93\u5B58\u8BC4\u5206\u8303\u56F4\u6216\u8BC4\u5206\u672A\u77E5",
           "fsu-gold-range": "\u4E0D\u5728 FSU \u91D1\u5361\u8BC4\u5206\u8303\u56F4",
+          special: "\u7279\u6B8A\u5361\u6216\u5361\u79CD\u672A\u786E\u8BA4",
+          evolution: "\u8FDB\u5316\u5361\u6216\u8FDB\u5316\u72B6\u6001\u672A\u786E\u8BA4",
+          cosmetic: "\u88C5\u9970\u5361\u6216\u72B6\u6001\u672A\u786E\u8BA4",
+          academy: "\u5B66\u9662\u5361\u6216\u72B6\u6001\u672A\u786E\u8BA4",
+          protected: "\u53D7\u4FDD\u62A4\u7684\u5361",
+          league: "\u6392\u9664\u7684\u8054\u8D5B\u6216\u8054\u8D5B\u672A\u77E5",
+          concept: "\u6982\u5FF5\u5361\u6216\u72B6\u6001\u672A\u786E\u8BA4",
+          trade: "\u4EA4\u6613\u72B6\u6001\u4E0D\u7B26",
+          loan: "\u79DF\u501F\u6216\u4F7F\u7528\u671F\u9650\u672A\u786E\u8BA4",
           untradeable: "Only Untradeable \u4E0D\u6EE1\u8DB3",
           pile: "\u4E0D\u652F\u6301\u7684\u5E93\u5B58\u4F4D\u7F6E",
           locked: "FSU \u624B\u52A8\u9501\u5361\u4FDD\u62A4",
@@ -47624,6 +47830,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
           "eligibility-ineligible": "\u4E0D\u7B26\u5408 SBC \u6761\u4EF6",
           "eligibility-unknown": "SBC \u8D44\u683C\u672A\u786E\u8BA4"
         };
+        add3(details, "small", Object.entries(stock.excluded ?? {}).map(([reason, count3]) => `${labels2[reason] ?? reason} \xD7${number4(count3)}`).join(" \xB7 "));
         add3(details, "small", exclusionBuckets.map(
           (bucket) => `${labels2[bucket.reason] ?? bucket.reason} \xB7 ${bucket.pile === "storage" ? "Storage" : bucket.pile === "club" ? "Club" : bucket.pile} \xB7 ${bucket.rating == null ? "\u8BC4\u5206\u672A\u77E5" : `${number4(bucket.rating)}\u7EA7`} \xD7${number4(bucket.count)}`
         ).join("; "));
@@ -48667,8 +48874,10 @@ ${detail.join(" \xB7 ")}`;
             bucket.count++;
             exclusionBuckets.set(key2, bucket);
           }
+          const inventoryReservedCount = rawInput.inventory.length - input.inventory.length;
           const inventorySelection = {
             readCount: input.inventory.length,
+            reservedCount: inventoryReservedCount,
             eligibleCount: filtered.items.length,
             excluded: { ...filtered.excluded },
             buckets: [...exclusionBuckets.values()].sort((a, b) => b.count - a.count || String(a.reason).localeCompare(String(b.reason))).slice(0, 24)
@@ -48975,13 +49184,15 @@ ${detail.join(" \xB7 ")}`;
             inventoryTradeabilityUnknown: inventoryStats.tradeability?.unknown,
             eligibleInventoryCount: filtered.items.length,
             filteredInventoryCount,
+            inventoryReservedCount,
+            inventoryExclusions: inventorySelection.excluded,
             acceptedInventoryCount: result.items?.filter((item2) => item2.source === "inventory").length,
             routeInventoryCount: result.items?.filter((item2) => item2.source === "inventory").length,
             routeMarketCount: result.items?.filter((item2) => item2.source === "market").length,
             routeMaterialValue: result.materialValue,
             excludedTradeCount: excluded.trade,
             excludedPileCount: excluded.pile,
-            excludedEligibilityCount: Object.entries(excluded).filter(([key2]) => key2.startsWith("eligibility-")).reduce((sum2, [, count3]) => sum2 + count3, 0),
+            excludedEligibilityCount: Object.entries(filtered.excluded).filter(([key2]) => key2.startsWith("eligibility-")).reduce((sum2, [, count3]) => sum2 + count3, 0),
             excludedGoldRangeCount: filtered.excluded?.["fsu-gold-range"],
             fsuGoldMax: input.policy.goldRange?.[1],
             reason: result.reason
@@ -51046,10 +51257,7 @@ ${detail.join(" \xB7 ")}`;
     ["methods.notify", "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2"]
   ]);
   var FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES = Object.freeze({
-    "methods.notify": Object.freeze([
-      "626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2",
-      "e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1"
-    ])
+    "methods.notify": FC27_CLUB_COMPATIBLE_HASHES["EAObservable.prototype.notify"]
   });
   var setFields = ["totalSubmittedScore", "challengesCompletedCount", "timesCompleted"];
   async function createFc27StreamlinedPageMaintenance(root, {
@@ -52828,7 +53036,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.114" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.118" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53243,8 +53451,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.114"}`,
-    version: "27.0.114",
+    title: `FC Automation Tool ${"27.0.118"}`,
+    version: "27.0.118",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

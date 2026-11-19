@@ -6,7 +6,8 @@ import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from '
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
-import { planPuzzleNationalityAffinity,planPuzzleLeagueMinimumAffinity,planPuzzleNationalMinimumAffinity } from './puzzle-query-affinity.js';
+import { planPuzzleNationalityAffinity, planPuzzleLeagueMinimumAffinity, planPuzzleNationalMinimumAffinity,
+  planPuzzleCappedLeagueDiscovery } from './puzzle-query-affinity.js';
 import { planPuzzleCappedNationClubFillers } from './puzzle-club-diversity-route.js';
 import { comparePuzzlePlans } from './puzzle-plan-ranking.js';
 
@@ -463,6 +464,18 @@ export function marketCandidates(input, entries) {
     leagueId: item.leagueId, teamId: item.teamId, positions: [...item.positions], groups: [...item.groups],
     special: false, evolution: false, cosmetic: false, type: 'player', concept: false, academyEnrolled: false,
     catalogRef: `fc27:${item.definitionId}` }));
+}
+
+export function discoverFc27PuzzleCappedLeague(input, owned, entries, usedQueries) {
+  const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+  const resolveClub = createFc27ClubResolver(input.clubLinks);
+  if (parsed.status !== 'observed' || !Array.isArray(input.challenge.formation?.positions) || !resolveClub) return null;
+  const slots = input.challenge.formation.positions.filter((_, index) => !input.challenge.brickIndices.includes(index));
+  if (slots.length !== required(input)) return null;
+  return planPuzzleCappedLeagueDiscovery({
+    candidates: [...owned, ...puzzleMarketValueCandidates(input, entries)], rules: parsed.rules, slots, usedQueries, resolveClub,
+    levels: allowedFc27MarketTiers(parsed.rules, input.policy).map(tier => tier.level),
+  });
 }
 
 function projectSuggestion(squad, facts, requirementCount) {

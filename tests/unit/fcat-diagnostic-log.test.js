@@ -310,6 +310,22 @@ it('keeps bounded transaction summaries across public quote floods and reloads w
   expect((await reloaded.exportPayload()).transactionResults[0].count).toBe(5);
 });
 
+it('retains exact Streamlined inventory exclusion totals after pricing events without arbitrary fields', async () => {
+  const t = harness({ maxEntries: 1, maxCriticalEntries: 2 });
+  await t.log.record({ area: 'streamlined', event: 'plan', inventoryCount: 196, eligibleInventoryCount: 0,
+    inventoryReservedCount: 2, filteredInventoryCount: 194, inventoryExclusions: {
+      special: 6, 'fsu-gold-range': 4, 'points-unknown': 184, 'eligibility-unknown': -1, privateKey: 123456789 } });
+  for (let count = 0; count < 140; count++) await t.log.record({ area: 'pricing', event: 'public-quote', count });
+  const payload = await createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set }).exportPayload();
+  expect(payload.entries.some(row => row.event === 'plan')).toBe(false);
+  const plan = payload.performanceEntries.find(row => row.event === 'plan');
+  expect(plan).toMatchObject({ inventoryReservedCount: 2, filteredInventoryCount: 194 });
+  expect(plan.inventoryExclusions).toEqual({ special: 6, 'fsu-gold-range': 4, 'points-unknown': 184 });
+  plan.inventoryExclusions.special = 44;
+  const reloaded = await createFcatDiagnosticLog({ gmGetValue: t.get, gmSetValue: t.set }).exportPayload();
+  expect(reloaded.performanceEntries.find(row => row.event === 'plan').inventoryExclusions.special).toBe(6);
+});
+
 it('exports bounded public-version price provenance but never account or transaction identities', async () => {
   const t = harness();
   await t.log.record({ area: 'pricing', event: 'public-quote', source: 'futgg', definitionId: 71494,

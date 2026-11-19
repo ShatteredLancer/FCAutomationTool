@@ -15,19 +15,21 @@ import { createStreamlinedJournal } from '../../src/streamlined/journal.js';
 import { runStreamlinedRoutes, expandStreamlinedRoute } from '../../src/streamlined/routes.js';
 import { createStreamlinedPurchaseScope, approvedStreamlinedPurchaseRoute, initialStreamlinedPurchaseDemand } from '../../src/streamlined/purchase-scope.js';
 import { createStreamlinedPlan } from '../../src/streamlined/plan.js';
+import rarity11502 from '../fixtures/fc27-item-rarity-11502.json';
 
 afterEach(() => vi.useRealTimers());
 
-async function fixture({ fault = null, innerState = 'rejected', reloadDelta = null } = {}) {
+async function fixture({ fault = null, innerState = 'rejected', reloadDelta = null, useNativeRarity = false } = {}) {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-08T03:01:00Z'));
   const now = () => Date.now(), f = streamlinedRuntime({ targetScore: 16000,
     endTime: reloadDelta === null ? 0 : Math.floor(now() / 1000) + 3600 });
   f.root.info.build.untradeable = false; f.root.info.set.goldenrange = 90;
+  if (useNativeRarity) f.root.ItemRarity = { ...rarity11502.enum };
   f.root.ItemPile.PURCHASED = 1; f.root.MAX_NEW_ITEMS = 100; f.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 0, inc: 50 }] };
   const events = []; const memory = new Map(), pending = new Map(), buys = [], moves = [], contributions = [], allAttempts = [];
   const forbiddenIds = [1, 2, 3, 4, 5, 6]; let serial = 1000, held = false, fired = false;
   f.root.repositories.Item.numItemsInCache = () => pending.size;
-  const facts = { _rating: 84, sbsScore: 830, tradable: true, utasPile: 7 };
+  const facts = { _rating: 84, sbsScore: 830, tradable: true, utasPile: 7, ...(useNativeRarity ? { _rareflag: 1 } : {}) };
   f.state.playerFacts = facts;
   f.state.players = [{ id: 101, resourceId: 201 }, { id: 102, resourceId: 202 }];
   f.root.repositories.Item.club.items._collection = Object.fromEntries(f.state.players.map(raw => [raw.id, f.root.factories.Item.createItem(raw)]));
@@ -170,8 +172,9 @@ async function fixture({ fault = null, innerState = 'rejected', reloadDelta = nu
       moves: moves.length, contributedIds: contributions.flat(), held }) };
 }
 
-it.each([null, -1, 1])('replays recovery through completion without repeating writes after reload (deadline delta=%s)', async reloadDelta => {
-  const f = await fixture({ reloadDelta });
+it.each([[null, false], [-1, false], [1, false], [null, true]])(
+  'replays recovery through completion without repeating writes (deadline delta=%s, build 11502 rarity=%s)', async (reloadDelta, useNativeRarity) => {
+  const f = await fixture({ reloadDelta, useNativeRarity });
   const initial = f.report();
   let execution = await f.execution();
   expect(await finishNativeIo(execution.recoverPurchase(f.plan.challenge))).toMatchObject({ status: 'recovered' });

@@ -2,6 +2,7 @@ import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context } from './fc27-local-read.js';
 import { locateFc27StreamlinedPage, projectFc27StreamlinedChallenge } from './fc27-streamlined-read.js';
 import { verifyFc27Methods } from './fc27-transaction-transport.js';
+import { FC27_CLUB_COMPATIBLE_HASHES } from './fc27-club-read.js';
 import { createFc27StreamlinedCache } from './fc27-streamlined-cache.js';
 import { integer, same, fail } from '../../streamlined/contract.js';
 import { streamlinedResetProof } from '../../streamlined/completion.js';
@@ -10,14 +11,10 @@ export const FC27_STREAMLINED_PAGE_METHODS = Object.freeze([
   ['methods.hub', '81e6a860e8929e73fc8cc62db59442b9b45eb8aae900562ac808bd362cc83e80'],
   ['methods.notify', '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2'],
 ]);
-// The October 9 EAObservable source is the reviewed notify implementation
-// under the alias used by this page adapter. Keep this scope-specific: an
-// unknown notify function at another path remains rejected.
+// The alias points to the same reviewed EAObservable prototype method. No
+// other page-local or transport notification method inherits this list.
 export const FC27_STREAMLINED_PAGE_COMPATIBLE_HASHES = Object.freeze({
-  'methods.notify': Object.freeze([
-    '626035e884aceedbca0ba6ddf853134ffeecaba9414b92a6d7a41a78474063f2',
-    'e33f69481d8f6e4b30b05da1f53572d9f072a26135d0a81689977cb772516df1',
-  ]),
+  'methods.notify': FC27_CLUB_COMPATIBLE_HASHES['EAObservable.prototype.notify'],
 });
 const setFields = ['totalSubmittedScore', 'challengesCompletedCount', 'timesCompleted'];
 

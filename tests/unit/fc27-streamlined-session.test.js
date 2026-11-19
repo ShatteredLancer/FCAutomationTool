@@ -184,6 +184,8 @@ it.each([83, 85])('explains inventory protection with FSU max %s without extra q
   const result = await session.plan({ objective: 'lowest-value',});
   expect(result.inventorySelection).toMatchObject({ readCount: 4, eligibleCount: goldenMax === 83 ? 1 : 3,
     excluded: goldenMax === 83 ? { 'fsu-gold-range': 2, untradeable: 1 } : { untradeable: 1 } });
+  expect(diagnosticLog.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan', inventoryReservedCount: 0,
+    eligibleInventoryCount: result.inventorySelection.eligibleCount, inventoryExclusions: result.inventorySelection.excluded }));
   if (goldenMax === 83) {
     expect(result.inventorySelection.buckets).toEqual(expect.arrayContaining([
       { reason: 'fsu-gold-range', pile: 'club', rating: 84, count: 1 },
@@ -203,6 +205,25 @@ it.each([83, 85])('explains inventory protection with FSU max %s without extra q
   const next = await session.selectRoute(alternative?.id ?? result.route.id);
   expect(next.inventorySelection).toEqual(result.inventorySelection);
   expect(next.policy).toEqual(result.policy);
+});
+
+it.each([false, true])('only makes a mixed inventory-first plan when stock passes unchanged protections (safe=%s)', async hasSafeStock => {
+  const c = challenge({ scoreRequirement: 1240 }), diagnosticLog = { record: vi.fn() };
+  const inventory = [safeItem({ id: 1, definitionId: 101, rating: 83, points: 410, pile: 'storage', locked: !hasSafeStock }),
+    safeItem({ id: 2, definitionId: 102, rating: 83, points: 410, activeSquad: true }),
+    safeItem({ id: 3, definitionId: 103, rating: 83, points: null }),
+    safeItem({ id: 4, definitionId: 104, rating: 83, points: 410, special: true })];
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context: c.context, challenge: c }), diagnosticLog,
+    get: async () => null, set: async () => {}, now: () => 100,
+    readInputs: () => ({ context: c.context, challenge: c, inventory, eligibility, assertCurrent() {},
+      policy: { ...policy, protectFsuLockedPlayers: true, protectActiveSquad: true } }),
+    readMarketCandidates: async () => ({ market: [safeItem({ source: 'market', definitionId: 901,
+      rating: 84, points: 830, price: 700, quote: { source: 'futgg', definitionId: 901, price: 700, fetchedAt: 1, expiresAt: 1000 } })] }) });
+  const result = await session.plan({ objective: 'inventory-first', mode: 'inventory-market' });
+  expect(result.route).toMatchObject({ inventoryCount: hasSafeStock ? 1 : 0, marketCount: hasSafeStock ? 1 : 2 });
+  expect(result.items.filter(x => x.source === 'inventory').map(x => x.id)).toEqual(hasSafeStock ? [1] : []);
+  expect(result.inventorySelection).toMatchObject({ readCount: 4, eligibleCount: hasSafeStock ? 1 : 0, excluded: {
+    ...(!hasSafeStock ? { locked: 1 } : {}), 'active-squad': 1, 'points-unknown': 1, special: 1 } });
 });
 
 it.each([

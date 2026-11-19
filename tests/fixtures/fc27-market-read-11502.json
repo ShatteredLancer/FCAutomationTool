@@ -1,0 +1,11 @@
+{
+  "build": 11502,
+  "assetSha256": "328fe5003064d570fb9705f31d7ab8e59f40093d7c1f926432dc3403e7f0e224",
+  "methods": {
+    "UTItemDAO.prototype.searchConceptItems": "739b5272306a16e776699f37171f4c1ab3d7a88d280f134639dd2ff8de3ed36e",
+    "UTItemDAO.prototype.searchTransferMarket": "92dde52b00c0fa917d74a691c667dbc677115de454efd7def022b71cbe595b81",
+    "FCAuthenticationService.prototype.getIdentifier": "4e8f0c7ba03616e7bc1972cacd86011f2608710a8f95083cb0f87b6dffb6b648",
+    "Identification.prototype.handleRequest": "8fcbcbf0e372d8332450ab1c1c8146312b8ddaff419989aba880210c24123142",
+    "Identification.prototype.handleResponse": "68851be8fb88440c12968db577d0d8e59f51cd49c4482e3a2e0916e0268bc1b1"
+  }
+}

@@ -10,6 +10,11 @@ const performanceEntry = entry => entry?.area === 'pricing' && ['quote-batch', '
   || roadmapEntry(entry)
   || entry?.area === 'streamlined' && (['planning-read', 'plan'].includes(entry.event) || entry.event?.startsWith('market-quote-'));
 const MAX_STRING_LENGTH = 160;
+// The Streamlined planner's primary rejection buckets, not arbitrary user or
+// native field names. Keep exact counts together with the retained plan row.
+const inventoryExclusionReasons = ['points-unknown', 'rating', 'fsu-gold-range', 'special', 'evolution', 'cosmetic', 'academy',
+  'protected', 'league', 'pile', 'concept', 'trade', 'loan', 'untradeable', 'locked', 'active-squad',
+  'eligibility-ineligible', 'eligibility-unknown'];
 const marketTaskReasons = new Set(['MARKET_PROVIDER_FAILED','MARKET_AUTHENTICATION','MARKET_CAPTCHA','MARKET_THROTTLED',
   'MARKET_BIDDING_UNAVAILABLE','MARKET_BID_RUNTIME_UNAVAILABLE',
   'MARKET_LISTING_STATE_UNCONFIRMED','MARKET_READ_UNCONFIRMED','MARKET_RECOVERY_ITEM_MISSING',
@@ -40,7 +45,7 @@ const NUMBER_FIELDS = Object.freeze(['startPrice','buyNow','durationSeconds','mi
   'ownedSilverValueQuotedCount', 'ownedGoldValueQuotedCount', 'ownedBronzeValueQuotedCount',
   'unpricedOwnedCount',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
-  'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount',
+  'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount', 'inventoryReservedCount',
   'reservationExcludedCount', 'reservationTargetCount', 'reservationReferenceCount',
   'routeInventoryCount', 'routeMarketCount', 'routeMaterialValue', 'rating', 'unitScore', 'minBatches', 'repeatPurchaseCount',
   'excludedTradeCount', 'excludedPileCount', 'excludedEligibilityCount', 'excludedGoldRangeCount', 'fsuGoldMax', 'fsuGoldMin', 'inventoryMaxRating',
@@ -76,7 +81,7 @@ function sanitizeEntry(input, now) {
     'dao.submitPlayers', 'dao.initiateOneClickChallenge'].includes(input.method)) entry.method = input.method;
   if (typeof input.methodPath === 'string' && (/^(?:dao|service|methods|UTHttpRequest|EAHttpRequest)(?:\.[A-Za-z][A-Za-z0-9_]{0,63}){1,4}$/.test(input.methodPath)
       || /^(?:UT(?:SquadBuildingChallengeDAO|ItemRepository|ClubRepository|SquadEntity)|EAObservable)\.prototype\.[A-Za-z][A-Za-z0-9_]{0,63}$/.test(input.methodPath)
-      || ['events.markClubCacheDirty', 'call.squad.setPlayers'].includes(input.methodPath))) entry.methodPath = input.methodPath;
+      || ['UTHttpRequest', 'EAHttpRequest', 'events.markClubCacheDirty', 'call.squad.setPlayers'].includes(input.methodPath))) entry.methodPath = input.methodPath;
   if (typeof input.observedHash === 'string' && (/^[a-f0-9]{64}$/.test(input.observedHash) || input.observedHash === 'oversized')) entry.observedHash = input.observedHash;
   if (typeof input.expectedHash === 'string' && /^[a-f0-9]{64}$/.test(input.expectedHash)) entry.expectedHash = input.expectedHash;
   for (const key of STRING_FIELDS) {
@@ -94,6 +99,14 @@ function sanitizeEntry(input, now) {
   for (const key of BOOLEAN_FIELDS) {
     if (typeof input[key] === 'boolean') entry[key] = input[key];
   }
+  if (entry.area === 'streamlined' && entry.event === 'plan' && input.inventoryExclusions && typeof input.inventoryExclusions === 'object') {
+    const counts = {};
+    for (const reason of inventoryExclusionReasons) {
+      const count = Object.getOwnPropertyDescriptor(input.inventoryExclusions, reason)?.value;
+      if (Number.isSafeInteger(count) && count > 0 && count <= 20000) counts[reason] = count;
+    }
+    entry.inventoryExclusions = Object.freeze(counts);
+  }
   if (input.area === 'gallery' && Array.isArray(input.pendingTasks)) entry.pendingTasks = input.pendingTasks.slice(0,13).flatMap(task => {
     const id=Number.isSafeInteger(task?.setId) && task.setId>0 && task.setId<1000000000 ? task.setId
       : typeof task?.setId==='string' && /^futgg:[1-9]\d{0,8}$/.test(task.setId) ? Number(task.setId.slice(6)) : null;
@@ -108,7 +121,8 @@ function sanitizeEntry(input, now) {
   return Object.freeze(entry);
 }
 
-const copyEntry = entry => ({ ...entry, ...(entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map(task => ({ ...task })) } : {}) });
+const copyEntry = entry => ({ ...entry, ...(entry.pendingTasks ? { pendingTasks: entry.pendingTasks.map(task => ({ ...task })) } : {}),
+  ...(entry.inventoryExclusions ? { inventoryExclusions: { ...entry.inventoryExclusions } } : {}) });
 
 function validSavedEntry(value) {
   return sanitizeEntry(value, () => value?.at);

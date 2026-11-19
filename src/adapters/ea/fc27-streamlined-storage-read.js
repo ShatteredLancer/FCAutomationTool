@@ -12,8 +12,11 @@ export const FC27_STREAMLINED_STORAGE_QUERY_HASH = '2e4fc68dd8d9b1fce716adeb21f0
 // still filters locally. Keep exact compatibility local to this read adapter,
 // not the shared write verifier. See the dated Storage observation fixture.
 export const FC27_STREAMLINED_STORAGE_COMPATIBLE_HASHES = Object.freeze({
-  'methods.search': Object.freeze(['77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788']),
-  'methods.query': Object.freeze(['e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f']),
+  // Public build 11502 decodes to the same reviewed search/query bodies.
+  'methods.search': Object.freeze(['77c29a555e739bd33c1754fbdb4a5fb54b405e13bb4150904cb18fe76ebed788',
+    '54f8dd51a056c108cdf029353c74d413ac0836c5eb402f090ee53c770ac1480a']),
+  'methods.query': Object.freeze(['e21495eedcee59d66a856557ccfe3397fd29c323176ce1e1de6fc09ffbc09f7f',
+    '4921b8dba2d7b6f59eae99c1eabdedea8f2e94a35e3633e4b231a66cf0446887']),
 });
 
 // Native searchStorageItems, decoded 2026-10-07: one GET of the entire Storage

@@ -334,7 +334,8 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           bucket.count++;
           exclusionBuckets.set(key, bucket);
         }
-        const inventorySelection = { readCount: input.inventory.length, eligibleCount: filtered.items.length,
+        const inventoryReservedCount = rawInput.inventory.length - input.inventory.length;
+        const inventorySelection = { readCount: input.inventory.length, reservedCount: inventoryReservedCount, eligibleCount: filtered.items.length,
           excluded: { ...filtered.excluded }, buckets: [...exclusionBuckets.values()]
             .sort((a, b) => b.count - a.count || String(a.reason).localeCompare(String(b.reason))).slice(0, 24) };
         for (const bucket of inventorySelection.buckets) {
@@ -517,13 +518,14 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           inventoryTradeabilityUnknown: inventoryStats.tradeability?.unknown,
           eligibleInventoryCount: filtered.items.length,
           filteredInventoryCount,
+          inventoryReservedCount, inventoryExclusions: inventorySelection.excluded,
           acceptedInventoryCount: result.items?.filter(item => item.source === 'inventory').length,
           routeInventoryCount: result.items?.filter(item => item.source === 'inventory').length,
           routeMarketCount: result.items?.filter(item => item.source === 'market').length,
           routeMaterialValue: result.materialValue,
           excludedTradeCount: excluded.trade,
           excludedPileCount: excluded.pile,
-          excludedEligibilityCount: Object.entries(excluded)
+          excludedEligibilityCount: Object.entries(filtered.excluded)
             .filter(([key]) => key.startsWith('eligibility-'))
             .reduce((sum, [, count]) => sum + count, 0),
           excludedGoldRangeCount: filtered.excluded?.['fsu-gold-range'],

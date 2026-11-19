@@ -175,6 +175,7 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_RECOVERY_REQUIRED: '当前账号有待核对的传统 SBC 提交记录，请先恢复该次提交。',
     FC27_STREAMLINED_INITIATION_UNVERIFIED: '请先通过 EA 原生界面开始此 SBC，再重新生成方案。',
     FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED: '当前构建未启用贡献接口。',
+    FC27_TRANSACTION_METHOD_UNREVIEWED: 'EA 页面版本兼容校验未通过。方案可以查看，但不会买卡或贡献；请导出诊断。',
     FC27_STREAMLINED_RECONCILIATION_REQUIRED: '本次投入结果尚待核对，请点击“核对并恢复”，不要重复投入。',
     FC27_STREAMLINED_CYCLE_RESET_UNVERIFIED: 'EA 已返回本批完成回执，但归零后的 SBC 状态存在冲突，暂未结清记录。不要重新买卡或重复投入；保留记录并导出诊断。',
     FC27_STREAMLINED_PROGRESS_COUNT_UNVERIFIED: 'EA 返回的 SBC 完成次数格式异常，已保留本批记录。请勿重复投入；可稍后核对并恢复。',
@@ -584,12 +585,21 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       if (result.policy?.goldRange?.[1] < 99) {
         add(output, 'small', `FSU 金卡上限 ${number(result.policy.goldRange[1])}：高于该上限的库存卡受保护，不会自动投入；市场补卡仍按独立市场上限。`);
       }
-      const exclusionBuckets = result.inventorySelection?.buckets;
+      const stock = result.inventorySelection, exclusionBuckets = stock?.buckets;
+      if (stock) {
+        const reserved = stock.reservedCount ?? 0;
+        const used = result.items?.filter(item => item.source === 'inventory').length ?? 0;
+        add(output, 'small', `本次库存快照：读取 ${number(stock.readCount + reserved)} 张 · 可用 ${number(stock.eligibleCount)} 张 · 本方案使用 ${number(used)} 张${reserved ? ` · 旧记录保留 ${number(reserved)} 张` : ''}。${stock.eligibleCount === 0 ? '当前没有通过筛选的库存卡。' : ''}`);
+      }
       if (Array.isArray(exclusionBuckets) && exclusionBuckets.length) {
         const details = add(output, 'details');
-        add(details, 'summary', `未采用库存 ${number(result.inventorySelection.readCount - result.inventorySelection.eligibleCount)} 张`);
+        add(details, 'summary', `库存筛选排除 ${number(stock.readCount - stock.eligibleCount)} 张`);
         const labels = {
+          'points-unknown': '积分未验证', rating: '超出库存评分范围或评分未知',
           'fsu-gold-range': '不在 FSU 金卡评分范围',
+          special: '特殊卡或卡种未确认', evolution: '进化卡或进化状态未确认', cosmetic: '装饰卡或状态未确认',
+          academy: '学院卡或状态未确认', protected: '受保护的卡', league: '排除的联赛或联赛未知',
+          concept: '概念卡或状态未确认', trade: '交易状态不符', loan: '租借或使用期限未确认',
           untradeable: 'Only Untradeable 不满足',
           pile: '不支持的库存位置',
           locked: 'FSU 手动锁卡保护',
@@ -597,6 +607,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
           'eligibility-ineligible': '不符合 SBC 条件',
           'eligibility-unknown': 'SBC 资格未确认',
         };
+        add(details, 'small', Object.entries(stock.excluded ?? {}).map(([reason, count]) =>
+          `${labels[reason] ?? reason} ×${number(count)}`).join(' · '));
         add(details, 'small', exclusionBuckets.map(bucket =>
           `${labels[bucket.reason] ?? bucket.reason} · ${bucket.pile === 'storage' ? 'Storage' : bucket.pile === 'club' ? 'Club' : bucket.pile} · ${bucket.rating == null ? '评分未知' : `${number(bucket.rating)}级`} ×${number(bucket.count)}`
         ).join('; '));

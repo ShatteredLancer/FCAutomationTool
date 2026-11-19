@@ -4,7 +4,7 @@ import {marketRow} from '../helpers/fc27-market-fixture.js';
 import {createFc27PuzzleProcurementSession} from '../../src/fc27/puzzle-procurement-session.js';
 import {evaluateFc27PuzzleSquad} from '../../src/fc27/puzzle-evaluator.js';
 import {parseFc27SbcRequirements,matchFc27SbcRequirements} from '../../src/fc27/sbc-requirements.js';
-import {planPuzzleLeagueMinimumAffinity} from '../../src/fc27/puzzle-query-affinity.js';
+import {planPuzzleLeagueMinimumAffinity, planPuzzleCappedLeagueDiscovery} from '../../src/fc27/puzzle-query-affinity.js';
 
 // Screenshot requirement shape, not the unexported account/formation/cards.
 it('uses a dominant-quality league page before three unrelated tier pages exhaust discovery',async()=>{
@@ -74,4 +74,111 @@ it('retains policy exclusions and fails back without a reliable club resolver or
   expect(planPuzzleLeagueMinimumAffinity({...input,resolveClub:null})).toBeNull();
   expect(planPuzzleLeagueMinimumAffinity({...input,formation:{positions:Array(11).fill(1)}})).toBeNull();
   expect(planPuzzleLeagueMinimumAffinity()).toBeNull();
+});
+
+function cappedLeagueFixture({ missingPositionQuote = false } = {}) {
+  const input = puzzleFillFixture(), base = input.inventory.items[0], memory = new Map(), trace = [];
+  const positions = [1, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9];
+  Object.assign(input.challenge, { setId: 116, id: 176, formation: { id: 16, positions }, rawRequirements: [
+    marketRow(5, 4), marketRow(6, 3, -1, 1), marketRow(7, 2), marketRow(9, 5, -1, 1),
+    marketRow(3, 2), marketRow(35, 18),
+  ] });
+  const spine = positions.map((position, i) => ({ ...base, definitionId: 1000 + i, marketable: true,
+    rating: 70, leagueId: 40, teamId: 10 + Math.floor(i / 3), nationId: i % 2 + 1, positions: [position] }));
+  input.policy.maxRating = 72;
+  input.inventory.items = [
+    { ...base, ...spine[0], id: 51, definitionId: 51, locked: true },
+    { ...base, ...spine[1], id: 52, definitionId: 52, activeSquad: true },
+    { ...base, ...spine[2], id: 53, definitionId: 53, rating: 79 },
+    ...Array.from({ length: 101 }, (_, i) => ({ ...base, definitionId: 200 + i, id: 200 + i, rating: 79 })),
+  ];
+  Object.assign(input.marketPolicy, { budget: 6000, maxPurchases: 11, maxUnitPrice: 1000, availableCoins: 9000 });
+  const noise = (definitionId, count, teamId, leagueId) => Array.from({ length: count }, (_, i) => ({
+    ...spine[0], definitionId: definitionId + i, teamId, leagueId, nationId: 10 + i, positions: [1],
+  }));
+  const largeClub = noise(2000, 20, 91, 50), smallClub = noise(2100, 7, 142, 51);
+  const start = [...spine.filter((_, i) => [0, 3, 6, 9].includes(i)), ...largeClub.slice(0, 5), ...smallClub.slice(0, 4),
+    ...Array.from({ length: 7 }, (_, i) => ({ ...spine[i], definitionId: 3000 + i, leagueId: 60 + i,
+      teamId: 60 + i, nationId: 60 + i }))];
+  const backup = { ...spine.at(-1), definitionId: 1050, positions: [0] };
+  const overRating = { ...spine.at(-1), definitionId: 1051, rating: 73 };
+  // A valid 18+ chem squad can still use this off-position card after i=10 loses its quote.
+  if (missingPositionQuote) start[19] = backup;
+  const entries = [...start, ...spine, overRating, ...largeClub, ...smallClub];
+  const transport = { readCatalogPage: vi.fn(async query => {
+    trace.push({ query });
+    const cards = query.level !== 'silver' ? [] : query.league === 40 ? [...spine, overRating]
+      : query.team === 91 ? largeClub : query.team === 142 ? smallClub : query.league || query.team ? [] : start;
+    const page = cards.slice(query.start, query.start + query.count);
+    return { status: 'observed', source: 'ea-defid', season: '27', query,
+      observedAt: input.now, entries: page, pageEndObserved: cards.length <= query.start + query.count };
+  }), readQuotePage: vi.fn(), buy: vi.fn(), move: vi.fn(), save: vi.fn(), submit: vi.fn() };
+  const loadPublicPrices = async ids => {
+    trace.push({ ids });
+    return { policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => {
+      const price = missingPositionQuote && definitionId === 1010 ? null : definitionId === 1050 ? 200 : definitionId >= 2000 ? 400 : 250;
+      return [definitionId, { definitionId, season: '27', platform: 'pc',
+        quotes: Object.fromEntries(['futbin', 'futgg'].map(source => [source, { schema: 2, source,
+          definitionId, season: '27', platform: 'pc', price, fetchedAt: input.now, expiresAt: input.now + 300000,
+          sourceUpdatedAt: null, error: price === null ? 'FC27_PUBLIC_PRICE_NOT_FOUND' : null }])) }];
+    })) };
+  };
+  const session = createFc27PuzzleProcurementSession({ createTransport: async () => transport, loadPublicPrices,
+    now: () => input.now, get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)) });
+  return { input, transport, trace, entries, spine, session };
+}
+
+it.each([false, true])('116/176 prices a position-complete multiclub league first (fallback=%s)', async missingPositionQuote => {
+  const { input, trace, entries, spine, transport, session } = cappedLeagueFixture({ missingPositionQuote });
+  const before = structuredClone(input.inventory);
+  const run = () => session.plan(input, { optimizeMaterialValue: true, adaptiveSearch: true, quoteCeiling: 1000 });
+  const result = await run();
+  expect(result.status, JSON.stringify({ reason: result.reason, queries: result.queries, diagnostics: result.diagnostics })).toBe('suggested');
+  expect(trace.slice(0, 3)).toEqual([
+    { query: { start: 0, count: 20, level: 'silver' } },
+    { query: { start: 0, count: 20, level: 'silver', league: 40 } },
+    { ids: expect.arrayContaining(spine.map(card => card.definitionId)) },
+  ]);
+  expect(trace[2].ids).toHaveLength(11);
+  const plan = result.plans[0], squad = Array(11).fill(null);
+  expect(plan.selectedOwned).toEqual([]);
+  for (const ref of plan.purchases) squad[ref.slot] = { ...input.inventory.items[0],
+    ...entries.find(card => card.definitionId === ref.definitionId) };
+  expect(squad.every(Boolean)).toBe(true);
+  expect(new Set(squad.map(card => card.definitionId)).size).toBe(11);
+  expect(matchFc27SbcRequirements({ requirements: parseFc27SbcRequirements(input.challenge.rawRequirements, 11).rules,
+    squad, ...input.evaluateSquad(squad), clubLinks: input.clubLinks }).status).toBe('satisfied');
+  expect(plan.purchases.some(card => card.definitionId === 1050)).toBe(missingPositionQuote);
+  expect(plan.estimatedCost).toBe(missingPositionQuote ? 2700 : 2750);
+  expect(result.diagnostics.budgetNodes).toBeLessThan(50000);
+  expect(result.diagnostics.nodeCap).toBe(200000);
+  expect(transport.readCatalogPage.mock.calls.length).toBe(2);
+  expect(input.inventory).toEqual(before);
+  expect(trace.flatMap(event => event.ids ?? []).filter(id => [51, 52, 53, 1051].includes(id))).toEqual([]);
+  for (const name of ['readQuotePage', 'buy', 'move', 'save', 'submit']) expect(transport[name]).not.toHaveBeenCalled();
+  if (!missingPositionQuote) {
+    expect(trace.flatMap(event => event.ids ?? [])).toHaveLength(11);
+    expect(result.diagnostics).toMatchObject({ searchComplete: false, optimalWithinPool: false });
+    const warm = await run();
+    expect(warm).toMatchObject({ status: 'suggested', requests: 0 });
+  } else {
+    expect(trace[3].ids).toContain(1050);
+    expect(trace[3].ids).not.toContain(1010);
+  }
+});
+
+it('does not count the same seat, version, or linked club twice in capped league discovery', () => {
+  const { input, spine } = cappedLeagueFixture(), rules = parseFc27SbcRequirements(input.challenge.rawRequirements, 11).rules;
+  const goalkeeperOnly = Array.from({ length: 16 }, (_, i) => ({ ...spine[0], definitionId: 4000 + i,
+    teamId: 100 + i % 4, leagueId: 10 }));
+  const inputToRank = { candidates: [...goalkeeperOnly, ...spine, spine[0]], rules, slots: input.challenge.formation.positions,
+    levels: ['silver'], usedQueries: [{ start: 0, count: 20, level: 'silver' }], resolveClub: id => id };
+  const good = planPuzzleCappedLeagueDiscovery(inputToRank);
+  expect(good.query.league).toBe(40);
+  expect(good.focus.size).toBe(11);
+  expect(planPuzzleCappedLeagueDiscovery({ ...inputToRank,
+    resolveClub: id => id === 11 ? 10 : id }).focus).toBeNull();
+  expect(planPuzzleCappedLeagueDiscovery({ ...inputToRank,
+    candidates: [...goalkeeperOnly, ...spine.slice(0, -1), spine[0]] }).focus).toBeNull();
 });

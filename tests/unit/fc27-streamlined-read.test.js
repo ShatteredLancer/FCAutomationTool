@@ -9,6 +9,9 @@ import { filterStreamlinedItems } from '../../src/streamlined/eligibility.js';
 import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-10-24.json';
 import { readStreamlinedExternalRows } from '../../src/streamlined/external-selection.js';
 import { snapshotFc27ClubPlayer } from '../../src/adapters/ea/fc27-local-read.js';
+import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-streamlined-session.js';
+import { safeItem } from '../helpers/streamlined.js';
+import rarity11502 from '../fixtures/fc27-item-rarity-11502.json';
 
 function runtime() {
   const f = executionRuntime(), { root } = f;
@@ -27,6 +30,53 @@ function runtime() {
   for (const item of Object.values(root.repositories.Item.club.items._collection)) item.sbsScore = 20;
   return { ...f, challenge, set, controller, anchor };
 }
+
+it('uses verified normal Club and Storage stock under the public 11502 rarity enum before buying the shortfall', async () => {
+  const f = runtime(), { root } = f;
+  root.ItemRarity = { ...rarity11502.enum };
+  root.info.set.goldenrange = 90;
+  root.info.lock = [3];
+  root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item.id = root.info.squad[0] = 4;
+  f.challenge.scoreRequirement = 1240;
+  const row = (id, facts) => ({ ...root.repositories.Item.club.items._collection[id], _rating: 83, sbsScore: 205, ...facts });
+  root.repositories.Item.storage = { _collection: { 1: row(1, { _rareflag: 1 }) } };
+  root.repositories.Item.club.items._collection = {
+    2: row(2, { _rareflag: 0 }), 3: row(3, { _rareflag: 1 }), 4: row(4, { _rareflag: 0 }),
+    5: row(5, { _rareflag: 3 }), 6: row(6, { _rareflag: null }),
+    7: row(7, { _rareflag: 1, upgrades: {} }), 8: row(8, { _rareflag: 1, _rating: null }),
+    9: row(9, { _rareflag: 0, cosmetics: [1] }), 10: row(10, { _rareflag: 1, _rating: 91 }),
+  };
+  const session = createFc27StreamlinedSession({
+    inspect: () => { const { context, challenge } = readFc27StreamlinedInputs(root); return { context, challenge }; },
+    readInputs: settings => readFc27StreamlinedInputs(root, settings),
+    get: async () => null, set: async () => { throw Error('Unexpected write'); }, now: () => 100,
+    readMarketCandidates: async ({ input }) => {
+      const item = safeItem({ source: 'market', definitionId: 901, rating: 84, price: 700, points: 830,
+        quote: { definitionId: 901, source: 'futgg', price: 700, fetchedAt: 1, expiresAt: 1000 } });
+      input.registerMarketEntity(item, { definitionId: 901, concept: true, _rating: 84 });
+      return { market: [item] };
+    },
+  });
+  const input = readFc27StreamlinedInputs(root);
+  expect(filterStreamlinedItems(input.inventory, input)).toMatchObject({ excluded: {
+    special: 2, locked: 1, 'active-squad': 1, rating: 2, cosmetic: 1, 'fsu-gold-range': 1 } });
+  const result = await session.plan({ objective: 'inventory-first', mode: 'inventory-market' });
+  expect(result).toMatchObject({ status: 'ready', route: { inventoryCount: 2, marketCount: 1, purchaseCost: 700 } });
+  expect(result.items.filter(item => item.source === 'inventory').map(item => item.id)).toEqual([1, 2]);
+  expect(f.calls).toEqual([]);
+});
+
+it.each([
+  { NONE: 0 }, { ...rarity11502.enum, DEFAULT: 777 }, { ...rarity11502.enum, RARE: 3 },
+  { ...rarity11502.enum, 2: 'UNKNOWN' }, { ...rarity11502.enum, 1: 'SPECIAL' }, null,
+])('does not assume normal card metadata for an unreviewed enum %j', rarity => {
+  const f = runtime(); f.root.ItemRarity = rarity;
+  const entity = f.root.repositories.Item.club.items._collection[1];
+  for (const value of [0, 1]) {
+    entity._rareflag = value;
+    expect(snapshotFc27ClubPlayer(entity, f.root).special).toBeNull();
+  }
+});
 
 it('recognizes native expired unsold Transfer material without changing the shared Club snapshot', () => {
   const f = runtime();

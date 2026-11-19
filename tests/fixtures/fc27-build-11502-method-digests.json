@@ -1,0 +1,19 @@
+{
+  "build": 11502,
+  "asset": "https://www.ea.com/ea-sports-fc/ultimate-team/web-app/js/ocompiled.js?_=11502",
+  "assetSha256": "328fe5003064d570fb9705f31d7ab8e59f40093d7c1f926432dc3403e7f0e224",
+  "methods": {
+    "methods.notify": "114bf518afacbff43677c2c0d48465606bb51ef26380c4868d9b0c7127a38d35",
+    "methods.search": "54f8dd51a056c108cdf029353c74d413ac0836c5eb402f090ee53c770ac1480a",
+    "methods.query": "4921b8dba2d7b6f59eae99c1eabdedea8f2e94a35e3633e4b231a66cf0446887",
+    "service.bid": "17a2518ecc156995053ffc6b089529a093a8cef030496942ab5f2faaddfc34ea",
+    "service.move": "d756ff4194c9bfb7df9e0ddf181d532732604a0696895bd09a8da323fb5369ad",
+    "UTHttpRequest": "a7f61b204b3b8eee2961141d126bf71ca67a78376520c3db6eb85fd4c1709ad2",
+    "UTHttpRequest.prototype.send": "75f91541a8c7508ea8135828787059c9b1ef83e1f9f3c0d522936da9b718dfeb",
+    "UTHttpRequest.prototype.setPath": "4d698f27f14caeaeff448ceef8a982d253afc0e1e8c5dbc8929e3d22f4b55421",
+    "EAHttpRequest": "cb4395e31661f90290ee7207c16579590b42624daf292bb4c3ccc096438f6385",
+    "EAHttpRequest.prototype.send": "306bfd535a275b05d9c2bd3d577adab7442f7f1e8a7c3055d4ec8758e9770b54",
+    "EAHttpRequest.prototype.abort": "d1640b6b775a4de40eea08d489f3999a807d17ee354708ab28d66df7129eb803",
+    "EAHttpRequest.prototype.setRequestBody": "a99d7bdb249d51719676a8c13f95c5eb48839c36d59d089f03e90fe267e71ee4"
+  }
+}

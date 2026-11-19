@@ -74,6 +74,89 @@ export function planPuzzleLeagueMinimumAffinity({candidates=[],material=[],rules
   return usedQueries.some(used=>JSON.stringify(used)===JSON.stringify(query))?null:query;
 }
 
+// Maximum in-position support with each club capped and each version used
+// once. A multi-position player (or five players for one GK slot) cannot be
+// counted more than once. This is a small routing calculation, not SBC search.
+function cappedPositionSupport(clubs, slots, clubCap) {
+  const slotStart = 2 + clubs.size, graph = Array.from({ length: slotStart + slots.length }, () => []);
+  const add = (from, to, remaining) => {
+    const arc = { to, back: graph[to].length, remaining };
+    graph[to].push({ to: from, back: graph[from].length, remaining: 0 });
+    graph[from].push(arc);
+  };
+  slots.forEach((_, i) => add(slotStart + i, 1, 1));
+  let group = 2;
+  for (const cards of clubs.values()) {
+    add(0, group, Math.min(cards.length, clubCap));
+    for (const card of cards) {
+      const node = graph.push([]) - 1;
+      add(group, node, 1);
+      slots.forEach((position, i) => { if (card.positions.includes(position)) add(node, slotStart + i, 1); });
+    }
+    group++;
+  }
+  let filled = 0;
+  while (filled < slots.length) {
+    const previous = Array(graph.length).fill(null), queue = [0]; previous[0] = [];
+    for (let i = 0; i < queue.length && !previous[1]; i++) {
+      const from = queue[i];
+      for (const arc of graph[from]) if (arc.remaining && !previous[arc.to]) {
+        previous[arc.to] = [from, arc]; queue.push(arc.to);
+      }
+    }
+    if (!previous[1]) break;
+    for (let node = 1; node !== 0;) {
+      const [from, arc] = previous[node];
+      arc.remaining--; graph[node][arc.back].remaining++; node = from;
+    }
+    filled++;
+  }
+  return filled;
+}
+
+// Narrow route: a league minimum that exceeds the club cap, plus a total club
+// cap. Apply to the ordinary minimum-quality/chemistry shape, not identity,
+// exact tier, team-rating or other mixed constraints. No card is made eligible
+// by this hint. Even the full-position pool still needs the original solver.
+export function planPuzzleCappedLeagueDiscovery({ candidates, rules, slots, levels, usedQueries, resolveClub }) {
+  const modes = { 'same-league': 'min', 'same-club': 'max', 'distinct-clubs': 'max', 'distinct-nations': 'min' };
+  if (rules.some(rule => Object.hasOwn(modes, rule.kind) ? rule.mode !== modes[rule.kind]
+    : !['min-quality', 'min-chemistry'].includes(rule.kind))) return null;
+  const leagueMin = Math.max(0, ...rules.filter(rule => rule.kind === 'same-league' && rule.mode === 'min').map(rule => rule.value));
+  const clubCap = Math.min(slots.length, ...rules.filter(rule => rule.kind === 'same-club' && rule.mode === 'max').map(rule => rule.value));
+  const clubLimit = Math.min(slots.length, ...rules.filter(rule => rule.kind === 'distinct-clubs' && rule.mode === 'max').map(rule => rule.value));
+  const nationMin = Math.max(1, ...rules.filter(rule => rule.kind === 'distinct-nations' && rule.mode === 'min').map(rule => rule.value));
+  const ratingFloor = Math.max(1, ...rules.filter(rule => rule.kind === 'min-quality').map(rule => rule.minRating));
+  if (leagueMin <= clubCap || clubLimit >= slots.length || clubCap * clubLimit < slots.length
+      || !rules.some(rule => rule.kind === 'min-chemistry' && rule.value > 0)
+      || !usedQueries.some(query => !query.league && !query.nation && !query.team && query.start === 0)) return null;
+  const groups = new Map(), seen = new Set();
+  for (const card of candidates) {
+    if (seen.has(card.definitionId) || card.rating < ratingFloor || !levels.includes(level(quality(card.rating)))
+        || !card.positions?.some(position => slots.includes(position))) continue;
+    seen.add(card.definitionId);
+    const club = resolveClub(card.teamId);
+    if (!Number.isSafeInteger(club) || club <= 0) continue;
+    if (!groups.has(card.leagueId)) groups.set(card.leagueId, new Map());
+    const clubs = groups.get(card.leagueId);
+    if (!clubs.has(club)) clubs.set(club, []);
+    clubs.get(club).push(card);
+  }
+  const ranked = [...groups].map(([league, clubs]) => {
+    const cards = [...clubs.values()].flat();
+    const capacity = [...clubs.values()].map(group => Math.min(group.length, clubCap)).sort((a, b) => b - a)
+      .slice(0, clubLimit).reduce((sum, count) => sum + count, 0);
+    return { league, cards, clubCount: clubs.size, nationalities: new Set(cards.map(card => card.nationId)).size,
+      support: Math.min(capacity, cappedPositionSupport(clubs, slots, clubCap)) };
+  }).filter(group => group.support > 0).sort((a, b) =>
+    Number(b.clubCount > 1) - Number(a.clubCount > 1) || b.support - a.support || b.clubCount - a.clubCount
+    || b.nationalities - a.nationalities || a.league - b.league);
+  const query = ranked.flatMap(({ league }) => levels.map(level => ({ start: 0, count: 20, level, league })))
+    .find(next => !usedQueries.some(old => old.league === next.league && old.level === next.level && old.start === next.start));
+  const focus = ranked.find(group => group.support === slots.length && group.clubCount <= clubLimit && group.nationalities >= nationMin);
+  return { query: query ?? null, focus: focus ? new Set(focus.cards.map(card => card.definitionId)) : null };
+}
+
 // Rank only a read-only catalog lane, never require these cards in the squad.
 // Chemistry comes from in-position players: a populous nation of midfielders
 // is a weak anchor when those formation slots are bricks. Maximum matching

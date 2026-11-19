@@ -96,8 +96,10 @@ export async function exerciseStreamlined(context) {
     assert.match(text, /55 OVR/);
     assert.match(text, /Club · 已有/);
     assert.match(text, /FSU 金卡上限 83/);
-    assert.match(text, /未采用库存 1 张/);
-    await page.getByText('未采用库存 1 张', { exact: true }).click();
+    assert.match(text, /读取 81 张 · 可用 80 张 · 本方案使用 80 张/);
+    assert.match(text, /库存筛选排除 1 张/);
+    await page.getByText('库存筛选排除 1 张', { exact: true }).click();
+    assert.match(await page.getByRole('dialog').innerText(), /不在 FSU 金卡评分范围 ×1/);
     assert.match(await page.getByRole('dialog').innerText(), /不在 FSU 金卡评分范围 · Club · 84级 ×1/);
     assert.equal(await page.locator('[data-market-rating]').inputValue(), '99');
     assert.ok((await page.locator('.player-card').first().boundingBox()).width >= 100, 'Readable desktop card');
