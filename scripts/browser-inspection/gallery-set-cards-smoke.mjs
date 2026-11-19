@@ -57,13 +57,30 @@ export async function exerciseGallerySetCards(context, directory) {
       const state = { status: 'observed', source: 'futgg', catalog, fetchedAt: Date.now() };
       globalThis.cardsLoads = 0;
       globalThis.cardsDetails = details;
+      globalThis.cardArtCreated = 0;
+      for (const detail of details) detail.runtimeCards = new Map(detail.progress.rows.map(row => [row.eaId, row]));
       globalThis.cardsPanel = globalThis.GalleryCardsSmoke.mountFc27AcceptancePanel({ document: globalThis.document, hostId: 'gallery-cards-test', targets: () => [],
         galleryAccountScope: () => 'cards-fixture',
+        galleryNativeRenderer: { render({ parent, slot }) {
+          globalThis.cardArtCreated++;
+          const art = globalThis.document.createElement('div');
+          art.slot = slot;
+          parent.append(art);
+          return art;
+        } },
+        galleryDiagnosticLog: { record(entry) {
+          if (entry.event === 'set-open') globalThis.lastSetOpen = entry;
+        } },
         galleryAssets: { category: () => ['https://www.ea.com/assets/gallery-fixture/13.svg'],
           set: name => [`https://www.ea.com/assets/gallery-fixture/${leagues.find(row => row[1] === name)[2]}.svg`],
           reward: type => type === 'event_token_1' ? 'https://www.ea.com/assets/gallery-fixture/T.svg' : '' },
         galleryCatalog: { peek: async () => null, load: async () => state },
-        gallerySetLoader: async ({ set }) => { globalThis.cardsLoads++; return details.find(row => `futgg:${row.progress.setId}` === set.id); },
+        gallerySetLoader: async ({ set, onPreview }) => {
+          globalThis.cardsLoads++;
+          globalThis.reportCardsPreview = onPreview;
+          if (globalThis.holdCardsLoad) await new Promise(resolve => { globalThis.finishCardsLoad = resolve; });
+          return details.find(row => `futgg:${row.progress.setId}` === set.id);
+        },
         gallerySync: { subscribe: callback => { globalThis.cardsNotify = callback; return () => {}; },
           state: () => ({ synced: true }), peekDetails: async () => details, stop() {} },
       });
@@ -120,8 +137,40 @@ export async function exerciseGallerySetCards(context, directory) {
     await nwsl.locator('img.gallery-set-icon').dispatchEvent('error');
     assert.equal(await nwsl.locator('.gallery-set-icon-fallback').isVisible(), true);
     assert.ok(requests.every(url => url.startsWith('https://www.ea.com/assets/gallery-fixture/')));
+    // The category has the account's rows. Reopening must paint the first page
+    // even when the foreground read cannot complete. No network or images.
+    await page.evaluate(() => { globalThis.holdCardsLoad = true; globalThis.lastSetOpen = null; });
     await nwsl.locator('.gallery-open-set').click();
+    await page.waitForFunction(() => typeof globalThis.finishCardsLoad === 'function');
+    assert.equal(await host.locator('#gallery-set-detail .gallery-player-meta strong').count(), 24);
+    assert.equal(await host.locator('#gallery-set-detail .gallery-card-select').count(), 0);
+    const rendered = await page.evaluate(() => globalThis.cardArtCreated);
+    await host.locator('.gallery-player-art slot').first().evaluate(slot => {
+      globalThis.previewCardArt = slot.assignedElements()[0];
+    });
+    await page.evaluate(() => globalThis.finishCardsLoad());
+    await host.locator('.gallery-card-page').waitFor();
+    assert.equal(await page.evaluate(() => globalThis.cardArtCreated), rendered);
+    assert.equal(await host.locator('.gallery-player-art slot').first().evaluate(slot =>
+      !!globalThis.previewCardArt && slot.assignedElements()[0] === globalThis.previewCardArt), true);
+    const timing = await page.evaluate(() => globalThis.lastSetOpen);
+    assert.ok(timing.firstListMs <= timing.durationMs);
+    console.log('Cached set detail (synthetic Chrome):', JSON.stringify(timing), 'native cards rebuilt after validation: 0');
     assert.equal(await page.evaluate(() => globalThis.cardsLoads), 2);
+    await host.getByRole('button', { name: '同步当前集合' }).click();
+    await page.waitForFunction(() => globalThis.cardsLoads === 3);
+    await page.evaluate(() => globalThis.reportCardsPreview({ pool: { items: [
+      { eaId: 183, cardName: 'Public pool player', rarityName: 'Rare', overall: 84 },
+    ] } }));
+    await host.locator('.gallery-player-meta strong', { hasText: 'Public pool player' }).waitFor();
+    assert.equal(await host.locator('.gallery-card-select').count(), 0);
+    await host.locator('#gallery-back').click();
+    await page.evaluate(() => {
+      globalThis.reportCardsPreview(globalThis.cardsDetails.at(-1));
+      globalThis.finishCardsLoad();
+    });
+    assert.equal(await host.locator('#gallery-set-detail').isVisible(), false);
+    assert.equal(await host.locator('#gallery-set-detail .gallery-card').count(), 0);
     console.log('Offline Gallery set cards passed: 12 leagues, source order, capped count, total + bonus, rewards, 3/2/1 columns, watch, keyboard, updates and icon fallback.');
   } finally { await page.close(); }
 }

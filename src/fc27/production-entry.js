@@ -403,11 +403,13 @@ const acceptancePanel = safeBoot('acceptance-panel', () => mountFc27AcceptancePa
     downloadFc27Diagnostics(unsafeWindow, unsafeWindow.document, JSON.stringify(payload, null, 2), filename);
     return { count: payload.entries.length, filename };
   },
-  gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
+  gallerySetLoader: async ({ source, setId, force = false, onProgress = null, onPreview = null }) => {
     const pool = await galleryCatalog.loadPool({ source, setId, force, onProgress });
     if (pool.status !== 'observed' || !pool.pool) return pool;
     gallerySync.remember(pool.pool);
+    if (!pool.stale) onPreview?.({ pool: pool.pool });
     const progress = await galleryProgress.load(pool.pool, { force: source === 'fodder' ? false : force, onProgress });
+    if (progress.progress) onPreview?.(progress);
     // Share the account source policy and exact-version quote cache with plans.
     publicPrices.remember(pool.pool.items);
     let prices = Object.freeze({});

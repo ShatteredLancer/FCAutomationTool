@@ -498,14 +498,20 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
       img.addEventListener('error', () => { img.hidden = true; fallback.hidden = false; }, { once: true });
     }
   };
-  const nativeCards = new Set();
+  const nativeCards = new Map();
   let cardSequence = 0, disposed = false;
+  const releaseCard = entry => {
+    nativeCards.delete(entry.id);
+    try { entry.native.__fcatDealloc?.(); } catch { /* UI cleanup only. */ }
+    entry.native.remove();
+  };
   const disposeNativeCards = () => {
-    for (const card of nativeCards) {
-      try { card.__fcatDealloc?.(); } catch { /* UI cleanup only. */ }
-      card.remove();
+    for (const entry of nativeCards.values()) releaseCard(entry);
+  };
+  const releaseDetachedCards = () => {
+    for (const entry of nativeCards.values()) {
+      if (!entry.slot.isConnected) releaseCard(entry);
     }
-    nativeCards.clear();
   };
   const renderTextCard = (parent, row) => {
     const fallback = add(parent, 'div', '', 'gallery-text-card');
@@ -517,26 +523,36 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const cardImage = (parent, row, runtimeCards, setId) => {
     if (!active || disposed || jointMode) return;
+    const raw = runtimeCards?.get?.(row.eaId);
+    if (!raw) { renderTextCard(parent, row); return; }
+    const existing = nativeCards.get(row.eaId);
+    if (existing && existing.raw === raw && existing.setId === setId) {
+      parent.append(existing.slot);
+      return;
+    }
+    if (existing) releaseCard(existing);
     let native, fallbackRendered = false;
     const slot = add(parent, 'slot'); slot.name = `gallery-card-${++cardSequence}`;
     const fallback = () => {
       if (fallbackRendered || disposed || !active || !slot.isConnected || selectedSetId !== setId) return;
-      fallbackRendered = true; slot.remove(); nativeCards.delete(native);
+      const container = slot.parentElement;
+      fallbackRendered = true; slot.remove();
+      if (nativeCards.get(row.eaId)?.slot === slot) nativeCards.delete(row.eaId);
       // A native EA view may have returned its wrapper before reporting a
       // missing Hero/Holographics asset.  Remove that wrapper explicitly so a
       // failed native card cannot remain as a blank white panel beside the
       // text fallback.
       try { native?.__fcatDealloc?.(); } catch { /* UI cleanup only. */ }
       try { native?.remove?.(); } catch { /* UI cleanup only. */ }
-      const text = renderTextCard(parent, row);
-      parent.insertBefore(text, parent.querySelector('.gallery-card-select'));
+      const text = renderTextCard(container, row);
+      container.insertBefore(text, container.querySelector('.gallery-card-select'));
     };
     try {
       // Slotted light-DOM children inherit EA's global card styles. Do not
       // copy stylesheets or rebuild a portrait/card shell inside our shadow.
-      native = nativeRenderer?.render?.({ parent: host, raw: runtimeCards?.get?.(row.eaId), slot: slot.name,
+      native = nativeRenderer?.render?.({ parent: host, raw, slot: slot.name,
         label: `${row.name} ${row.version ?? ''}`, onUnavailable: fallback });
-      if (native) { nativeCards.add(native); return; }
+      if (native && !fallbackRendered) { nativeCards.set(row.eaId, { id: row.eaId, raw, setId, slot, native }); return; }
     } catch { /* Fall through to text-only card. */ }
     fallback();
   };
@@ -1071,6 +1087,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const selectionContext = () => {
     const rows = new Map(), prices = {}, confirmedMissing = new Set();
+    if (!selectedCards.size) return { rows: [], prices, valid: true };
     for (const detail of details.values()) {
       const fresh = detail.status === 'observed' && detail.stale !== true && detail.poolStale !== true;
       for (const row of detail.progress?.rows ?? []) {
@@ -1562,22 +1579,39 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
 
   const renderSetDetail = (value, set) => {
-    const target = node('gallery-set-detail'); disposeNativeCards(target); target.replaceChildren(); showBrowseLevel();
+    const target = node('gallery-set-detail'); target.replaceChildren(); showBrowseLevel();
     node('gallery-selection-footer').replaceChildren(); node('gallery-selection-footer').hidden = true;
     const heading = add(target, 'div', '', 'gallery-detail-heading');
     const headingIdentity = add(heading, 'div', '', 'gallery-identity');
     add(headingIdentity, 'h3', set.name);
     if (sync) {
-      const button = add(heading, 'button', '同步当前集合'); button.title = '同步当前集合';
+      const button = add(heading, 'button', '同步当前集合', 'gallery-sync-current'); button.title = '同步当前集合';
       // Background work must not disable a foreground collection refresh.
       button.disabled = foregroundSync?.setId === set.id;
       button.addEventListener('click', event => {
         if (event.isTrusted) void loadSetDetails(set, { force: true });
       });
     }
-    if (!value) return;
-    if (value.status === 'loading') { add(target, 'p', '正在读取卡池和账号状态…'); return; }
+    if (!value || value.status === 'loading') {
+      add(target, 'p', '正在读取卡池和账号状态…');
+      const rows = value?.preview?.progress?.rows ?? value?.preview?.pool?.items;
+      if (rows?.length) {
+        const list = add(target, 'div', '', 'gallery-card-list');
+        for (const item of paginateGalleryCards(rows, { page: cardPage }).rows) {
+          const row = item.name ? item : { ...item, name: item.cardName, version: item.rarityName };
+          const card = add(list, 'article', '', 'gallery-player-card gallery-card');
+          const art = add(card, 'div', '', 'gallery-player-art');
+          cardImage(art, row, value.preview.runtimeCards, set.id);
+          const meta = add(card, 'div', '', 'gallery-player-meta');
+          add(meta, 'strong', row.name);
+          add(meta, 'span', [row.overall, row.version].filter(Boolean).join(' · '));
+        }
+      }
+      releaseDetachedCards();
+      return;
+    }
     if (!value.progress) {
+      releaseDetachedCards();
       add(target, 'p', value.reason ?? '集合卡池或账号进度暂不可用', 'gallery-unknown'); return;
     }
     const progress = value.progress;
@@ -1841,12 +1875,13 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     }
     updateSelected();
     updateFooterGeometry();
+    releaseDetachedCards();
   };
 
   const loadSetDetails = (set, { force = false } = {}) => {
     if (typeof loadSet !== 'function') return;
     if (checkScope() === false) return;
-    if (!force && !invalidated.has(set.id) && foregroundSync?.setId === set.id && detailRequest?.id === set.id) return detailRequest.task;
+    if (!force && !invalidated.has(set.id) && selectedSetId === set.id && foregroundSync?.token === selection && detailRequest?.id === set.id) return detailRequest.task;
     // A user-selected collection always wins over background all-set mapping.
     // The loader then performs the exact pool/progress read for this set.
     const priority = sync?.prioritize?.(set.id);
@@ -1859,12 +1894,35 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
     foregroundSync = { token, setId: set.id, name: set.name, progress: { phase: 'catalog', index: 0, total: 1, completed: 0 } };
     // A forced refresh must follow, not coalesce into, the pre-change read.
     const prior = force && detailRequest?.id === set.id && detailRequest.source === source ? detailRequest.task : null;
-    renderSetDetail({status:'loading'}, set);
+    const startedAt = performance.now();
+    const elapsed = () => Math.round(performance.now() - startedAt);
+    const cached = !force && startedScope && details.get(set.id);
+    let preview = cached?.scope === startedScope && cached?.progress ? cached : null;
+    renderSetDetail({ status: 'loading', preview }, set);
+    let firstListMs = preview?.progress.rows.length ? elapsed() : null;
+    let previewFrame = null;
+    const stopPreview = () => {
+      if (previewFrame !== null) document.defaultView.cancelAnimationFrame(previewFrame);
+      previewFrame = null;
+    };
+    const onPreview = value => {
+      if (token !== selection || startedScope !== scope() || source !== result?.source || disposed || jointMode) return;
+      if (value.scope && value.scope !== startedScope) return;
+      if (preview && !value.progress) return;
+      preview = value;
+      if (previewFrame !== null) return;
+      previewFrame = document.defaultView.requestAnimationFrame(() => {
+        previewFrame = null;
+        if (token !== selection || startedScope !== scope() || source !== result?.source || disposed || jointMode) return;
+        renderSetDetail({ status: 'loading', preview }, set);
+        if ((preview.progress?.rows ?? preview.pool?.items)?.length) firstListMs ??= elapsed();
+      });
+    };
     updateSyncButton();
     const task = Promise.resolve(priority).then(() => prior).then(() => {
       checkScope();
       if (token !== selection || startedScope !== currentScope) return null;
-      return loadSet({ source, setId: set.id, set, force, onProgress: progress => {
+      return loadSet({ source, setId: set.id, set, force, onPreview, onProgress: progress => {
         if (foregroundSync?.token !== token || startedScope !== scope() || disposed) return;
         foregroundSync.progress = progress; updateSyncButton();
       } });
@@ -1873,20 +1931,28 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         checkScope();
         if (!value || token !== selection || source !== result?.source || startedScope !== currentScope || value.scope && value.scope !== currentScope) return;
         if (value.status === 'observed' && !value.poolStale) invalidated.delete(set.id);
-        const changed = galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
+        const changed = jointTargets.has(set.id) && galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
         details.set(set.id, value);
         await restorePlanCache(set, value);
         if (token !== selection || source !== result?.source || startedScope !== currentScope) return;
-        if (changed && jointTargets.has(set.id)) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
+        if (changed) invalidateJoint('目标材料或报价已更新，请重新生成方案。');
         renderJoint(); renderSets(); updateCategoryScores({ enqueue: true });
         const currentSet = result.catalog.categories.flatMap(category => category.sets).find(row => row.id === set.id);
-        if (currentSet && !jointMode) renderSetDetail(details.get(set.id) ?? value, currentSet);
+        if (currentSet && !jointMode) {
+          stopPreview();
+          renderSetDetail(details.get(set.id) ?? value, currentSet);
+          const durationMs = elapsed();
+          void diag({ event: 'set-open', source, phase: 'detail', status: value.status,
+            setId: set.sourceId ?? Number(String(set.id).split(':').pop()), count: value.progress?.rows.length ?? 0,
+            durationMs, ...(firstListMs !== null || value.progress?.rows.length ? { firstListMs: firstListMs ?? durationMs } : {}) });
+        }
       })
       .catch(error => {
         checkScope();
         const value = { status: 'blocked', reason: /^FC27_[A-Z_]+$/.test(error?.message) ? error.message : 'FC27_GALLERY_PROGRESS_UNAVAILABLE' };
         if (token === selection) renderSetDetail(value, set);
       }).finally(() => {
+        stopPreview();
         if (foregroundSync?.token === token) { foregroundSync = null; updateSyncButton(); }
         Promise.resolve(priority).then(interrupted => {
           if (interrupted && !disposed && active && startedScope === scope()) resumeBackground = true;
@@ -2002,6 +2068,8 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
   };
   const updateSyncButton = () => {
     if (!sync) return;
+    const currentSetButton = node('gallery-set-detail').querySelector('.gallery-sync-current');
+    if (currentSetButton) currentSetButton.disabled = foregroundSync?.setId === selectedSetId;
     const state = sync.state();
     const button = node('gallery-sync');
     button.hidden = false;
@@ -2184,7 +2252,7 @@ export function mountFc27GalleryView({ document, shadow, host, provider, loadSet
         details.delete(selected.id);
         void loadSetDetails(selected, { force: true });
       }
-    } else if (!activePlans && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
+    } else if (!foregroundSync && !activePlans && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
       const selected = catalog.categories.flatMap(category => category.sets).find(set => set.id === selectedSetId);
       if (selected) renderSetDetail(details.get(selectedSetId), selected);
     }

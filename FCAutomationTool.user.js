@@ -25352,17 +25352,23 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }, { once: true });
       }
     };
-    const nativeCards = /* @__PURE__ */ new Set();
+    const nativeCards = /* @__PURE__ */ new Map();
     let cardSequence = 0, disposed = false;
-    const disposeNativeCards = () => {
-      for (const card of nativeCards) {
-        try {
-          card.__fcatDealloc?.();
-        } catch {
-        }
-        card.remove();
+    const releaseCard = (entry) => {
+      nativeCards.delete(entry.id);
+      try {
+        entry.native.__fcatDealloc?.();
+      } catch {
       }
-      nativeCards.clear();
+      entry.native.remove();
+    };
+    const disposeNativeCards = () => {
+      for (const entry of nativeCards.values()) releaseCard(entry);
+    };
+    const releaseDetachedCards = () => {
+      for (const entry of nativeCards.values()) {
+        if (!entry.slot.isConnected) releaseCard(entry);
+      }
     };
     const renderTextCard = (parent, row) => {
       const fallback = add3(parent, "div", "", "gallery-text-card");
@@ -25374,14 +25380,26 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const cardImage = (parent, row, runtimeCards, setId) => {
       if (!active || disposed || jointMode) return;
+      const raw = runtimeCards?.get?.(row.eaId);
+      if (!raw) {
+        renderTextCard(parent, row);
+        return;
+      }
+      const existing = nativeCards.get(row.eaId);
+      if (existing && existing.raw === raw && existing.setId === setId) {
+        parent.append(existing.slot);
+        return;
+      }
+      if (existing) releaseCard(existing);
       let native, fallbackRendered = false;
       const slot = add3(parent, "slot");
       slot.name = `gallery-card-${++cardSequence}`;
       const fallback = () => {
         if (fallbackRendered || disposed || !active || !slot.isConnected || selectedSetId !== setId) return;
+        const container = slot.parentElement;
         fallbackRendered = true;
         slot.remove();
-        nativeCards.delete(native);
+        if (nativeCards.get(row.eaId)?.slot === slot) nativeCards.delete(row.eaId);
         try {
           native?.__fcatDealloc?.();
         } catch {
@@ -25390,19 +25408,19 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           native?.remove?.();
         } catch {
         }
-        const text7 = renderTextCard(parent, row);
-        parent.insertBefore(text7, parent.querySelector(".gallery-card-select"));
+        const text7 = renderTextCard(container, row);
+        container.insertBefore(text7, container.querySelector(".gallery-card-select"));
       };
       try {
         native = nativeRenderer?.render?.({
           parent: host,
-          raw: runtimeCards?.get?.(row.eaId),
+          raw,
           slot: slot.name,
           label: `${row.name} ${row.version ?? ""}`,
           onUnavailable: fallback
         });
-        if (native) {
-          nativeCards.add(native);
+        if (native && !fallbackRendered) {
+          nativeCards.set(row.eaId, { id: row.eaId, raw, setId, slot, native });
           return;
         }
       } catch {
@@ -26113,6 +26131,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const selectionContext = () => {
       const rows = /* @__PURE__ */ new Map(), prices2 = {}, confirmedMissing = /* @__PURE__ */ new Set();
+      if (!selectedCards.size) return { rows: [], prices: prices2, valid: true };
       for (const detail of details.values()) {
         const fresh = detail.status === "observed" && detail.stale !== true && detail.poolStale !== true;
         for (const row of detail.progress?.rows ?? []) {
@@ -26780,7 +26799,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const renderSetDetail = (value, set) => {
       const target = node("gallery-set-detail");
-      disposeNativeCards(target);
       target.replaceChildren();
       showBrowseLevel();
       node("gallery-selection-footer").replaceChildren();
@@ -26789,19 +26807,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       const headingIdentity = add3(heading, "div", "", "gallery-identity");
       add3(headingIdentity, "h3", set.name);
       if (sync) {
-        const button = add3(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408");
+        const button = add3(heading, "button", "\u540C\u6B65\u5F53\u524D\u96C6\u5408", "gallery-sync-current");
         button.title = "\u540C\u6B65\u5F53\u524D\u96C6\u5408";
         button.disabled = foregroundSync?.setId === set.id;
         button.addEventListener("click", (event) => {
           if (event.isTrusted) void loadSetDetails(set, { force: true });
         });
       }
-      if (!value) return;
-      if (value.status === "loading") {
+      if (!value || value.status === "loading") {
         add3(target, "p", "\u6B63\u5728\u8BFB\u53D6\u5361\u6C60\u548C\u8D26\u53F7\u72B6\u6001\u2026");
+        const rows = value?.preview?.progress?.rows ?? value?.preview?.pool?.items;
+        if (rows?.length) {
+          const list4 = add3(target, "div", "", "gallery-card-list");
+          for (const item2 of paginateGalleryCards(rows, { page: cardPage }).rows) {
+            const row = item2.name ? item2 : { ...item2, name: item2.cardName, version: item2.rarityName };
+            const card = add3(list4, "article", "", "gallery-player-card gallery-card");
+            const art = add3(card, "div", "", "gallery-player-art");
+            cardImage(art, row, value.preview.runtimeCards, set.id);
+            const meta = add3(card, "div", "", "gallery-player-meta");
+            add3(meta, "strong", row.name);
+            add3(meta, "span", [row.overall, row.version].filter(Boolean).join(" \xB7 "));
+          }
+        }
+        releaseDetachedCards();
         return;
       }
       if (!value.progress) {
+        releaseDetachedCards();
         add3(target, "p", value.reason ?? "\u96C6\u5408\u5361\u6C60\u6216\u8D26\u53F7\u8FDB\u5EA6\u6682\u4E0D\u53EF\u7528", "gallery-unknown");
         return;
       }
@@ -27174,11 +27206,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       }
       updateSelected();
       updateFooterGeometry();
+      releaseDetachedCards();
     };
     const loadSetDetails = (set, { force = false } = {}) => {
       if (typeof loadSet !== "function") return;
       if (checkScope() === false) return;
-      if (!force && !invalidated.has(set.id) && foregroundSync?.setId === set.id && detailRequest?.id === set.id) return detailRequest.task;
+      if (!force && !invalidated.has(set.id) && selectedSetId === set.id && foregroundSync?.token === selection && detailRequest?.id === set.id) return detailRequest.task;
       const priority = sync?.prioritize?.(set.id);
       categoryId = result?.catalog?.categories.find((row) => row.sets.some((candidate) => candidate.id === set.id))?.id ?? null;
       const changingSet = selectedSetId !== set.id;
@@ -27193,12 +27226,35 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       force = force || invalidated.has(set.id);
       foregroundSync = { token, setId: set.id, name: set.name, progress: { phase: "catalog", index: 0, total: 1, completed: 0 } };
       const prior = force && detailRequest?.id === set.id && detailRequest.source === source ? detailRequest.task : null;
-      renderSetDetail({ status: "loading" }, set);
+      const startedAt = performance.now();
+      const elapsed = () => Math.round(performance.now() - startedAt);
+      const cached = !force && startedScope && details.get(set.id);
+      let preview = cached?.scope === startedScope && cached?.progress ? cached : null;
+      renderSetDetail({ status: "loading", preview }, set);
+      let firstListMs = preview?.progress.rows.length ? elapsed() : null;
+      let previewFrame = null;
+      const stopPreview = () => {
+        if (previewFrame !== null) document.defaultView.cancelAnimationFrame(previewFrame);
+        previewFrame = null;
+      };
+      const onPreview = (value) => {
+        if (token !== selection || startedScope !== scope2() || source !== result?.source || disposed || jointMode) return;
+        if (value.scope && value.scope !== startedScope) return;
+        if (preview && !value.progress) return;
+        preview = value;
+        if (previewFrame !== null) return;
+        previewFrame = document.defaultView.requestAnimationFrame(() => {
+          previewFrame = null;
+          if (token !== selection || startedScope !== scope2() || source !== result?.source || disposed || jointMode) return;
+          renderSetDetail({ status: "loading", preview }, set);
+          if ((preview.progress?.rows ?? preview.pool?.items)?.length) firstListMs ??= elapsed();
+        });
+      };
       updateSyncButton();
       const task = Promise.resolve(priority).then(() => prior).then(() => {
         checkScope();
         if (token !== selection || startedScope !== currentScope) return null;
-        return loadSet({ source, setId: set.id, set, force, onProgress: (progress) => {
+        return loadSet({ source, setId: set.id, set, force, onPreview, onProgress: (progress) => {
           if (foregroundSync?.token !== token || startedScope !== scope2() || disposed) return;
           foregroundSync.progress = progress;
           updateSyncButton();
@@ -27207,21 +27263,36 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         checkScope();
         if (!value || token !== selection || source !== result?.source || startedScope !== currentScope || value.scope && value.scope !== currentScope) return;
         if (value.status === "observed" && !value.poolStale) invalidated.delete(set.id);
-        const changed = galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
+        const changed = jointTargets.has(set.id) && galleryPlanningStateKey(details.get(set.id)) !== galleryPlanningStateKey(value);
         details.set(set.id, value);
         await restorePlanCache(set, value);
         if (token !== selection || source !== result?.source || startedScope !== currentScope) return;
-        if (changed && jointTargets.has(set.id)) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
+        if (changed) invalidateJoint("\u76EE\u6807\u6750\u6599\u6216\u62A5\u4EF7\u5DF2\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u3002");
         renderJoint();
         renderSets();
         updateCategoryScores({ enqueue: true });
         const currentSet = result.catalog.categories.flatMap((category) => category.sets).find((row) => row.id === set.id);
-        if (currentSet && !jointMode) renderSetDetail(details.get(set.id) ?? value, currentSet);
+        if (currentSet && !jointMode) {
+          stopPreview();
+          renderSetDetail(details.get(set.id) ?? value, currentSet);
+          const durationMs = elapsed();
+          void diag({
+            event: "set-open",
+            source,
+            phase: "detail",
+            status: value.status,
+            setId: set.sourceId ?? Number(String(set.id).split(":").pop()),
+            count: value.progress?.rows.length ?? 0,
+            durationMs,
+            ...firstListMs !== null || value.progress?.rows.length ? { firstListMs: firstListMs ?? durationMs } : {}
+          });
+        }
       }).catch((error2) => {
         checkScope();
         const value = { status: "blocked", reason: /^FC27_[A-Z_]+$/.test(error2?.message) ? error2.message : "FC27_GALLERY_PROGRESS_UNAVAILABLE" };
         if (token === selection) renderSetDetail(value, set);
       }).finally(() => {
+        stopPreview();
         if (foregroundSync?.token === token) {
           foregroundSync = null;
           updateSyncButton();
@@ -27356,6 +27427,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     };
     const updateSyncButton = () => {
       if (!sync) return;
+      const currentSetButton = node("gallery-set-detail").querySelector(".gallery-sync-current");
+      if (currentSetButton) currentSetButton.disabled = foregroundSync?.setId === selectedSetId;
       const state2 = sync.state();
       const button = node("gallery-sync");
       button.hidden = false;
@@ -27580,7 +27653,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           details.delete(selected.id);
           void loadSetDetails(selected, { force: true });
         }
-      } else if (!activePlans && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
+      } else if (!foregroundSync && !activePlans && !jointMode && selectedSetId != null && details.has(selectedSetId)) {
         const selected = catalog.categories.flatMap((category) => category.sets).find((set) => set.id === selectedSetId);
         if (selected) renderSetDetail(details.get(selectedSetId), selected);
       }
@@ -46664,6 +46737,7 @@ ${version ?? ""}`;
     "setId",
     "challengeId",
     "requests",
+    "firstListMs",
     "definitionId",
     "referencePrice",
     "searchCeiling",
@@ -53618,11 +53692,13 @@ ${detail.join(" \xB7 ")}`;
       downloadFc27Diagnostics(unsafeWindow, unsafeWindow.document, JSON.stringify(payload, null, 2), filename);
       return { count: payload.entries.length, filename };
     },
-    gallerySetLoader: async ({ source, setId, force = false, onProgress = null }) => {
+    gallerySetLoader: async ({ source, setId, force = false, onProgress = null, onPreview = null }) => {
       const pool = await galleryCatalog.loadPool({ source, setId, force, onProgress });
       if (pool.status !== "observed" || !pool.pool) return pool;
       gallerySync.remember(pool.pool);
+      if (!pool.stale) onPreview?.({ pool: pool.pool });
       const progress = await galleryProgress.load(pool.pool, { force: source === "fodder" ? false : force, onProgress });
+      if (progress.progress) onPreview?.(progress);
       publicPrices.remember(pool.pool.items);
       let prices = Object.freeze({});
       let priceError = null;

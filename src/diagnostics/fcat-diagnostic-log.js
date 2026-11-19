@@ -35,7 +35,7 @@ const STRING_FIELDS = Object.freeze(['area', 'event', 'source', 'phase', 'transp
 const NUMBER_FIELDS = Object.freeze(['startPrice','buyNow','durationSeconds','minimumPrice','maximumPrice','httpStatus', 'errorCode', 'batchSize', 'count', 'spent', 'reservedCoins', 'approvedBudget', 'remainingBudget', 'retryAt', 'durationMs', 'deadlineMs', 'capturedAt', 'processingMs', 'schedulingMs',
   'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
   'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
-  'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests',
+  'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests', 'firstListMs',
   'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue', 'initialMaterialValue', 'coveragePages', 'hintNodes', 'hintPairs',
