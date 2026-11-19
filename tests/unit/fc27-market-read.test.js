@@ -6,9 +6,16 @@ import { createFc27GalleryProgressReader } from '../../src/adapters/ea/fc27-gall
 import { createGalleryMarketComparison } from '../../src/gallery/market-comparison.js';
 import october9 from '../fixtures/fc27-request-method-observation-2026-10-09.json';
 import october12 from '../fixtures/fc27-market-method-observation-2026-10-12.json';
+import build11502 from '../fixtures/fc27-market-read-11502.json';
+import build11502Shared from '../fixtures/fc27-build-11502-method-digests.json';
 import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
 import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
 import { defaultTradingPublicSettings } from '../../src/trading/task-model.js';
+import { readFc27Context } from '../../src/adapters/ea/fc27-local-read.js';
+import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
+import { parseFc27SbcRequirements, matchFc27SbcRequirements } from '../../src/fc27/sbc-requirements.js';
+import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
+import { marketRow } from '../helpers/fc27-market-fixture.js';
 
 // Public runtime captured without login on 2026-10-02, independently of the
 // production allowlist. All thirteen decoded methods match the old structure.
@@ -49,14 +56,15 @@ function fixture(methodHashes = null) {
       calls.push(this); control.onSend?.();
       if (!control.timeout) this.callback(control.wrongOwner ? {} : this,
         { success: control.status === 200, status: control.status, ...(control.error ? { error: control.error } : {}),
-          response: this.url.endsWith('/user/credits') ? (control.credits ?? { currencies: [{ name: 'coins', funds: 10000 }] }) : this.url.endsWith('/defid') ? catalog : market });
+          response: control.respond ? control.respond(this)
+            : this.url.endsWith('/user/credits') ? (control.credits ?? { currencies: [{ name: 'coins', funds: 10000 }] }) : this.url.endsWith('/defid') ? catalog : market });
     }
   }
   class UTItemEntityFactory {
     createItem(raw) {
       return { ...raw, definitionId: raw.resourceId, type: 'player', _rating: 70, _rareflag: 0,
         nationId: 14, teamId: 22, leagueId: 33, basePossiblePositions: [12, 23], groups: [],
-        upgrades: null, cosmetics: [], _hyperCosmeticDTOs: {}, ...control.entity };
+        upgrades: null, cosmetics: [], _hyperCosmeticDTOs: {}, ...control.entity, ...control.project?.(raw) };
     }
     generateItemsFromItemData(rows, duplicates) {
       return rows.map(raw => this.createItem(raw));
@@ -99,6 +107,123 @@ function fixture(methodHashes = null) {
 const catalogQuery = { start: 0, count: 20, level: 'silver' };
 const quoteQuery = { definitionId: 101, start: 0, count: 20, maxBuy: 2000 };
 const october12Hashes = FC27_MARKET_READ_METHODS.map(([path]) => october12.methods[path].sha256);
+// Independently measured public digests; stub requests/factories remain offline.
+const build11502Hashes = FC27_MARKET_READ_METHODS.map(([path], index) =>
+  build11502.methods[path] ?? build11502Shared.methods[path] ?? october12Hashes[index]);
+
+it('reads build 11502 quotes even when the catalog method is unavailable in quotes-only mode', async () => {
+  const f = fixture(build11502Hashes);
+  delete f.root.UTItemDAO.prototype.searchConceptItems;
+  const transport = await createFc27MarketReadTransport(f.root, { quotesOnly: true });
+  expect(await transport.readQuotePage(quoteQuery)).toMatchObject({ price: 450, executable: false });
+  expect(f.calls.map(call => call.requestType)).toEqual(['GET']);
+  await expect(transport.readCatalogPage(catalogQuery)).rejects.toThrow('CATALOG_DISABLED');
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it('116/176 generates an independently validated 11-player plan using build 11502 catalog and quotes', async () => {
+  const f = fixture(build11502Hashes), input = puzzleFillFixture(), memory = new Map();
+  const now = () => Date.now();
+  input.now = now();
+  input.context = input.challenge.context = input.policy.context = input.inventory.context = readFc27Context(f.root);
+  Object.assign(input.challenge, { setId: 116, id: 176, rawRequirements: [
+    marketRow(5, 4), marketRow(6, 3, -1, 1), marketRow(7, 2), marketRow(9, 5, -1, 1),
+    marketRow(3, 2), marketRow(35, 18),
+  ] });
+  Object.assign(input.policy, { maxRating: 82 });
+  Object.assign(input.marketPolicy, { budget: 6000, maxPurchases: 11, maxUnitPrice: 1000, availableCoins: 9000 });
+  const base = input.inventory.items[0];
+  const linked = Array.from({ length: 11 }, (_, i) => {
+    const teamId = 2 + Math.floor(i / 3);
+    return { definitionId: 1000 + i, rating: i < 2 ? 76 : 70, teamId, leagueId: i < 6 ? 40 : 41,
+      nationId: i < 6 ? 20 : 21, positions: [5], rarity: 0, groups: [], special: false, evolution: false, cosmetic: false };
+  });
+  const protectedCards = [
+    { ...base, ...linked[2], id: 32, definitionId: 1032, locked: true },
+    { ...base, ...linked[5], id: 35, definitionId: 1035, activeSquad: true },
+  ];
+  input.inventory.items = [
+    ...linked.slice(0, 2).map((card, i) => ({ ...base, ...card, id: i + 1 })),
+    ...Array.from({ length: 9 }, (_, i) => ({ ...base, id: 10 + i, definitionId: 1010 + i,
+      teamId: 100 + i, leagueId: 100 + i, nationId: 100 + i, rating: 76 })),
+    ...protectedCards,
+  ];
+  const market = new Map(linked.slice(2).map(card => [card.definitionId, card]));
+  const raw = definitionId => ({ ...f.player, id: definitionId, resourceId: definitionId });
+  f.control.project = row => {
+    const card = market.get(row.resourceId);
+    return { _rating: card.rating, teamId: card.teamId, leagueId: card.leagueId,
+      nationId: card.nationId, basePossiblePositions: card.positions };
+  };
+  f.control.respond = request => {
+    const query = new URLSearchParams(request.urlVariables);
+    if (request.url.endsWith('/defid')) {
+      const cards = [...market.values()].filter(card => query.get('level') === 'silver'
+        && ['team', 'league', 'nation'].every(field => !query.has(field) || Number(query.get(field)) === card[`${field}Id`]));
+      return { itemData: cards.slice(Number(query.get('start')), Number(query.get('start')) + Number(query.get('count')))
+        .map(card => raw(card.definitionId)) };
+    }
+    expect(request.url).toMatch(/\/transfermarket$/);
+    const definitionId = Number(query.get('definitionId'));
+    expect(market.has(definitionId)).toBe(true);
+    return { auctionInfo: [{ ...f.auction, itemData: raw(definitionId), buyNowPrice: 400 }] };
+  };
+  const inventoryBefore = structuredClone(input.inventory);
+  const session = createFc27PuzzleProcurementSession({
+    now, get: async (key, fallback) => structuredClone(memory.get(key) ?? fallback),
+    set: async (key, value) => memory.set(key, structuredClone(value)),
+    createTransport: options => createFc27MarketReadTransport(f.root, options),
+  });
+  // Reproduce the pre-update blocked cache entry, then retry without clearing storage.
+  const dao = f.root.UTItemDAO.prototype, catalogMethod = dao.searchConceptItems;
+  dao.searchConceptItems = () => { throw Error('unknown locally replaced method'); };
+  expect(await session.plan(input, { adaptiveSearch: true })).toMatchObject({
+    status: 'blocked', reason: 'FC27_MARKET_METHOD_9_CHANGED', requests: 0,
+  });
+  expect(f.calls).toEqual([]);
+  dao.searchConceptItems = catalogMethod;
+  let result;
+  vi.useFakeTimers();
+  try {
+    [result] = await Promise.all([session.plan(input, { adaptiveSearch: true }), vi.runAllTimersAsync()]);
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(result.status, JSON.stringify({ reason: result.reason, diagnostics: result.diagnostics })).toBe('suggested');
+  const plan = result.plans[0], squad = Array(11).fill(null);
+  for (const ref of plan.selectedOwned) squad[ref.slot] = input.inventory.items.find(card => card.id === ref.id);
+  for (const ref of plan.purchases) squad[ref.slot] = { ...base, ...market.get(ref.definitionId) };
+  const facts = input.evaluateSquad(squad);
+  expect(squad.every(Boolean)).toBe(true);
+  expect(new Set(squad.map(card => card.definitionId)).size).toBe(11);
+  const countsBy = field => new Map(squad.map(card => [card[field], squad.filter(other => other[field] === card[field]).length]));
+  expect(Math.max(...countsBy('leagueId').values())).toBeGreaterThanOrEqual(4);
+  expect(Math.max(...countsBy('teamId').values())).toBeLessThanOrEqual(3);
+  expect(countsBy('nationId').size).toBeGreaterThanOrEqual(2);
+  expect(countsBy('teamId').size).toBeLessThanOrEqual(5);
+  expect(Math.min(...squad.map(card => card.rating))).toBeGreaterThanOrEqual(65);
+  expect(matchFc27SbcRequirements({ requirements: parseFc27SbcRequirements(input.challenge.rawRequirements, 11).rules,
+    squad, ...facts, clubLinks: input.clubLinks }).status).toBe('satisfied');
+  expect(facts.chemistry).toBeGreaterThanOrEqual(18);
+  expect(plan.selectedOwned.every(card => !protectedCards.some(protectedCard => protectedCard.id === card.id))).toBe(true);
+  expect(plan.purchases.length).toBeGreaterThan(0);
+  expect(plan.estimatedCost).toBe(plan.purchases.length * 400);
+  expect(result.diagnostics.catalogAttempts).toBeGreaterThan(0);
+  expect(result.diagnostics.quoteAttempts).toBeGreaterThan(0);
+  expect(f.calls.every(call => call.requestType === 'GET')).toBe(true);
+  expect(f.forbidden).not.toHaveBeenCalled();
+  expect(input.inventory).toEqual(inventoryBefore);
+});
+
+it('does not admit a reviewed build 11502 digest at the wrong method path or in write verification', async () => {
+  const hashes = [...build11502Hashes]; hashes[10] = hashes[9];
+  const misplaced = fixture(hashes), f = fixture(build11502Hashes);
+  await expect(createFc27MarketReadTransport(misplaced.root, { quotesOnly: true }))
+    .rejects.toThrow('FC27_MARKET_METHOD_10_CHANGED');
+  await expect(verifyFc27Methods(f.root, [FC27_MARKET_READ_METHODS[10]]))
+    .rejects.toThrow('FC27_TRANSACTION_METHOD_UNREVIEWED');
+  expect([...misplaced.calls, ...f.calls]).toEqual([]);
+});
 it('checks session with one authenticated GET, no market search, balance export or retry', async () => {
   const f = fixture(october12Hashes), dispatch = vi.fn();
   const result = await (await createFc27MarketReadTransport(f.root, { quotesOnly: true, maxRequests: 1 })).readSessionHealth({ beforeDispatch: dispatch });

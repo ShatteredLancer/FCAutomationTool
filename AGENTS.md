@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-19 Puzzle 27.0.117：116/176 的 .116 日志四次在候选读取前报 METHOD_9_CHANGED，0请求/0验算。公开 EA 11502 的候选和报价方法新增仅影响 foil 筛选的分支，三个 Identification 相关方法与旧已审核行为一致；五个指纹仅登记在 Market 只读路径。实际公开方法 SHA 先红后绿，离线生产 116/176 七项都通过，旧候选失败缓存可重试，锁卡/主阵容未入选。未改选卡、预算、限价、FSU 或交易/提交保护，未做实机买卡。详见 docs/releases/27.0.117.md。
+
 2026-11-19 Streamlined 27.0.116：.115新20万分库存优先196（Club188/Storage8）、0合格，首要special174/rating22且22评分未投影。EA 11502公开ItemRarity实测NONE0/LOCK2/MANNEQUIN201/MULTI_MANNEQUIN202/DEFAULT999及反向键，没有RARE；原实体继续保存rareflag，FSU/市场正常卡规则0/1。旧shared snapshot要求NONE0/RARE1，造成明确普通卡被special:null误排；仅认精确新枚举及原旧合同，未知及>1特殊、未确认评分、EVO/装饰/锁卡/主阵容继续受保护。合成原生Club/Storage筛选先红后绿，库存优先2库存+1补卡、贯通fresh校验/采购/贡献/恢复0重复。未验证现场具体可用张数，未动FSU/交易、预算或Journal。见docs/releases/27.0.116.md。
 
 2026-11-19 Streamlined 27.0.115：.113日志20万分已算200030，执行初始化methods.notify指纹114bf518未收录，未新增买卡/贡献；非.113截止时间。EA公开11502同指纹，notify/七HTTP原语/bid+move/两Storage函数共12个解码同旧已审核行为，真实SHA先红后绿；只精确别名，未知/运行中换函数不放行。其他核对/贡献原生方法指纹仍匹配，FSU dirty来自现有本地FSU代码，不当作EA方法。库存优先快照196（Club188/Storage8）可用0，旧日志仅见尾部6个special分类，不推断其余190。新增只读 UI已读/可用/采用和首要排除充分汇总，诊断保留在计划有界快照内；不改选材/保护/预算/回执、FSU或ad的.114策略。详见docs/releases/27.0.115.md。

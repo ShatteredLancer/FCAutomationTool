@@ -5,6 +5,12 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.117] - 2026-11-19
+
+- Restore ordinary SBC catalog and market quote reads on EA Web App build 11502.
+- Keep locked players, the active squad, purchase limits and confirmation rules unchanged.
+  See the [116/176 offline regression](docs/releases/27.0.117.md).
+
 ## [27.0.22] - 2026-10-14
 
 - Accept EA squad ID zero only after its matching native entity is explicitly active and the full

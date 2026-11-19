@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.116
+// @version      27.0.117
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.116", at: Date.now(), status: 'started',
+    state = { version: "27.0.117", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -10457,23 +10457,28 @@
   var compatibleHashes = Object.freeze({
     "UTItemDAO.prototype.searchConceptItems": [
       "edcd06d35a1fed95ead779eb152e9fce08662855bfda6ded3f0933d40236c7cc",
-      "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1"
+      "a4636c57d7f0c0f2029c561f09cba2402c3a7d7b6741391681387c126a1c93c1",
+      "739b5272306a16e776699f37171f4c1ab3d7a88d280f134639dd2ff8de3ed36e"
     ],
     "UTItemDAO.prototype.searchTransferMarket": [
       "dceda80c8f59ac33349b5fb1eeecb4705834e0c0bc094bdb80fc98494b561111",
-      "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2"
+      "115db0308108407e39828df5dd05e5a5229d8f201bcb8dae46c268f0581de0a2",
+      "92dde52b00c0fa917d74a691c667dbc677115de454efd7def022b71cbe595b81"
     ],
     "FCAuthenticationService.prototype.getIdentifier": [
       "963bdc4c7fca39df8d4865716ceae2e323da2e16ca70287be4c9f00149494dc2",
-      "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339"
+      "b6a15ab3958bbc66a207a59b651f7bf508cadee3888dd92348b59645648e5339",
+      "4e8f0c7ba03616e7bc1972cacd86011f2608710a8f95083cb0f87b6dffb6b648"
     ],
     "Identification.prototype.handleRequest": [
       "b2c26d4d12aab146387df266044ffbab40e77b96d7b3328ac55f32d99d767949",
-      "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291"
+      "b2b5fcb44cb8ca501c0d803e1b42803fd503093688b930ed0dee8bf09cd3f291",
+      "8fcbcbf0e372d8332450ab1c1c8146312b8ddaff419989aba880210c24123142"
     ],
     "Identification.prototype.handleResponse": [
       "2fb555ef84ebf2a1c71b05095ec37955733f40ab55e48e3849d3b49636f3abb4",
-      "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f"
+      "0af5197cec225474ea1e7ccbd087bf6257b69a671d4c866e4ace782d93d35c5f",
+      "68851be8fb88440c12968db577d0d8e59f51cd49c4482e3a2e0916e0268bc1b1"
     ]
   });
   var october12Hashes = Object.freeze({
@@ -52764,7 +52769,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.116" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.117" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53179,8 +53184,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.116"}`,
-    version: "27.0.116",
+    title: `FC Automation Tool ${"27.0.117"}`,
+    version: "27.0.117",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
