@@ -35,6 +35,20 @@ async function fixture(mode = 'sell', shared = false, rating = 84) {
     transport: {}, liveEnabled: true, now: f.now, createNative });
   return { ...f, data, store, coordinator, snapshot, runtime, gmRequest, createNative,traffic, diagnosticLog };
 }
+it.each(['success','throw','reject'])('records startup method mismatch without transactions even if logging %s',async logging=>{
+  const f=await fixture();const error=Object.assign(Error('FC27_TRANSACTION_METHOD_UNREVIEWED'),{
+    methodPath:'service.bid',observedHash:'a'.repeat(64),expectedHash:'b'.repeat(64),privateValue:'do not export'});
+  f.createNative.mockRejectedValue(error);
+  if(logging==='throw')f.diagnosticLog.record.mockImplementation(()=>{throw Error('log');});
+  if(logging==='reject')f.diagnosticLog.record.mockRejectedValue(Error('log'));
+  await expect(f.runtime.run({approved:true,snapshot:f.snapshot,taskIds:['sell']})).rejects.toBe(error);
+  expect(f.runtime.inspect()).toMatchObject({busy:false,reason:'MARKET_RUNTIME_UNVERIFIED'});
+  expect(f.diagnosticLog.record).toHaveBeenCalledWith({area:'trading',event:'task-scheduler',phase:'initialize',
+    transportPhase:'native-create',status:'blocked',reason:'MARKET_RUNTIME_UNVERIFIED',localReason:'FC27_TRANSACTION_METHOD_UNREVIEWED',
+    methodPath:'service.bid',observedHash:'a'.repeat(64),expectedHash:'b'.repeat(64)});
+  expect(JSON.stringify(f.diagnosticLog.record.mock.calls)).not.toContain('do not export');
+  expect(f.calls).toEqual([]);expect((await f.coordinator.inspect()).ledger.intents).toEqual([]);
+});
 async function batchFixture(afterBuy = 'list', settings = {}) {
   const f = await fixture('filter', true);
   const task = f.snapshot.store.tasks[0];
@@ -137,7 +151,7 @@ it('pauses only the rejected listing task while another explicitly started task 
    if(++calls>3)f.runtime.pauseAll();
    if(card.id===201)return {success:false,status:400};
    card.auction={tradeId:19202,tradeState:'active',startingBid:650,buyNowPrice:700,currentBid:0};
-   return {success:true,status:200};
+   return {success:true,status:200,data:{itemIds:[card.id]}};
  };
  let stopped=false;
  f.runtime.subscribe(s=>{if(!stopped&&s.evidence?.some(e=>e.counts[1]===1)){stopped=true;f.runtime.pauseAll();}});

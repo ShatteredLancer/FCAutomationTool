@@ -45,6 +45,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
   // One maintenance check for the approved account owner, never one per task.
   // Successful native reads postpone it; this is not a promise of EA renewal.
   let sessionHealth = { state: 'idle', lastOnlineAt: null };
+  let lastSessionCheckAt = null;
   const inspect = () => ({ available: enabled && Boolean(provider), modes: [...supportedModes], context: runContext ? structuredClone(runContext) : null, busy, phase, taskId: currentTask,
     reason: lastReason, traffic, lastSearch: lastSearch ? { ...lastSearch } : null, sessionHealth: { ...sessionHealth }, evidence: structuredClone(evidence), errors: [...errorCounts].map(([code, count]) => ({ code, count })),
     tasks: [...tasks.values()].map(row => ({ id: row.id, state: row.state, reason: row.reason, nextAt: row.nextAt,
@@ -217,6 +218,7 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
     snapshot = { context: structuredClone(requested.context), store }; runContext = snapshot.context; current();
     wallSample=monoSample=null;busy = true; executing = true; lastReason = null; errorCounts = new Map(); evidence = []; policyRead = null;
     sessionHealth = { state: 'idle', lastOnlineAt: null };
+    lastSessionCheckAt = null;
     lastSearch = null;
     const startedAt = now();
     tasks = new Map(taskIds.map(taskId => [taskId, { id: taskId, state: 'queued', reason: null, nextAt: 0, startedAt }])); publish();
@@ -256,7 +258,8 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
             const observed = provider.sessionHealth?.()?.lastOnlineAt;
             if (Number.isFinite(observed) && observed <= now() && (sessionHealth.lastOnlineAt === null || observed > sessionHealth.lastOnlineAt))
               sessionHealth = { state: 'online', lastOnlineAt: observed };
-            if (sessionHealth.lastOnlineAt === null || now() < sessionHealth.lastOnlineAt || now() - sessionHealth.lastOnlineAt >= 180000) {
+            const checkedAt = Math.max(sessionHealth.lastOnlineAt ?? -Infinity, lastSessionCheckAt ?? -Infinity);
+            if (now() < checkedAt || now() - checkedAt >= 180000) {
               const ticket = controlGeneration, selected = [...tasks.values()].find(actionable).id;
               const check = () => {
                 current();
@@ -264,22 +267,42 @@ export function createMarketTaskScheduler({ taskStore, coordinator, provider = n
               };
               const maintained = await session.control(async turn => {
                 if (turn.inspect().stopped || turn.inspect().intents.some(i => i.phase === 'pending')) return { status: 'busy' };
+                let maintenanceFailure = false;
                 try {
                   await bound(selected, async () => {
                     check();
                     const shared = await provider.traffic?.(); check();
                     if (shared?.ledger.stopped) throw Error('MARKET_TRAFFIC_STOPPED');
                     phase = 'session-check'; sessionHealth.state = 'checking'; publish();
-                    const result = await provider.maintainSession({ beforeDispatch: check });
+                    maintenanceFailure = true;
+                    const result = await provider.maintainSession({ beforeDispatch: check, onProgress: progress => {
+                      check();
+                      if (!['retry-wait', 'retrying'].includes(progress?.state)) return;
+                      sessionHealth = { ...sessionHealth, state: progress.state, reason: progress.reason };
+                      publish();
+                    } });
                     check();
                     if (result?.status !== 'online') throw Error('MARKET_SESSION_UNVERIFIED');
                     sessionHealth = { state: 'online', lastOnlineAt: now() };
+                    lastSessionCheckAt = now();
+                    maintenanceFailure = false;
                     diagnostic(turn.inspect()); publish();
                   });
                 } catch (error) {
                   if (ticket !== controlGeneration || !allowed(selected)) return;
+                  current();
                   sessionHealth.state = 'failed';
-                  if (!await applyError(turn, error)) {
+                  if (maintenanceFailure) {
+                    // A read-only health probe is advisory. Keep scheduled tasks
+                    // waiting; the first real market action remains the authority
+                    // that can pause them. This avoids losing a future sell window
+                    // because a standalone credits GET timed out.
+                    lastSessionCheckAt = now();
+                    sessionHealth = { state: 'failed', lastOnlineAt: sessionHealth.lastOnlineAt,
+                      reason: safeReason(error), code: codeOf(error) };
+                    diagnostic(turn.inspect(), sessionHealth.reason, sessionHealth.code, { status: 'warning' });
+                    publish();
+                  } else if (!await applyError(turn, error)) {
                     lastReason = safeReason(error);
                     for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, 'paused', lastReason);
                     diagnostic(turn.inspect(), lastReason, codeOf(error));

@@ -7,17 +7,23 @@ import { FC27_MARKET_READ_METHODS } from '../../src/adapters/ea/fc27-market-read
 import { FC27_SBC_EXECUTION_METHODS, FC27_SBC_CACHE_METHODS } from '../../src/adapters/ea/fc27-traditional-provider.js';
 import { FC27_PUZZLE_SYNC_METHODS } from '../../src/adapters/ea/fc27-puzzle-page.js';
 import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.js';
+import { FC27_MARKET_SESSION_METHODS } from '../../src/adapters/ea/fc27-market-session-renewal.js';
+import { MARKET_AUCTION_METHODS } from '../../src/adapters/ea/fc27-market-auctions.js';
 import { build } from 'esbuild';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const requireTools = createRequire(path.join(root, 'tools/browser-inspection/package.json'));
 const puzzleReview = process.argv.includes('--puzzle');
 const buyReview = process.argv.includes('--buy');
+const tradingReview = process.argv.includes('--trading');
 const argument = name => process.argv[process.argv.indexOf(name) + 1];
 const baselineDirectory = process.argv.includes('--baseline-dir') ? path.resolve(argument('--baseline-dir')) : null;
 const reportPath = process.argv.includes('--report') ? path.resolve(argument('--report')) : null;
 const currentOnly = process.argv.includes('--current-only');
-const definitions = buyReview ? FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [`UTItemService.prototype.${name}`, hash])
+const definitions = tradingReview ? [...FC27_MARKET_READ_METHODS,...FC27_MARKET_SESSION_METHODS,
+  ...FC27_BUY_SERVICE_METHODS.map(([name,hash])=>[`UTItemService.prototype.${name}`,hash]),
+  ...MARKET_AUCTION_METHODS.map(([name,hash])=>[name.replace(/^service\./,'UTItemService.prototype.').replace(/^dao\./,'UTItemDAO.prototype.').replace(/^repository\./,'UTItemDomainRepository.prototype.'),hash])]
+  : buyReview ? FC27_BUY_SERVICE_METHODS.map(([name, hash]) => [`UTItemService.prototype.${name}`, hash])
   : puzzleReview ? [...FC27_MARKET_READ_METHODS, ...FC27_SBC_EXECUTION_METHODS,
   ...FC27_SBC_CACHE_METHODS.filter(([name]) => !name.startsWith('events.')), ...FC27_PUZZLE_SYNC_METHODS,
   ['UTSquadEntity.prototype.setPlayers']] : FC27_MARKET_READ_METHODS;
@@ -74,20 +80,35 @@ try {
     for (const method of report.versions[version]) if (method.source) {
       method.sha256 = createHash('sha256').update(method.source).digest('hex');
     }
-    if (buyReview) {
+    if (buyReview || tradingReview) {
       const bundle = await build({ stdin: { resolveDir: root, contents: `
         import { verifyFc27Methods } from './src/adapters/ea/fc27-transaction-transport.js';
         import { FC27_BUY_SERVICE_METHODS, FC27_BUY_COMPATIBLE_HASHES } from './src/adapters/ea/fc27-puzzle-buy.js';
-        export async function inspect(root) {
+        import { FC27_CLUB_READ_METHODS } from './src/adapters/ea/fc27-club-read.js';
+        import { FC27_MARKET_SESSION_METHODS, FC27_MARKET_SESSION_COMPATIBLE_HASHES } from './src/adapters/ea/fc27-market-session-renewal.js';
+        import { MARKET_AUCTION_METHODS, MARKET_AUCTION_COMPATIBLE_HASHES } from './src/adapters/ea/fc27-market-auctions.js';
+        export async function inspect(root, support) {
+          try {
           const assertRuntime = await verifyFc27Methods({ service: root.UTItemService.prototype, crypto: root.crypto },
             FC27_BUY_SERVICE_METHODS.map(([name, hash]) => ['service.' + name, hash]), FC27_BUY_COMPATIBLE_HASHES);
-          assertRuntime(); return { verified: true, writes: 0, authenticated: false };
+          assertRuntime();
+          if(support){
+            (await verifyFc27Methods(root,FC27_CLUB_READ_METHODS))();
+            (await verifyFc27Methods(root,FC27_MARKET_SESSION_METHODS,FC27_MARKET_SESSION_COMPATIBLE_HASHES))();
+            (await verifyFc27Methods({service:root.UTItemService.prototype,dao:root.UTItemDAO.prototype,
+              repository:root.UTItemDomainRepository.prototype,crypto:root.crypto},MARKET_AUCTION_METHODS,MARKET_AUCTION_COMPATIBLE_HASHES))();
+          }
+          return { verified: true, writes: 0, authenticated: false, support: support===true };
+          } catch(error) {
+            return {verified:false,writes:0,authenticated:false,reason:error.message,
+              methodPath:error.methodPath,observedHash:error.observedHash,expectedHash:error.expectedHash};
+          }
         }
       ` },
         bundle: true, write: false, format: 'iife', globalName: 'FCATBuyReview', target: 'chrome120' });
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       // Native methods are inspected, never invoked; no identity or login used.
-      report.versions[`${version}Adapter`] = await page.evaluate(() => globalThis.FCATBuyReview.inspect(globalThis));
+      report.versions[`${version}Adapter`] = await page.evaluate(support => globalThis.FCATBuyReview.inspect(globalThis,support),tradingReview);
     }
     await context.close();
   }

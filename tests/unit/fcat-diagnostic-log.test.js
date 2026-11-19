@@ -3,6 +3,17 @@ import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-l
 import roadmapIncident from '../fixtures/gallery-roadmap-empty-export-2026-10-27.json' with {type:'json'};
 import planRefreshIncident from '../fixtures/gallery-plan-refresh-2026-10-28.json' with { type: 'json' };
 
+it('exports startup fingerprint failures without raw source or account data',async()=>{
+  const {log}=harness();
+  await log.record({area:'trading',event:'task-scheduler',phase:'initialize',transportPhase:'native-create',status:'blocked',
+    reason:'MARKET_RUNTIME_UNVERIFIED',localReason:'FC27_TRANSACTION_METHOD_UNREVIEWED',methodPath:'service.bid',
+    observedHash:'a'.repeat(64),expectedHash:'b'.repeat(64),source:'private source body',account:'private-account'});
+  const out=await log.exportPayload();
+  expect(out.entries.at(-1)).toMatchObject({phase:'initialize',reason:'MARKET_RUNTIME_UNVERIFIED',
+    localReason:'FC27_TRANSACTION_METHOD_UNREVIEWED',methodPath:'service.bid',observedHash:'a'.repeat(64),expectedHash:'b'.repeat(64)});
+  expect(JSON.stringify(out)).not.toMatch(/private source body|private-account/);
+});
+
 it('retains bounded automatic-trading failures and DESK codes after noisy Gallery refreshes without private execution identities',async()=>{
   const store=new Map(),log=createFcatDiagnosticLog({gmGetValue:async(k,f)=>store.get(k)??f,gmSetValue:async(k,v)=>store.set(k,v),version:'27.0.96'});
   await log.record({area:'trading',event:'execution-result',phase:'buy-readback',status:'recovery-required',reason:'DESK_EXECUTION_RECEIPT_UNCONFIRMED',

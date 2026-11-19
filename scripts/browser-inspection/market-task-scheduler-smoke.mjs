@@ -42,7 +42,18 @@ export async function exerciseMarketTaskScheduler(context, directory) {
       const state = { released: false, pendingBuy: false, data, calls, coordinator, service, queues };
       globalThis.marketSchedulerUI = state;
       const provider = {
-        maintainSession: async ({ beforeDispatch }) => { beforeDispatch(); state.healthChecks=(state.healthChecks??0)+1; return { status: 'online' }; },
+        maintainSession: async ({ beforeDispatch, onProgress }) => {
+          beforeDispatch(); state.healthChecks=(state.healthChecks??0)+1;
+          if (state.simulateRetry) {
+            for (const phase of ['retry-wait', 'retrying']) {
+              beforeDispatch(); onProgress({ state: phase, reason: 'FC27_MARKET_READ_TIMEOUT' });
+              await new Promise(resolve => { state.releaseHealth = resolve; });
+            }
+            beforeDispatch(); state.simulateRetry = false;
+            throw Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: 401 });
+          }
+          return { status: 'online' };
+        },
         prepare: async ({ task }) => state.released ? { definitionId: 1001, maxBuy: 800, ...(queues.get(task.id)[0] ?? { kind: 'done' }), taskId: task.id, expiresAt: Date.now() + 60000 }
           : { kind: 'wait', until: Date.now() + 500 },
         preflight: async () => ({ ready: true, balance: 10000, freeSlots: 10 }),
@@ -146,7 +157,21 @@ export async function exerciseMarketTaskScheduler(context, directory) {
     assert.match(await view.locator('#market-session-status').innerText(), /Session maintenance stopped/);
     assert.match(await view.locator('#market-search-status').innerText(), /EA 1001.*Buy limit 800.*Returned 0.*Eligible 0/);
     assert.deepEqual(await page.evaluate(() => globalThis.marketSchedulerUI.calls), [{ taskId: 'task-2', kind: 'search' }]);
-    await start('task-1'); await page.waitForFunction(() => globalThis.marketSchedulerUI.pendingBuy);
+    await page.evaluate(() => { globalThis.marketSchedulerUI.simulateRetry = true; });
+    await start('task-1');
+    await view.locator('#market-session-status').getByText('保活超时，等待 5 秒后复查（仅一次）').waitFor();
+    assert.deepEqual(await page.evaluate(() => globalThis.marketSchedulerUI.calls.map(c => c.kind)), ['search']);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await view.locator('#market-session-status').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+    await page.evaluate(() => globalThis.marketSchedulerUI.releaseHealth());
+    await view.locator('#market-session-status').getByText('保活超时，正在复查（仅一次）').waitFor();
+    await page.screenshot({ path: path.join(directory, 'market-session-retry-mobile.png') });
+    await page.setViewportSize({ width: 1366, height: 1000 });
+    await page.evaluate(() => globalThis.marketSchedulerUI.releaseHealth());
+    await page.waitForFunction(() => globalThis.marketSchedulerUI.pendingBuy);
+    assert.match(await view.locator('#market-session-status').innerText(), /保活检查失败.*执行失败才暂停/);
+    assert.equal(await page.evaluate(() => globalThis.marketSchedulerUI.runtime.inspect().busy), true);
+    assert.equal(await page.evaluate(async () => (await globalThis.marketSchedulerUI.coordinator.inspect()).ledger.stopped), null);
     await page.evaluate(() => globalThis.marketSchedulerUI.panel.close());
     // A real trusted click outside the closed panel revokes all future sends.
     await background.getByRole('button', { name: 'Pause all' }).click();

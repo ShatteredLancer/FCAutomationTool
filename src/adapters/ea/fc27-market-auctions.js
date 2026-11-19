@@ -8,6 +8,11 @@ export const MARKET_AUCTION_METHODS = [
   ['dao.getWatchPile','70c3742a4e8fb1d2be233caaa7e0069d43bf7c05c1633aff2a1114913e5b6bfd'],
   ['repository.getWatchedItems','9b50e375193fb92dde08f184d127ace3c398dfd1c49324f66c08686b94bbfbb2'],
 ];
+// Reviewed 2026-11-19: unchanged decoded request/filter/cache behavior.
+export const MARKET_AUCTION_COMPATIBLE_HASHES = Object.freeze({
+  'service.requestWatchedItems':'93a3bdf7cc8ce790edf3c2c7e7f1ad3bc04e682bfedd06d6b0ec441d6452048c',
+  'dao.getWatchPile':'9e03fa635dc62affc26429b2a1f6cc32be34b8405b92c146aa65b8fb95517280',
+});
 export const marketAuctionOffer = item => {
   const a=item?.getAuctionData?.();
   return {itemId:String(item?.id),definitionId:item?.definitionId,tradeId:String(a?.tradeId),
@@ -26,7 +31,7 @@ export function createMarketAuctionReader({root,assert,pace,readable}) {
   };
   const ready=async()=>{
     if(!verified){dao=service.itemDao;verified=await verifyFc27Methods({service:methodOwner(service,'requestWatchedItems'),dao:methodOwner(dao,'getWatchPile'),
-      repository:methodOwner(repository,'getWatchedItems'),crypto:root.crypto},MARKET_AUCTION_METHODS);captured=[service.requestWatchedItems,dao.getWatchPile,repository.getWatchedItems];}
+      repository:methodOwner(repository,'getWatchedItems'),crypto:root.crypto},MARKET_AUCTION_METHODS,MARKET_AUCTION_COMPATIBLE_HASHES);captured=[service.requestWatchedItems,dao.getWatchPile,repository.getWatchedItems];}
     check();
   };
   const check=()=>{

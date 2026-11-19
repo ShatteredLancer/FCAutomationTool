@@ -131,6 +131,28 @@ describe('shared session maintenance during approved scheduled waiting', () => {
     expect((await f.coordinator.inspect()).ledger.intents).toHaveLength(0);
     expect(f.data.get('old-journal')).toEqual({ unknown: true });
   });
+  it.each([false, true])('projects recovery without trading and keeps waiting (failure=%s)', async fails => {
+    const f = await waiting(), start = f.now();
+    f.provider.maintainSession.mockImplementation(async ({ beforeDispatch, onProgress }) => {
+      for (const state of ['retry-wait', 'retrying']) {
+        beforeDispatch(); onProgress({ state, reason: 'FC27_MARKET_READ_TIMEOUT' });
+        expect(f.scheduler.inspect().sessionHealth).toMatchObject({ state, lastOnlineAt: null });
+        expect(f.scheduler.inspect().tasks.every(t => !['paused', 'stopped'].includes(t.state))).toBe(true);
+        expect(f.provider.prepare).not.toHaveBeenCalled(); expect(f.provider.send).not.toHaveBeenCalled();
+      }
+      f.advance(5000);
+      if (fails) throw Error('MARKET_SESSION_UNVERIFIED');
+      return { status: 'online' };
+    });
+    f.hooks.wait = () => {
+      expect(f.scheduler.inspect().sessionHealth).toMatchObject({ state: fails ? 'failed' : 'online', lastOnlineAt: fails ? null : start + 5000 });
+      expect(f.scheduler.inspect().tasks.every(t => t.state === 'waiting')).toBe(true);
+      f.scheduler.pauseAll();
+    };
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
+    expect(f.scheduler.inspect().sessionHealth.state).toBe(fails ? 'failed' : 'idle');
+    expect(f.provider.send).not.toHaveBeenCalled(); expect(f.data.get('old-journal')).toEqual({ unknown: true });
+  });
   it('uses recent verified activity and never issues catch-up bursts after a long suspension', async () => {
     const f = await waiting(), start = f.now();
     f.provider.sessionHealth = () => ({ lastOnlineAt: start });
@@ -138,14 +160,97 @@ describe('shared session maintenance during approved scheduled waiting', () => {
     f.hooks.wait = () => { if (++waits === 1) f.advance(3600000); else f.scheduler.pauseAll(); };
     await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
   });
-  it.each([401, 429, 500])('pauses on %s without retries or altering old journals', async code => {
+  it.each([0, 401, 403, 429, 500, 512])('keeps tasks waiting after maintenance %s without altering old journals', async code => {
     const f = await waiting(); f.provider.maintainSession.mockRejectedValue(Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code }));
     f.provider.stopTraffic = vi.fn();
-    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
-    expect(f.scheduler.inspect().tasks.every(t => t.state === 'paused')).toBe(true);
+    const start = f.now();
+    f.hooks.wait = () => {
+      expect(f.scheduler.inspect().tasks.every(t => t.state === 'waiting')).toBe(true);
+      if (f.now() - start >= 361000) f.scheduler.pauseAll();
+    };
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(3);
+    expect(f.scheduler.inspect().tasks.every(t => t.reason === 'MARKET_USER_STOP')).toBe(true);
     expect(f.scheduler.inspect().sessionHealth.state).toBe('failed');
-    expect((await f.coordinator.inspect()).ledger.stopped).toBe(code === 401 ? 'authentication' : code === 429 ? 'throttle' : null);
+    expect((await f.coordinator.inspect()).ledger.stopped).toBeNull();
+    expect(f.provider.stopTraffic).not.toHaveBeenCalled(); expect(f.scheduler.inspect().errors).toEqual([]);
     expect(f.provider.prepare).not.toHaveBeenCalled(); expect(f.data.get('old-journal')).toEqual({ unknown: true });
+  });
+  it('pauses only when the first real execution fails after an unsuccessful health probe', async () => {
+    const f = await fixture(), taskId = f.ids[0];
+    f.queues.set(taskId, [{ kind: 'search' }]);
+    // Make the task immediately eligible and then fail its actual preparation.
+    const snapshot = f.snapshot;
+    f.provider.maintainSession = vi.fn(async () => { throw Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: 0 }); });
+    f.provider.prepare.mockRejectedValueOnce(Error('MARKET_SEARCH_FAILED'));
+    await f.scheduler.run({ approved: true, snapshot, taskIds: [taskId] });
+    expect(f.provider.maintainSession).toHaveBeenCalled();
+    expect(f.provider.prepare).toHaveBeenCalledTimes(1);
+    expect(f.scheduler.inspect().tasks.find(t => t.id === taskId)).toMatchObject({ state: 'paused', reason: 'MARKET_SEARCH_FAILED' });
+  });
+  it.each([false, true])('reaches the scheduled execution despite failed maintenance (actual failure=%s)', async fails => {
+    const f = await waiting(), executionAt = Date.UTC(2026, 10, 16, 8);
+    f.advance(executionAt - 60000 - f.now());
+    f.provider.maintainSession.mockRejectedValue(Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: 401 }));
+    f.provider.stopTraffic = vi.fn();
+    for (const id of f.ids) f.queues.set(id, [search]);
+    const send = f.provider.send.getMockImplementation();
+    f.provider.send.mockImplementation(async args => {
+      expect(f.now()).toBeGreaterThanOrEqual(executionAt);
+      if (fails) return { status: 'rejected', sent: true, code: 401 };
+      return send(args);
+    });
+    const states = await f.run();
+    expect(f.provider.maintainSession).toHaveBeenCalledTimes(1);
+    expect(f.provider.send).toHaveBeenCalledTimes(fails ? 1 : 2);
+    expect(states.tasks.every(t => t.state === (fails ? 'paused' : 'completed'))).toBe(true);
+    expect((await f.coordinator.inspect()).ledger.stopped).toBe(fails ? 'authentication' : null);
+    expect(f.provider.stopTraffic).toHaveBeenCalledTimes(fails ? 1 : 0);
+  });
+  it('clears only the health warning when a later maintenance succeeds', async () => {
+    const f = await waiting(), start = f.now();
+    f.provider.maintainSession.mockRejectedValueOnce(Error('MARKET_SESSION_UNVERIFIED')).mockResolvedValue({ status: 'online' });
+    f.hooks.wait = () => {
+      if (f.now() - start < 180001) return;
+      expect(f.scheduler.inspect().sessionHealth).toEqual({ state: 'online', lastOnlineAt: start + 180000 });
+      expect(f.scheduler.inspect().tasks.every(t => t.state === 'waiting')).toBe(true);
+      f.scheduler.pauseAll();
+    };
+    await f.run(); expect(f.provider.maintainSession).toHaveBeenCalledTimes(2);
+  });
+  it.each([false, true])('keeps two timed sell tasks armed after failed health reads (listing failure=%s)', async fails => {
+    const f = await fixture(), sellAt = Date.UTC(2026, 10, 19, 1, 20);
+    f.advance(sellAt - 600000 - f.now());
+    let snapshot = f.snapshot;
+    for (const [index, taskId] of f.ids.entries()) {
+      const itemId = String(201 + index), input = f.input('Timed sale');
+      input.mode = 'sell'; input.owned = [{ itemId, definitionId: 1001, name: 'Owned', pile: 'transfer' }];
+      input.schedule = { repeat: 'once', zone: 'UTC', start: '2026-11-19T01:20', end: null, sell: null };
+      snapshot = await f.taskStore.saveTask({ ...snapshot, id: taskId, input });
+      await f.coordinator.withOwner(s => s.control(turn => turn.checkpoint(ledger => {
+        ledger.holdings.push({ taskId, itemId, definitionId: 1001, phase: 'transfer', cost: 600, listingTradeId: null, salePrice: null });
+      })));
+      f.queues.set(taskId, [{ kind: 'list', itemId, definitionId: 1001, coins: 700 }]);
+    }
+    f.provider.maintainSession = vi.fn(async () => { throw Object.assign(Error('MARKET_SESSION_UNVERIFIED'), { code: 401 }); });
+    const send = f.provider.send.getMockImplementation();
+    f.provider.send.mockImplementation(args => {
+      expect(f.now()).toBeGreaterThanOrEqual(sellAt);
+      return fails ? { status: 'unknown', code: 401 } : send(args);
+    });
+    await f.scheduler.run({ approved: true, snapshot, taskIds: f.ids });
+    expect(f.provider.maintainSession).toHaveBeenCalledTimes(4);
+    expect(f.provider.send).toHaveBeenCalledTimes(fails ? 1 : 2);
+    const ledger = (await f.coordinator.inspect()).ledger;
+    expect(ledger.intents.every(i => i.kind === 'list' && i.phase === (fails ? 'pending' : 'confirmed'))).toBe(true);
+    expect(ledger.holdings.every(h => h.cost === 600 && h.phase === (fails ? 'transfer' : 'listed'))).toBe(true);
+    expect(f.scheduler.inspect().tasks.every(t => t.state === (fails ? 'paused' : 'completed'))).toBe(true);
+  });
+  it('still stops on account change during failed maintenance', async () => {
+    const f = await waiting();
+    f.provider.maintainSession.mockImplementation(async () => { f.changeAccount(); throw Error('MARKET_SESSION_UNVERIFIED'); });
+    await f.run();
+    expect(f.scheduler.inspect().tasks.every(t => t.state === 'paused' && t.reason === 'TASKS_CONTEXT_CHANGED')).toBe(true);
+    expect(f.provider.prepare).not.toHaveBeenCalled(); expect(f.provider.send).not.toHaveBeenCalled();
   });
   it('cancels before dispatch and does not undo a user stop after an awaited check', async () => {
     const f = await waiting(), sent = vi.fn();

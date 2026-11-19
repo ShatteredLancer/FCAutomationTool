@@ -38,7 +38,7 @@ it('discovers fresh matching entities across three piles, excluding protected, n
  const f=await fixture();f.card(1);f.card(2,'club');f.card(3,'unassigned');f.card(4,'transfer',87);f.card(5);f.protectedIds.add(5);
  const unt=f.card(6);unt.untradeable=true;unt.isTradeable=()=>false;
  const rows=await f.native.discoverOwned({task:f.snapshot.store.tasks[0]});
- expect(rows.map(r=>r.itemId).sort()).toEqual(['1','2','3']);expect(f.calls.filter(c=>['list','move','bid','search'].includes(c[0]))).toHaveLength(0);
+ expect(rows.map(r=>r.itemId)).toEqual(['1','3','2']);expect(f.calls.filter(c=>['list','move','bid','search'].includes(c[0]))).toHaveLength(0);
 });
 it('continuously discovers a newly acquired card, never lists the same entity twice, and stops on user pause',async()=>{
  const f=await fixture();f.card(1);f.card(2,'club');f.card(3,'unassigned');f.card(4,'transfer',87);f.card(5);f.protectedIds.add(5);
@@ -48,7 +48,7 @@ it('continuously discovers a newly acquired card, never lists the same entity tw
    if(f.calls.filter(c=>c[0]==='list').length===4||++ticks>4000)f.scheduler.pauseAll();
  });
  await f.scheduler.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
- expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1]).sort((a,b)=>a-b),JSON.stringify(f.scheduler.inspect())).toEqual([1,2,3,6]);
+ expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1]),JSON.stringify(f.scheduler.inspect())).toEqual([1,3,2,6]);
  expect(f.calls.filter(c=>['search','bid'].includes(c[0]))).toHaveLength(0);expect(f.quotes).not.toHaveBeenCalled();
  const ledger=(await f.coordinator.inspect()).ledger;expect(ledger.holdings).toHaveLength(4);expect(ledger.intents.every(i=>i.phase==='confirmed')).toBe(true);
  const writes=f.calls.length;f.advance(600000);expect(f.calls).toHaveLength(writes);
@@ -58,6 +58,14 @@ it('cancels during the fresh scan without claiming, moving or listing any materi
  await f.scheduler.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
  expect((await f.coordinator.inspect()).ledger.holdings).toHaveLength(0);
  expect(f.calls.filter(c=>['list','move','bid'].includes(c[0]))).toHaveLength(0);
+});
+it('rescans after restart and lists external cards before an already claimed Club holding',async()=>{
+ const f=await fixture();f.card(1,'club');f.card(2,'transfer');f.card(3,'unassigned');
+ await f.coordinator.withOwner(o=>o.control(t=>t.checkpoint(l=>{l.holdings.push({taskId:'sell',itemId:'1',definitionId:1001,cost:500,phase:'held',listingTradeId:null,salePrice:null});})));
+ f.scheduler.subscribe(()=>{if(f.calls.filter(c=>c[0]==='list').length===3)f.scheduler.pauseAll();});
+ await f.scheduler.run({approved:true,snapshot:f.snapshot,taskIds:['sell']});
+ expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1])).toEqual([2,3,1]);
+ expect((await f.coordinator.inspect()).ledger.holdings.find(h=>h.itemId==='1')).toMatchObject({cost:500,phase:'listed'});
 });
 it('skips another task’s holding while listing unrelated matching cards',async()=>{
  const f=await fixture();f.card(1);f.card(2);

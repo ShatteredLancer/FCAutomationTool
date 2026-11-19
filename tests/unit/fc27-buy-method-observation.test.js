@@ -3,8 +3,11 @@ import { createHash, webcrypto } from 'node:crypto';
 import vm from 'node:vm';
 import observation from '../fixtures/fc27-buy-method-observation.json';
 import october9 from '../fixtures/fc27-buy-method-observation-2026-10-09.json';
+import november19 from '../fixtures/fc27-buy-method-observation-2026-11-19.json';
 import { FC27_BUY_SERVICE_METHODS, FC27_BUY_COMPATIBLE_HASHES } from '../../src/adapters/ea/fc27-puzzle-buy.js';
 import { verifyFc27Methods } from '../../src/adapters/ea/fc27-transaction-transport.js';
+import {marketNativeRuntime} from '../helpers/market-native-runtime.js';
+import {createFc27MarketTaskNative} from '../../src/adapters/browser/fc27-market-task-native.js';
 
 const normalize = source => {
   const names = new Map();
@@ -54,6 +57,26 @@ it('keeps the October 9 decoded transaction bodies identical to the October 3 re
     const previous = observation.versions.current.find(old => old.path === row.path);
     expect(normalize(row.decoded)).toBe(normalize(previous.decoded));
   }
+});
+
+it('verifies November 19 public methods and proves their decoded bodies match the reviewed baseline',async()=>{
+  const service={};expect(november19.methods).toHaveLength(2);
+  for(const row of november19.methods){
+    expect(createHash('sha256').update(row.source).digest('hex')).toBe(row.sha256);
+    expect(normalize(row.decoded)).toBe(normalize(observation.versions.baseline.find(old=>old.path===row.path).decoded));
+    service[row.path.split('.').at(-1)]=vm.runInNewContext(`(${row.source})`);
+  }
+  const assert=await verifyFc27Methods({service,crypto:webcrypto},
+    FC27_BUY_SERVICE_METHODS.map(([name,hash])=>[`service.${name}`,hash]),FC27_BUY_COMPATIBLE_HASHES);
+  expect(()=>assert()).not.toThrow();service.move=()=>{};
+  expect(()=>assert()).toThrow('FC27_TRANSACTION_RUNTIME_CHANGED');
+});
+
+it('initializes the production Trading native adapter with captured November 19 functions and no market calls',async()=>{
+  const f=marketNativeRuntime();f.root.crypto=webcrypto;
+  for(const row of november19.methods)Object.getPrototypeOf(f.root.services.Item)[row.path.split('.').at(-1)]=vm.runInNewContext(`(${row.source})`);
+  await expect(createFc27MarketTaskNative({...f,assertCurrent:()=>{},assertProtected:()=>true,checkOtherTransactions:async()=>{}})).resolves.toBeTruthy();
+  expect(f.calls).toEqual([]);
 });
 
 it.each(['bid', 'move'])('rejects an unreviewed %s wrapper and does not grant compatibility to other paths', async name => {

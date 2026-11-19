@@ -36,6 +36,18 @@ export async function exerciseMarketTraffic(context){
   await pages[0].evaluate(async()=>{globalThis.time+=5000;await globalThis.traffic.run('buy',()=>{},()=>({success:false,status:403,error:{code:403}}),{taskBuyResponse:true});});
   assert.equal(await pages[1].evaluate(async()=>(await globalThis.traffic.inspect()).ledger.stopped),'manual');
   await pages[0].evaluate(()=>globalThis.traffic.clear());
+  // Zero-delay Trading listings still hold the real shared Web Lock until
+  // their response settles; the ordinary write cadence remains independent.
+  await Promise.all(pages.map(p=>p.evaluate(()=>{globalThis.time=200000;})));
+  const listings=await Promise.all(pages.map(p=>p.evaluate(()=>globalThis.traffic.run('list',()=>{},async()=>{
+    if(localStorage.getItem('listing-active'))throw Error('concurrent listing');
+    localStorage.setItem('listing-active','yes');
+    await new Promise(resolve=>setTimeout(resolve,20));
+    localStorage.removeItem('listing-active');return {success:true};
+  },{taskListing:true,wait:false}))));
+  assert.equal(listings.every(r=>r.success),true);
+  assert.equal(await pages[0].evaluate(()=>globalThis.time),200000);
+  assert.equal(await pages[1].evaluate(async()=>{try{await globalThis.traffic.run('move',()=>{},()=>{throw Error('unexpected move');},{wait:false});}catch(e){return e.message;}}),'MARKET_TRAFFIC_WAIT');
   await pages[0].evaluate(()=>globalThis.traffic.signal('throttle'));
   assert.equal(await pages[1].evaluate(async()=>{try{await globalThis.traffic.run('buy',()=>{},()=>{globalThis.sent++;});}catch(e){return e.message;}}),'MARKET_TRAFFIC_STOPPED');
   // Reloading the other tab does not reset the persisted search budget/stop.

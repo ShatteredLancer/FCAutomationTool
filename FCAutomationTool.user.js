@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.118
+// @version      27.0.119
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.118", at: Date.now(), status: 'started',
+    state = { version: "27.0.119", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -1336,7 +1336,7 @@
         if (reason) await this.signal(reason);
         return result;
       },
-      async run(kind, check, operation, { wait = true, exactDispatch = false, taskBuyResponse = false } = {}) {
+      async run(kind, check, operation, { wait = true, exactDispatch = false, taskBuyResponse = false, taskListing = false, taskListingMove = false } = {}) {
         if (!kinds.includes(kind) || typeof check !== "function" || typeof operation !== "function") fail7("INVALID");
         const c = capture();
         let waitingSince = now(), dispatched = false;
@@ -1351,7 +1351,8 @@
               await check();
               current2(c);
               if (value.ledger.stopped) fail7("STOPPED");
-              const gate = marketSearchGate(value.ledger, settings, now()), nextAt = kind === "search" ? gate.nextAt : value.nextWriteAt;
+              const zeroListingDelay = kind === "list" && taskListing || kind === "move" && taskListingMove;
+              const gate = marketSearchGate(value.ledger, settings, now()), nextAt = kind === "search" ? gate.nextAt : zeroListingDelay ? 0 : value.nextWriteAt;
               if (nextAt > now()) return { waiting: true, at: nextAt };
               const requestId = id16();
               if (kind === "search") reserveMarketSearch(value.ledger, { requestId, now: now(), settings, random });
@@ -30304,7 +30305,9 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       searchOutput.textContent = search ? `Last search \xB7 EA ${search.definitionId ?? "?"} \xB7 Buy limit ${search.searchCeiling?.toLocaleString() ?? "?"} \xB7 ${!search.sent ? "Not sent" : !search.confirmed ? "Response unconfirmed" : `Returned ${search.responseCount ?? "?"} \xB7 Eligible ${search.acceptedCount ?? "?"}`}` : "";
       const health = runtimeStatus?.sessionHealth;
       sessionOutput.hidden = !health || !runtimeStatus.busy && health.lastOnlineAt === null && health.state !== "failed";
-      sessionOutput.textContent = health ? `${health.state === "checking" ? "Checking EA session" : health.state === "failed" ? "Session check failed; tasks paused" : runtimeStatus.busy ? "Session maintenance active (every 3 minutes when idle)" : "Session maintenance stopped"}${health.lastOnlineAt !== null ? " \xB7 Last online " + new Date(health.lastOnlineAt).toLocaleTimeString() : ""}` : "";
+      const retryLabel = health?.reason === "FC27_MARKET_READ_TIMEOUT" ? "\u4FDD\u6D3B\u8D85\u65F6" : "\u4FDD\u6D3B\u7F51\u7EDC\u9519\u8BEF";
+      const healthWarning = runtimeStatus?.busy ? "\u4FDD\u6D3B\u68C0\u67E5\u5931\u8D25\uFF0C\u4EFB\u52A1\u4ECD\u6309\u8BA1\u5212\u6267\u884C\uFF1B\u6267\u884C\u5931\u8D25\u624D\u6682\u505C" : "\u6700\u8FD1\u4FDD\u6D3B\u68C0\u67E5\u5931\u8D25\uFF1B\u5F53\u524D\u4EFB\u52A1\u672A\u8FD0\u884C";
+      sessionOutput.textContent = health ? `${health.state === "retry-wait" ? `${retryLabel}\uFF0C\u7B49\u5F85 5 \u79D2\u540E\u590D\u67E5\uFF08\u4EC5\u4E00\u6B21\uFF09` : health.state === "retrying" ? `${retryLabel}\uFF0C\u6B63\u5728\u590D\u67E5\uFF08\u4EC5\u4E00\u6B21\uFF09` : health.state === "checking" ? "Checking EA session" : health.state === "failed" ? healthWarning : runtimeStatus.busy ? "Session maintenance active (every 3 minutes when idle)" : "Session maintenance stopped"}${health.lastOnlineAt !== null ? " \xB7 Last online " + new Date(health.lastOnlineAt).toLocaleTimeString() : ""}` : "";
       sessionOutput.title = "Enabled only for running or waiting tasks. Recent successful requests postpone checks. Sleep, disconnection or an EA logout may require login and manual resume.";
       if (runtimeStatus?.available) {
         const row = runtimeStatus.tasks.find((r) => r.id === runtimeStatus.taskId), label = snapshot.store.tasks.find((t) => t.id === row?.id)?.name ?? "";
@@ -39629,6 +39632,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let traffic = null, lastSearch = null;
     let activeSession = null, reopening = false;
     let sessionHealth = { state: "idle", lastOnlineAt: null };
+    let lastSessionCheckAt = null;
     const inspect = () => ({
       available: enabled && Boolean(provider),
       modes: [...supportedModes],
@@ -39887,6 +39891,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       evidence = [];
       policyRead = null;
       sessionHealth = { state: "idle", lastOnlineAt: null };
+      lastSessionCheckAt = null;
       lastSearch = null;
       const startedAt = now();
       tasks = new Map(taskIds.map((taskId) => [taskId, { id: taskId, state: "queued", reason: null, nextAt: 0, startedAt }]));
@@ -39935,7 +39940,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                 const observed = provider.sessionHealth?.()?.lastOnlineAt;
                 if (Number.isFinite(observed) && observed <= now() && (sessionHealth.lastOnlineAt === null || observed > sessionHealth.lastOnlineAt))
                   sessionHealth = { state: "online", lastOnlineAt: observed };
-                if (sessionHealth.lastOnlineAt === null || now() < sessionHealth.lastOnlineAt || now() - sessionHealth.lastOnlineAt >= 18e4) {
+                const checkedAt = Math.max(sessionHealth.lastOnlineAt ?? -Infinity, lastSessionCheckAt ?? -Infinity);
+                if (now() < checkedAt || now() - checkedAt >= 18e4) {
                   const ticket = controlGeneration, selected2 = [...tasks.values()].find(actionable).id;
                   const check = () => {
                     current2();
@@ -39943,6 +39949,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                   };
                   const maintained = await session2.control(async (turn) => {
                     if (turn.inspect().stopped || turn.inspect().intents.some((i) => i.phase === "pending")) return { status: "busy" };
+                    let maintenanceFailure = false;
                     try {
                       await bound(selected2, async () => {
                         check();
@@ -39952,17 +39959,36 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
                         phase = "session-check";
                         sessionHealth.state = "checking";
                         publish();
-                        const result2 = await provider.maintainSession({ beforeDispatch: check });
+                        maintenanceFailure = true;
+                        const result2 = await provider.maintainSession({ beforeDispatch: check, onProgress: (progress) => {
+                          check();
+                          if (!["retry-wait", "retrying"].includes(progress?.state)) return;
+                          sessionHealth = { ...sessionHealth, state: progress.state, reason: progress.reason };
+                          publish();
+                        } });
                         check();
                         if (result2?.status !== "online") throw Error("MARKET_SESSION_UNVERIFIED");
                         sessionHealth = { state: "online", lastOnlineAt: now() };
+                        lastSessionCheckAt = now();
+                        maintenanceFailure = false;
                         diagnostic(turn.inspect());
                         publish();
                       });
                     } catch (error2) {
                       if (ticket !== controlGeneration || !allowed(selected2)) return;
+                      current2();
                       sessionHealth.state = "failed";
-                      if (!await applyError(turn, error2)) {
+                      if (maintenanceFailure) {
+                        lastSessionCheckAt = now();
+                        sessionHealth = {
+                          state: "failed",
+                          lastOnlineAt: sessionHealth.lastOnlineAt,
+                          reason: safeReason9(error2),
+                          code: codeOf(error2)
+                        };
+                        diagnostic(turn.inspect(), sessionHealth.reason, sessionHealth.code, { status: "warning" });
+                        publish();
+                      } else if (!await applyError(turn, error2)) {
                         lastReason = safeReason9(error2);
                         for (const row of tasks.values()) if (actionable(row)) stateOf(row.id, "paused", lastReason);
                         diagnostic(turn.inspect(), lastReason, codeOf(error2));
@@ -41065,7 +41091,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (offerAction) return offerAction;
         } else c.offers = [];
         const due = (h) => marketTaskAutoLists(task) && (h.phase === "transfer" && marketScheduleGate(task, c.schedule, "list", h, now()) || marketRelistAllowed(ledger, task, h));
-        const pending3 = task.schedule ? held.find(due) ?? held.find((h) => h.phase === "held") : held.find((h) => h.phase === "held" || due(h));
+        if (task.mode === "sell" && task.sellSelection && marketScheduleGate(task, c.schedule, "claim", null, now()) && now() >= (c.nextSellScan ?? 0)) return remember(task, settings, { kind: "inventory" });
+        const candidates = task.mode === "sell" ? task.sellSelection ? c.sellRows ?? [] : task.owned : [];
+        const pileRank = (row) => ({ transfer: 0, unassigned: 1, club: 2 })[row?.pile] ?? 2;
+        const unclaimed = [...candidates].sort((a, b) => pileRank(a) - pileRank(b)).find((row) => !ledger.holdings.some((h) => h.itemId === row.itemId) && !marketRecoveryBlocks(ledger, { ...row, taskId: task.id }));
+        const orderedHeld = task.mode === "sell" ? [...held].sort((a, b) => {
+          const rank3 = (h) => h.phase !== "held" ? 1 : pileRank(candidates.find((r) => r.itemId === h.itemId));
+          return rank3(a) - rank3(b);
+        }) : held;
+        const pending3 = task.schedule ? orderedHeld.find(due) ?? orderedHeld.find((h) => h.phase === "held") : orderedHeld.find((h) => h.phase === "held" || due(h));
+        if (task.mode === "sell" && unclaimed && pileRank(unclaimed) < 2 && pending3?.phase === "held" && pileRank(candidates.find((r) => r.itemId === pending3.itemId)) === 2 && marketScheduleGate(task, c.schedule, "claim", null, now())) {
+          return remember(task, settings, { kind: "claim", itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
+        }
         if (pending3) {
           const action = {
             kind: pending3.phase === "held" ? "move" : "list",
@@ -41099,9 +41136,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
         if (c.purchaseStop) throw Error(c.purchaseStop);
         if (task.mode === "sell") {
-          if (task.sellSelection && marketScheduleGate(task, c.schedule, "claim", null, now()) && now() >= (c.nextSellScan ?? 0)) return remember(task, settings, { kind: "inventory" });
-          const candidates = task.sellSelection ? c.sellRows ?? [] : task.owned;
-          const unclaimed = candidates.find((row) => !ledger.holdings.some((h) => h.itemId === row.itemId) && !marketRecoveryBlocks(ledger, { ...row, taskId: task.id }));
           if (unclaimed && marketScheduleGate(task, c.schedule, "claim", null, now())) return remember(task, settings, { kind: "claim", itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
         }
         if (held.some((h) => h.phase === "listed") && now() >= c.salesAt) return remember(task, settings, { kind: "sales" });
@@ -41358,6 +41392,12 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     ["FCAuthenticationService.prototype.getUtasSession", "f6deec4ac3c788fa610e37721841db45f640fb46e4a04836103eae907c97414f"],
     ["FCAuthenticationService.prototype.requestTelemetry", "c66d89d9248cd05ca0db8b24e4eb131c01de623550b8529057180ccbf247d860"]
   ]);
+  var FC27_MARKET_SESSION_COMPATIBLE_HASHES = Object.freeze({
+    "FCAuthenticationService.prototype.authenticate": "b3aa43b5050213f42fafa6799df05b1b3a700801b6bcbebd6797f0b25311f307",
+    "FCAuthenticationService.prototype.authUTAS": "ccdf01f1feb4b2e0fac2095a7c2b6e4c918e9932c604981c1aa7829ffa96a5c5",
+    "FCAuthenticationService.prototype.getUtasSession": "e8283ed73c09ebed83ab91602c4382bac3298d9806c9f7cbad7b61b82f754722",
+    "FCAuthenticationService.prototype.requestTelemetry": "cac5a985b2f5cc02ace3b82f15cf70e451d4599a008bcd0155b38042f35c1391"
+  });
   var fail37 = (reason, code2 = 401) => Object.assign(Error(`MARKET_SESSION_${reason}`), { code: code2 });
   async function renewFc27MarketSession(root, { beforeDispatch, onPhase = () => {
   } }) {
@@ -41366,7 +41406,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const context = JSON.stringify(readFc27Context(root));
     const auth = root.services?.Item?.itemDao?.authDelegate;
     const proto = root.FCAuthenticationService?.prototype;
-    const runtime = await verifyFc27Methods(root, FC27_MARKET_SESSION_METHODS);
+    const runtime = await verifyFc27Methods(root, FC27_MARKET_SESSION_METHODS, FC27_MARKET_SESSION_COMPATIBLE_HASHES);
     const assert = () => {
       beforeDispatch();
       runtime();
@@ -41484,7 +41524,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (boundary !== permit) throw Error("MARKET_NOT_SENT");
         },
         (mark) => observeFc27TrafficResult(invoke(mark)),
-        { wait: false, exactDispatch: true, rawErrors: true, taskBuyResponse: name2 === "bid" }
+        { wait: false, exactDispatch: true, rawErrors: true, taskBuyResponse: name2 === "bid", taskListing: name2 === "list", taskListingMove: name2 === "move" && permit.listingMove === true }
       ).catch((error2) => {
         permit.onBlocked?.(error2);
         throw error2;
@@ -41562,6 +41602,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     ["dao.getWatchPile", "70c3742a4e8fb1d2be233caaa7e0069d43bf7c05c1633aff2a1114913e5b6bfd"],
     ["repository.getWatchedItems", "9b50e375193fb92dde08f184d127ace3c398dfd1c49324f66c08686b94bbfbb2"]
   ];
+  var MARKET_AUCTION_COMPATIBLE_HASHES = Object.freeze({
+    "service.requestWatchedItems": "93a3bdf7cc8ce790edf3c2c7e7f1ad3bc04e682bfedd06d6b0ec441d6452048c",
+    "dao.getWatchPile": "9e03fa635dc62affc26429b2a1f6cc32be34b8405b92c146aa65b8fb95517280"
+  });
   var marketAuctionOffer = (item2) => {
     const a = item2?.getAuctionData?.();
     return {
@@ -41589,7 +41633,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           dao: methodOwner(dao, "getWatchPile"),
           repository: methodOwner(repository, "getWatchedItems"),
           crypto: root.crypto
-        }, MARKET_AUCTION_METHODS);
+        }, MARKET_AUCTION_METHODS, MARKET_AUCTION_COMPATIBLE_HASHES);
         captured = [service.requestWatchedItems, dao.getWatchPile, repository.getWatchedItems];
       }
       check();
@@ -41703,7 +41747,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       if (!same37(context, readFc27Context(root)) || root.services.Item !== service || root.repositories.Item !== repository || Object.keys(functions).some((key2) => functions[key2] !== service[key2])) fail39("CONTEXT_CHANGED");
     };
     const inventory = inventoryFactory(root, { assertCurrent: assert });
-    const view = galleryListingInventoryRuntime(root, inventory), trade = tradeFactory(view), taskTrades = /* @__PURE__ */ new Map();
+    const cachedItems = (collection) => {
+      if (typeof collection?.values === "function") return Array.from(collection.values());
+      return Array.isArray(collection) ? collection : Object.values(collection?._collection ?? {});
+    };
+    const view = galleryListingInventoryRuntime(root, { clubItems: () => [...new Map([
+      ...cachedItems(repository.club?.items),
+      ...cachedItems(service.itemDao?.itemRepo?.club?.items),
+      ...inventory.clubItems()
+    ].map((item2) => [item2.id, item2])).values()] }), trade = tradeFactory(view), taskTrades = /* @__PURE__ */ new Map();
     const forTask = (taskId) => {
       if (!taskTrades.has(taskId)) {
         const facade = marketTaskNativeRuntime(view, root);
@@ -41799,6 +41851,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         result = exact(row);
       }
       const candidate = result.candidate;
+      if (!galleryListingCandidateAllowed(candidate) || assertProtected(candidate.item, candidate) !== true) fail39("HOLDING_PROTECTED");
+      return result;
+    };
+    const cachedOwned = (row) => {
+      const result = exact(row), candidate = result.candidate;
       if (!galleryListingCandidateAllowed(candidate) || assertProtected(candidate.item, candidate) !== true) fail39("HOLDING_PROTECTED");
       return result;
     };
@@ -41965,7 +42022,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           rows.push({ ...row, pile: candidate.item.pile, rating: candidate.rating, name: candidate.name || `EA ${ref.definitionId}` });
         }
         check();
-        return rows;
+        return rows.sort((a, b) => ({ transfer: 0, unassigned: 1, club: 2 })[a.pile] - { transfer: 0, unassigned: 1, club: 2 }[b.pile]);
       },
       readAuctions: async (rows) => {
         await guards();
@@ -41974,7 +42031,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       priceTiers: () => root.UTCurrencyInputControl?.PRICE_TIERS?.map((row) => ({ min: row.min, inc: row.inc })),
       async inspectOwned(row, { task } = {}) {
         await guards();
-        const result = await owned2(row);
+        const result = task?.mode === "sell" ? cachedOwned(row) : await owned2(row);
         assert();
         if (task?.sellSelection && !marketSellMatches(task.sellSelection, { ...result.candidate.item, rating: result.candidate.rating })) fail39("HOLDING_PROTECTED");
         const cost = result.purchasePrice;
@@ -41994,7 +42051,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (["move", "list"].includes(action.kind)) {
           let result;
           try {
-            result = await owned2(action);
+            result = action.kind === "list" || task?.mode === "sell" ? cachedOwned(action) : await owned2(action);
           } catch (error2) {
             if (action.kind !== "move" || !action.wonAuction || !["MARKET_HOLDING_UNAVAILABLE", "MARKET_HOLDING_PROTECTED"].includes(error2.message)) throw error2;
             result = await wonOrigin(action);
@@ -42004,10 +42061,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           if (action.kind === "list" && pile !== "transfer" || action.kind === "move" && !["club", "unassigned", "watch"].includes(pile)) fail39("HOLDING_UNAVAILABLE");
           if (action.kind === "list") {
             checkRelist(action);
-            await pace();
-            const limits = await bounded2(() => trade.inspectPriceLimits(result.candidate.item, { refresh: true }));
+            let limits = await trade.inspectPriceLimits(result.candidate.item);
             assert();
-            readable({ ...limits, status: limits.refreshStatus });
+            if (!limits.after?.hasPriceLimits) {
+              limits = await bounded2(() => trade.inspectPriceLimits(result.candidate.item, { refresh: true }));
+              assert();
+              readable({ ...limits, status: limits.refreshStatus });
+            }
             const limit = limits.after;
             try {
               Promise.resolve(onDiagnostic?.({
@@ -42055,10 +42115,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         const mode = marketBuyMode(task);
         if (action.kind === "bid" && mode === "bin" || action.kind === "buy" && mode === "bid") fail39("BUY_RULE_CHANGED");
         const hit = hitSnapshot(action, task, executionScope);
-        if (!hit) await pace();
+        const listingMove = action.kind === "move" && task.mode === "sell";
+        if (!hit && action.kind !== "list" && !listingMove) await pace();
         await guards();
         const taskTrade = forTask(task.id), { adapter, dispatch } = taskTrade;
-        let dispatched = false, reply = null, blocked12 = null, dispatchAt = null;
+        let dispatched = false, reply = null, blocked12 = null, dispatchAt = null, listedItem = null, oldListingId = null;
         const diagnostic = (transportPhase, value = null) => {
           if (!["buy", "bid", "move", "list"].includes(action.kind)) return;
           try {
@@ -42089,7 +42150,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           } catch {
           }
         };
-        const options = { beforeRequest, beforeDispatch: (item2) => {
+        const options = { beforeRequest, listingMove, beforeDispatch: (item2) => {
           assert();
           if (["buy", "bid"].includes(action.kind)) {
             if (hit) hitSnapshot(action, task, executionScope);
@@ -42126,12 +42187,14 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             if (task.ratingPrices && action.kind === "list" && !(action.previousTradeId && task.settings.relist === "original") && readTradingTaskCard(repository.getTransferItems().find((i) => i.id === Number(action.itemId)))?.rating !== action.rating) fail39("CANDIDATE_CHANGED");
             if (!(c.item.pile === "watch" && action.kind === "move") && !galleryListingCandidateAllowed(c) || assertProtected(c.item, c) !== true || action.kind === "list" && c.item.pile !== "transfer" || action.kind === "move" && !["club", "unassigned", "watch"].includes(c.item.pile)) fail39("HOLDING_PROTECTED");
           }
+          if (action.kind === "list") {
+            listedItem = item2;
+            oldListingId = item2.getAuctionData?.()?.tradeId;
+          }
           beforeDispatch();
           dispatched = true;
-          if (hit) {
-            hit.used = true;
-            lastRequest = now();
-          }
+          if (hit) hit.used = true;
+          if (hit || action.kind === "list" || listingMove) lastRequest = now();
           dispatchAt = now();
           diagnostic("before-dispatch");
         }, onResponse: (value) => {
@@ -42224,8 +42287,18 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         if (!buyResponse && reply?.success === false && !contradictory && [400, 401, 403, 404, 409, 429, 461].includes(reply.status)) {
           return { status: "rejected", receipt: null, ...errorResult(result) };
         }
-        const acknowledged = reply?.success === true && Number.isSafeInteger(reply.status) && reply.status >= 200 && reply.status < 300 && (action.kind === "list" || Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId));
+        const acknowledged = reply?.success === true && Number.isSafeInteger(reply.status) && reply.status >= 200 && reply.status < 300 && Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId);
         if (action.kind === "bid" && acknowledged) return { status: "confirmed", acknowledged: true, receipt: { itemId: action.itemId, definitionId: action.definitionId, tradeId: action.tradeId, coins: action.coins } };
+        if (listingMove) return acknowledged ? { status: "confirmed", acknowledged: true, receipt: { itemId: action.itemId, definitionId: action.definitionId, tradeId: null, coins: 0 } } : { status: "unknown", receipt: null, ...errorResult(result) };
+        if (action.kind === "list") {
+          const tradeId4 = listedItem?.getAuctionData?.()?.tradeId;
+          const validTradeId = typeof tradeId4 === "string" ? /^[1-9]\d{0,19}$/.test(tradeId4) : Number.isSafeInteger(tradeId4) && tradeId4 > 0;
+          if (acknowledged && listedItem?.id === Number(action.itemId) && listedItem.definitionId === action.definitionId && validTradeId && String(tradeId4) !== String(oldListingId) && String(tradeId4) !== action.previousTradeId) {
+            lastOnlineAt = now();
+            return { status: "confirmed", acknowledged: true, receipt: { itemId: action.itemId, definitionId: action.definitionId, tradeId: String(tradeId4), coins: action.coins } };
+          }
+          return { status: "unknown", receipt: null, ...errorResult(result) };
+        }
         const checked = await reconcile({ ...action, ...acknowledged ? { acknowledged: true } : {} });
         return {
           ...checked,
@@ -42273,7 +42346,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         return capabilities();
       },
       sessionHealth: () => ({ lastOnlineAt }),
-      async maintainSession({ beforeDispatch }) {
+      async maintainSession({ beforeDispatch, onProgress }) {
         assert();
         beforeDispatch();
         const check = () => {
@@ -42289,6 +42362,13 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         };
         const startedAt = now();
         let stage = "session-reader-create";
+        const progress = (state, reason) => {
+          try {
+            Promise.resolve(onProgress?.({ state, reason })).catch(() => {
+            });
+          } catch {
+          }
+        };
         const failureDiagnostic = (error2) => {
           try {
             diagnostic({
@@ -42312,23 +42392,47 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
             check();
             return reader.readSessionHealth({ beforeDispatch: check });
           };
-          let result;
-          try {
-            result = await read();
-          } catch (error2) {
-            const details = error2.marketFailure;
-            if (details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error2;
-            check();
-            diagnostic({ transportPhase: "session-expired", status: "received", httpStatus: 401 });
-            stage = "session-renewal";
+          let result, retried = false, renewed = false;
+          for (; ; ) {
             try {
-              await renewSession(root, { beforeDispatch: check, onPhase: diagnostic });
-            } catch (renewalError) {
-              throw Object.assign(Error("MARKET_SESSION_RENEWAL_FAILED"), { code: renewalError.code ?? 401 });
+              result = await read();
+              break;
+            } catch (error2) {
+              const details = error2.marketFailure, reason = marketReadReason(error2);
+              if (!retried && stage === "session-read" && ["FC27_MARKET_READ_TIMEOUT", "FC27_MARKET_READ_NETWORK_ERROR"].includes(reason) && [details?.httpStatus, details?.eaCode, error2.code].every((code2) => code2 == null || code2 === 0)) {
+                check();
+                retried = true;
+                stage = "session-retry-wait";
+                diagnostic({
+                  transportPhase: stage,
+                  status: "started",
+                  localReason: reason,
+                  durationMs: Math.max(0, now() - startedAt)
+                });
+                progress("retry-wait", reason);
+                const retryAt = now() + 5e3;
+                while (now() < retryAt) {
+                  check();
+                  await sleep(Math.min(250, retryAt - now()));
+                  check();
+                }
+                progress("retrying", reason);
+                diagnostic({ transportPhase: "session-retry-read", status: "started", localReason: reason });
+                continue;
+              }
+              if (renewed || details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error2;
+              check();
+              renewed = true;
+              diagnostic({ transportPhase: "session-expired", status: "received", httpStatus: 401 });
+              stage = "session-renewal";
+              try {
+                await renewSession(root, { beforeDispatch: check, onPhase: diagnostic });
+              } catch (renewalError) {
+                throw Object.assign(Error("MARKET_SESSION_RENEWAL_FAILED"), { code: renewalError.code ?? 401 });
+              }
+              check();
+              diagnostic({ transportPhase: "session-renew-verify", status: "started" });
             }
-            check();
-            diagnostic({ transportPhase: "session-renew-verify", status: "started" });
-            result = await read();
           }
           check();
           if (result?.status !== "online") fail39("SESSION_UNVERIFIED");
@@ -44832,36 +44936,58 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       enabled: liveEnabled === true,
       modes: modes2,
       createScheduler: async ({ context, assertCurrent }) => {
-        const guards = createFc27MarketTaskGuards({ root, get, context, assertCurrent });
-        const native = await createNative({
-          root,
-          assertCurrent,
-          ...guards,
-          now,
-          onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
-        });
-        assertCurrent();
-        const provider = createMarketTaskProvider({
-          context,
-          native,
-          assertCurrent,
-          now,
-          catalog: candidates,
-          loadQuotes: (ids2, options) => quotes.load(ids2, { ...options, isCurrent: () => {
-            assertCurrent();
-            return options.isCurrent?.() ?? true;
-          } })
-        });
-        return createMarketTaskScheduler({
-          taskStore,
-          coordinator,
-          provider,
-          enabled: liveEnabled === true,
-          now,
-          supportedModes: modes2,
-          monotonic: root.performance?.now ? () => root.performance.now() : null,
-          onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
-        });
+        let stage = "guards-create";
+        try {
+          const guards = createFc27MarketTaskGuards({ root, get, context, assertCurrent });
+          stage = "native-create";
+          const native = await createNative({
+            root,
+            assertCurrent,
+            ...guards,
+            now,
+            onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
+          });
+          assertCurrent();
+          const provider = createMarketTaskProvider({
+            context,
+            native,
+            assertCurrent,
+            now,
+            catalog: candidates,
+            loadQuotes: (ids2, options) => quotes.load(ids2, { ...options, isCurrent: () => {
+              assertCurrent();
+              return options.isCurrent?.() ?? true;
+            } })
+          });
+          return createMarketTaskScheduler({
+            taskStore,
+            coordinator,
+            provider,
+            enabled: liveEnabled === true,
+            now,
+            supportedModes: modes2,
+            monotonic: root.performance?.now ? () => root.performance.now() : null,
+            onDiagnostic: (fields5) => diagnosticLog2?.record?.(fields5)
+          });
+        } catch (error2) {
+          try {
+            Promise.resolve(diagnosticLog2?.record?.({
+              area: "trading",
+              event: "task-scheduler",
+              phase: "initialize",
+              transportPhase: stage,
+              status: "blocked",
+              reason: marketTaskFailureReason(error2),
+              localReason: /^FC27_[A-Z0-9_]{1,140}$/.test(error2.message ?? "") ? error2.message : "FC27_MARKET_INITIALIZATION_FAILED",
+              methodPath: error2.methodPath,
+              observedHash: error2.observedHash,
+              expectedHash: error2.expectedHash
+            })).catch(() => {
+            });
+          } catch {
+          }
+          throw error2;
+        }
       }
     });
   }
@@ -46446,6 +46572,7 @@ ${version ?? ""}`;
     "MARKET_AUTHENTICATION",
     "MARKET_CAPTCHA",
     "MARKET_THROTTLED",
+    "MARKET_RUNTIME_UNVERIFIED",
     "MARKET_BIDDING_UNAVAILABLE",
     "MARKET_BID_RUNTIME_UNAVAILABLE",
     "MARKET_LISTING_STATE_UNCONFIRMED",
@@ -53036,7 +53163,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.118" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.119" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53451,8 +53578,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.118"}`,
-    version: "27.0.118",
+    title: `FC Automation Tool ${"27.0.119"}`,
+    version: "27.0.119",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

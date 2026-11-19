@@ -151,7 +151,21 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
         if (offerAction) return offerAction;
       } else c.offers = [];
       const due = h => marketTaskAutoLists(task) && (h.phase === 'transfer' && marketScheduleGate(task, c.schedule, 'list', h, now()) || marketRelistAllowed(ledger, task, h));
-      const pending = task.schedule ? held.find(due) ?? held.find(h=>h.phase==='held') : held.find(h => h.phase === 'held' || due(h));
+      if(task.mode==='sell'&&task.sellSelection&&marketScheduleGate(task,c.schedule,'claim',null,now())&&now()>=(c.nextSellScan??0))return remember(task,settings,{kind:'inventory'});
+      const candidates=task.mode==='sell'?(task.sellSelection?c.sellRows??[]:task.owned):[];
+      const pileRank=row=>({transfer:0,unassigned:1,club:2}[row?.pile]??2);
+      const unclaimed=[...candidates].sort((a,b)=>pileRank(a)-pileRank(b)).find(row=>!ledger.holdings.some(h=>h.itemId===row.itemId)&&!marketRecoveryBlocks(ledger,{...row,taskId:task.id}));
+      const orderedHeld=task.mode==='sell'?[...held].sort((a,b)=>{
+        const rank=h=>h.phase!=='held'?1:pileRank(candidates.find(r=>r.itemId===h.itemId));
+        return rank(a)-rank(b);
+      }):held;
+      const pending = task.schedule ? orderedHeld.find(due) ?? orderedHeld.find(h=>h.phase==='held') : orderedHeld.find(h => h.phase === 'held' || due(h));
+      // Resume already moved cards first, but do not move a Club holding ahead
+      // of unclaimed external cards, including after a task restart.
+      if(task.mode==='sell'&&unclaimed&&pileRank(unclaimed)<2&&pending?.phase==='held'
+        &&pileRank(candidates.find(r=>r.itemId===pending.itemId))===2&&marketScheduleGate(task,c.schedule,'claim',null,now())){
+        return remember(task,settings,{kind:'claim',itemId:unclaimed.itemId,definitionId:unclaimed.definitionId,pile:unclaimed.pile});
+      }
       if (pending) {
         const action = { kind: pending.phase === 'held' ? 'move' : 'list', itemId: pending.itemId,
           definitionId: pending.definitionId, coins: 0, ...(pending.sellAt !== undefined ? { sellAt: pending.sellAt } : {}) };
@@ -175,9 +189,6 @@ export function createMarketTaskProvider({ context, native, loadQuotes, assertCu
       }
       if (c.purchaseStop) throw Error(c.purchaseStop);
       if (task.mode === 'sell') {
-        if(task.sellSelection&&marketScheduleGate(task,c.schedule,'claim',null,now())&&now()>=(c.nextSellScan??0))return remember(task,settings,{kind:'inventory'});
-        const candidates=task.sellSelection?c.sellRows??[]:task.owned;
-        const unclaimed = candidates.find(row => !ledger.holdings.some(h => h.itemId === row.itemId)&&!marketRecoveryBlocks(ledger,{...row,taskId:task.id}));
         if (unclaimed && marketScheduleGate(task, c.schedule, 'claim', null, now())) return remember(task, settings, { kind: 'claim', itemId: unclaimed.itemId, definitionId: unclaimed.definitionId, pile: unclaimed.pile });
       }
       if (held.some(h => h.phase === 'listed') && now() >= c.salesAt) return remember(task, settings, { kind: 'sales' });

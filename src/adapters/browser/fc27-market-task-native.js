@@ -49,7 +49,16 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       || Object.keys(functions).some(key => functions[key] !== service[key])) fail('CONTEXT_CHANGED');
   };
   const inventory = inventoryFactory(root, { assertCurrent: assert });
-  const view = galleryListingInventoryRuntime(root, inventory), trade = tradeFactory(view), taskTrades = new Map();
+  const cachedItems = collection => {
+    if(typeof collection?.values==='function')return Array.from(collection.values());
+    return Array.isArray(collection)?collection:Object.values(collection?._collection??{});
+  };
+  // Manual selections can already be in EA's Club cache without a scan.
+  // Prefer entities from our latest scan when both caches contain the same ID.
+  const view = galleryListingInventoryRuntime(root, {clubItems:()=>[...new Map([
+    ...cachedItems(repository.club?.items),...cachedItems(service.itemDao?.itemRepo?.club?.items),
+    ...inventory.clubItems(),
+  ].map(item=>[item.id,item])).values()]}), trade = tradeFactory(view), taskTrades = new Map();
   const forTask = taskId => {
     if (!taskTrades.has(taskId)) {
       const facade = marketTaskNativeRuntime(view, root);
@@ -122,6 +131,11 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     }
     const candidate = result.candidate;
     if (!galleryListingCandidateAllowed(candidate) || assertProtected(candidate.item, candidate) !== true) fail('HOLDING_PROTECTED');
+    return result;
+  };
+  const cachedOwned = row => {
+    const result=exact(row),candidate=result.candidate;
+    if(!galleryListingCandidateAllowed(candidate)||assertProtected(candidate.item,candidate)!==true)fail('HOLDING_PROTECTED');
     return result;
   };
   const capabilities = () => {
@@ -235,12 +249,12 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         if(!marketSellMatches(selection,{...candidate.item,rating:candidate.rating})||!galleryListingCandidateAllowed(candidate)||assertProtected(candidate.item,candidate)!==true)continue;
         rows.push({...row,pile:candidate.item.pile,rating:candidate.rating,name:candidate.name||`EA ${ref.definitionId}`});
       }
-      check();return rows;
+      check();return rows.sort((a,b)=>({transfer:0,unassigned:1,club:2}[a.pile]-{transfer:0,unassigned:1,club:2}[b.pile]));
     },
     readAuctions: async rows=>{await guards();return auctions.read(rows);},
     priceTiers: () => root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
     async inspectOwned(row, {task} = {}) {
-      await guards(); const result = await owned(row); assert();
+      await guards(); const result = task?.mode==='sell'?cachedOwned(row):await owned(row); assert();
       if(task?.sellSelection&&!marketSellMatches(task.sellSelection,{...result.candidate.item,rating:result.candidate.rating}))fail('HOLDING_PROTECTED');
       const cost = result.purchasePrice;
       return { eligible: true, itemId: row.itemId, definitionId: row.definitionId, pile: result.candidate.item.pile, rating:result.candidate.rating,
@@ -251,14 +265,18 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       if(marketBuyMode(task??{settings:{}})!=='bin')await auctions.ready();
       const hit=hitSnapshot(action,task,executionScope);
       if (['move', 'list'].includes(action.kind)) {
-        let result;try{result=await owned(action);}catch(error){if(action.kind!=='move'||!action.wonAuction||!['MARKET_HOLDING_UNAVAILABLE','MARKET_HOLDING_PROTECTED'].includes(error.message))throw error;result=await wonOrigin(action);}
+        // Listing uses the current native entity, like Enhancer Bulk List.
+        let result;try{result=action.kind==='list'||task?.mode==='sell'?cachedOwned(action):await owned(action);}catch(error){if(action.kind!=='move'||!action.wonAuction||!['MARKET_HOLDING_UNAVAILABLE','MARKET_HOLDING_PROTECTED'].includes(error.message))throw error;result=await wonOrigin(action);}
         const pile = result.candidate.item.pile;
         if(task?.sellSelection&&!marketSellMatches(task.sellSelection,{...result.candidate.item,rating:result.candidate.rating},{moved:true}))fail('HOLDING_PROTECTED');
         if (action.kind === 'list' && pile !== 'transfer' || action.kind === 'move' && !['club', 'unassigned','watch'].includes(pile)) fail('HOLDING_UNAVAILABLE');
         if (action.kind === 'list') {
           checkRelist(action);
-          await pace(); const limits = await bounded(() => trade.inspectPriceLimits(result.candidate.item, { refresh: true })); assert();
-          readable({ ...limits, status: limits.refreshStatus });
+          let limits = await trade.inspectPriceLimits(result.candidate.item); assert();
+          if(!limits.after?.hasPriceLimits){
+            limits=await bounded(()=>trade.inspectPriceLimits(result.candidate.item,{refresh:true}));assert();
+            readable({...limits,status:limits.refreshStatus});
+          }
           const limit = limits.after;
           try {
             Promise.resolve(onDiagnostic?.({area:'trading',event:'task-native',phase:'list',transportPhase:'price-limits',
@@ -291,10 +309,11 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       const mode=marketBuyMode(task);
       if(action.kind==='bid'&&mode==='bin'||action.kind==='buy'&&mode==='bid')fail('BUY_RULE_CHANGED');
       const hit=hitSnapshot(action,task,executionScope);
-      if(!hit)await pace();
+      const listingMove=action.kind==='move'&&task.mode==='sell';
+      if(!hit&&action.kind!=='list'&&!listingMove)await pace();
       await guards();
       const taskTrade = forTask(task.id), { adapter, dispatch } = taskTrade;
-      let dispatched = false, reply = null, blocked = null, dispatchAt = null;
+      let dispatched = false, reply = null, blocked = null, dispatchAt = null, listedItem = null, oldListingId = null;
       const diagnostic = (transportPhase, value = null) => {
         if (!['buy', 'bid', 'move', 'list'].includes(action.kind)) return;
         // Keep transport status separate from EA's business error. No raw
@@ -315,7 +334,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
             httpStatus, errorCode, ...(permissionDenied ? { localReason: 'FC27_MARKET_PERMISSION_DENIED' } : {}) })).catch(() => {});
         } catch { /* Diagnostics never alter a native dispatch or receipt. */ }
       };
-      const options = { beforeRequest, beforeDispatch: item => {
+      const options = { beforeRequest, listingMove, beforeDispatch: item => {
         assert();
         if (['buy','bid'].includes(action.kind)) {
           if(hit)hitSnapshot(action,task,executionScope);
@@ -343,8 +362,10 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
             || action.kind === 'list' && c.item.pile !== 'transfer'
             || action.kind === 'move' && !['club', 'unassigned','watch'].includes(c.item.pile)) fail('HOLDING_PROTECTED');
         }
+        if(action.kind==='list'){listedItem=item;oldListingId=item.getAuctionData?.()?.tradeId;}
         beforeDispatch(); dispatched = true;
-        if(hit){hit.used=true;lastRequest=now();}
+        if(hit)hit.used=true;
+        if(hit||action.kind==='list'||listingMove)lastRequest=now();
         dispatchAt = now(); diagnostic('before-dispatch');
       }, onResponse: value => { reply = value; diagnostic('native-response', value); }, onBlocked: error => { blocked=error; } };
       let result;
@@ -405,8 +426,24 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
         return { status: 'rejected', receipt: null, ...errorResult(result) };
       }
       const acknowledged = reply?.success === true && Number.isSafeInteger(reply.status) && reply.status >= 200 && reply.status < 300
-        && (action.kind === 'list' || Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId));
+        && Array.isArray(evidence) && evidence.length === 1 && evidence[0] === Number(action.itemId);
       if(action.kind==='bid'&&acknowledged)return {status:'confirmed',acknowledged:true,receipt:{itemId:action.itemId,definitionId:action.definitionId,tradeId:action.tradeId,coins:action.coins}};
+      if(listingMove)return acknowledged
+        ? {status:'confirmed',acknowledged:true,receipt:{itemId:action.itemId,definitionId:action.definitionId,tradeId:null,coins:0}}
+        : {status:'unknown',receipt:null,...errorResult(result)};
+      if(action.kind==='list'){
+        // EA list sets tradeId and finishes its own refreshAuctions before
+        // notifying this response. Do not add a second inventory/auction read.
+        const tradeId=listedItem?.getAuctionData?.()?.tradeId;
+        const validTradeId=typeof tradeId==='string'?/^[1-9]\d{0,19}$/.test(tradeId):Number.isSafeInteger(tradeId)&&tradeId>0;
+        if(acknowledged&&listedItem?.id===Number(action.itemId)&&listedItem.definitionId===action.definitionId
+          &&validTradeId&&String(tradeId)!==String(oldListingId)
+          &&String(tradeId)!==action.previousTradeId){
+          lastOnlineAt=now();
+          return {status:'confirmed',acknowledged:true,receipt:{itemId:action.itemId,definitionId:action.definitionId,tradeId:String(tradeId),coins:action.coins}};
+        }
+        return {status:'unknown',receipt:null,...errorResult(result)};
+      }
       const checked = await reconcile({ ...action, ...(acknowledged ? { acknowledged: true } : {}) });
       return { ...checked, ...(acknowledged ? { acknowledged: true } : {}), code: buyResponse?.code ?? checked.code ?? codeOf(result),
         category: buyResponse?.category ?? checked.category ?? errorResult(result).category };
@@ -436,7 +473,7 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
     },
     async verifySession() { await guards(); await refresh('transfer'); return capabilities(); },
     sessionHealth: () => ({ lastOnlineAt }),
-    async maintainSession({ beforeDispatch }) {
+    async maintainSession({ beforeDispatch, onProgress }) {
       assert(); beforeDispatch();
       const check = () => { assert(); beforeDispatch(); };
       const diagnostic = row => {
@@ -445,6 +482,10 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
       };
       const startedAt = now();
       let stage = 'session-reader-create';
+      const progress = (state, reason) => {
+        try { Promise.resolve(onProgress?.({ state, reason })).catch(() => {}); }
+        catch { /* Presentation must not change session recovery. */ }
+      };
       const failureDiagnostic = error => {
         try {
           diagnostic({ transportPhase: stage, status: 'blocked', localReason: marketReadReason(error),
@@ -460,17 +501,37 @@ export async function createFc27MarketTaskNative({ root, assertCurrent, assertPr
           stage = 'session-read';
           check(); return reader.readSessionHealth({ beforeDispatch: check });
         };
-        let result;
-        try { result = await read(); }
-        catch (error) {
-          const details = error.marketFailure;
-          if (details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error;
-          check(); diagnostic({transportPhase:'session-expired',status:'received',httpStatus:401});
-          stage = 'session-renewal';
-          try { await renewSession(root, { beforeDispatch: check, onPhase: diagnostic }); }
-          catch (renewalError) { throw Object.assign(Error('MARKET_SESSION_RENEWAL_FAILED'), { code: renewalError.code ?? 401 }); }
-          check(); diagnostic({transportPhase:'session-renew-verify',status:'started'});
-          result = await read(); // One new GET only; a second 401 is terminal.
+        let result, retried = false, renewed = false;
+        for (;;) {
+          try { result = await read(); break; }
+          catch (error) {
+            const details = error.marketFailure, reason = marketReadReason(error);
+            // Only a positively identified transport failure of this read can retry.
+            // A failed factory, abort, restriction or unknown zero status cannot.
+            if (!retried && stage === 'session-read'
+              && ['FC27_MARKET_READ_TIMEOUT', 'FC27_MARKET_READ_NETWORK_ERROR'].includes(reason)
+              && [details?.httpStatus, details?.eaCode, error.code].every(code => code == null || code === 0)) {
+              check(); retried = true; stage = 'session-retry-wait';
+              diagnostic({ transportPhase: stage, status: 'started', localReason: reason,
+                durationMs: Math.max(0, now() - startedAt) });
+              progress('retry-wait', reason);
+              // Short waits let stop/account changes release the lock promptly.
+              const retryAt = now() + 5000;
+              while (now() < retryAt) {
+                check(); await sleep(Math.min(250, retryAt - now())); check();
+              }
+              progress('retrying', reason);
+              diagnostic({ transportPhase: 'session-retry-read', status: 'started', localReason: reason });
+              continue; // read() constructs a fresh single-use transport.
+            }
+            if (renewed || details?.httpStatus !== 401 || details.eaCode != null && details.eaCode !== 401) throw error;
+            check(); renewed = true;
+            diagnostic({transportPhase:'session-expired',status:'received',httpStatus:401});
+            stage = 'session-renewal';
+            try { await renewSession(root, { beforeDispatch: check, onPhase: diagnostic }); }
+            catch (renewalError) { throw Object.assign(Error('MARKET_SESSION_RENEWAL_FAILED'), { code: renewalError.code ?? 401 }); }
+            check(); diagnostic({transportPhase:'session-renew-verify',status:'started'});
+          }
         }
         check();
         if (result?.status !== 'online') fail('SESSION_UNVERIFIED');

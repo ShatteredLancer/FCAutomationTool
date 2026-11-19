@@ -5,6 +5,12 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.119] - 2026-11-19
+
+- Keep scheduled trading tasks armed when a keepalive check fails and report the failed step.
+- List eligible Transfer List and Unassigned cards before Club cards, advancing after each native receipt with no added delay.
+- Support the reviewed trading, session and auction methods in EA Web App build 11502 and record which method blocks task initialization.
+
 ## [27.0.118] - 2026-11-19
 
 - For ordinary SBCs with a league minimum above the per-club cap, prefer

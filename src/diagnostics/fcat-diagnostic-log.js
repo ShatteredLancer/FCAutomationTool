@@ -16,6 +16,7 @@ const inventoryExclusionReasons = ['points-unknown', 'rating', 'fsu-gold-range',
   'protected', 'league', 'pile', 'concept', 'trade', 'loan', 'untradeable', 'locked', 'active-squad',
   'eligibility-ineligible', 'eligibility-unknown'];
 const marketTaskReasons = new Set(['MARKET_PROVIDER_FAILED','MARKET_AUTHENTICATION','MARKET_CAPTCHA','MARKET_THROTTLED',
+  'MARKET_RUNTIME_UNVERIFIED',
   'MARKET_BIDDING_UNAVAILABLE','MARKET_BID_RUNTIME_UNAVAILABLE',
   'MARKET_LISTING_STATE_UNCONFIRMED','MARKET_READ_UNCONFIRMED','MARKET_RECOVERY_ITEM_MISSING',
   'MARKET_RECOVERY_ISOLATED','MARKET_RECOVERY_CHANGED','MARKET_RECOVERY_INVALID',

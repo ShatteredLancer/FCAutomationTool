@@ -47,7 +47,7 @@ export function createFc27MarketTraffic({context,get,set,locks,readSettings,now=
  return Object.freeze({inspect,
   async signal(reason){if(!['authentication','captcha','throttle','manual'].includes(reason))fail('INVALID');const c=capture();return locked(c,async()=>{const v=await read(c);v.ledger.stopped=reason;await save(c,v);});},
   async observe(result){const reason=stopOf(result);if(reason)await this.signal(reason);return result;},
-  async run(kind,check,operation,{wait=true,exactDispatch=false,taskBuyResponse=false}={}){
+  async run(kind,check,operation,{wait=true,exactDispatch=false,taskBuyResponse=false,taskListing=false,taskListingMove=false}={}){
    if(!kinds.includes(kind)||typeof check!=='function'||typeof operation!=='function')fail('INVALID');
    const c=capture();let waitingSince=now(),dispatched=false;
    try {
@@ -56,7 +56,8 @@ export function createFc27MarketTraffic({context,get,set,locks,readSettings,now=
     const attempt=await locked(c,async()=>{
      const value=await read(c),settings=tradingPublicSettings(await readSettings());current(c);await check();current(c);
      if(value.ledger.stopped)fail('STOPPED');
-     const gate=marketSearchGate(value.ledger,settings,now()),nextAt=kind==='search'?gate.nextAt:value.nextWriteAt;
+     const zeroListingDelay=kind==='list'&&taskListing||kind==='move'&&taskListingMove;
+     const gate=marketSearchGate(value.ledger,settings,now()),nextAt=kind==='search'?gate.nextAt:zeroListingDelay?0:value.nextWriteAt;
      if(nextAt>now())return {waiting:true,at:nextAt};
      const requestId=id();
      if(kind==='search')reserveMarketSearch(value.ledger,{requestId,now:now(),settings,random});

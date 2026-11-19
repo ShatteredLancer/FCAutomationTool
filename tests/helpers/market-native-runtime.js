@@ -38,7 +38,7 @@ export function marketNativeRuntime() {
       if (hooks.list) return observable(hooks.list(card, start, buyNow, duration));
       card.auction = { tradeId: 19000 + card.id + calls.filter(c => c[0] === 'list' && c[1] === card.id).length - 1,
         tradeState: 'active', startingBid: start, buyNowPrice: buyNow, currentBid: 0 };
-      return observable({ success: true, status: 200 });
+      return observable({ success: true, status: 200, data: { itemIds: [card.id] } });
     }
     searchTransferMarket(criteria) {
       calls.push(['search', criteria.defId[0], criteria.maxBuy]);
@@ -48,7 +48,7 @@ export function marketNativeRuntime() {
     clearTransferMarketCache() {}
     requestUnassignedItems() { calls.push(['read', 'unassigned']); dirty.delete(6); return observable({ success: true, status: 200, response: { items: unassigned } }); }
     requestTransferItems() { calls.push(['read', 'transfer']); const status=hooks.readStatus ?? 200; dirty.delete(5); return observable({ success: true, status }); }
-    requestMarketData() { return observable({ success: true, status: 200 }); }
+    requestMarketData(card) { calls.push(['read','price-limits']);hooks.limits?.(card);return observable({ success: true, status: 200 }); }
     refreshAuctions(items) { calls.push(['read', 'auctions']); hooks.auctions?.(items); return observable({ success: true, status: 200 }); }
   }
   root.services.Item = new ItemService();

@@ -71,6 +71,23 @@ it('serializes two callers and shares spacing instead of granting each a separat
  const f=await fixture(),calls=[];await Promise.all([f.gate,f.other].map(g=>g.run('search',()=>{},()=>{calls.push(f.now());return {success:true};})));
  expect(calls).toEqual([100000,107000]);expect((await f.gate.inspect()).gate.hour).toBe(2);
 });
+it('serializes zero-delay task listings and keeps ordinary buy, move and legacy listing spacing',async()=>{
+ const f=await fixture(),calls=[];let active=0;
+ await f.gate.run('buy',()=>{},()=>({success:true}));
+ await Promise.all([f.gate,f.other].map(g=>g.run('list',()=>{},async()=>{
+   expect(++active).toBe(1);calls.push(f.now());await Promise.resolve();active--;return {success:true};
+ },{wait:false,taskListing:true})));
+ expect(calls).toEqual([100000,100000]);
+ for(const kind of ['buy','move','list']){
+   await expect(f.gate.run(kind,()=>{},vi.fn(),{wait:false})).rejects.toThrow('MARKET_TRAFFIC_WAIT');
+ }
+ await expect(f.gate.run('buy',()=>{},vi.fn(),{wait:false,taskListing:true,taskListingMove:true})).rejects.toThrow('MARKET_TRAFFIC_WAIT');
+ await f.gate.run('move',()=>{},()=>({success:true}),{wait:false,taskListingMove:true});
+ await f.gate.signal('authentication');const send=vi.fn();
+ await expect(f.gate.run('list',()=>{},send,{wait:false,taskListing:true})).rejects.toThrow('STOPPED');
+ expect(send).not.toHaveBeenCalled();
+ expect((await f.gate.inspect()).writes).toEqual({buy:1,move:1,list:2,relist:0});
+});
 it('returns a resumable wait without dispatch when a task cannot take the shared slot',async()=>{
  const f=await fixture(),send=vi.fn();await f.gate.run('search',()=>{},()=>({success:true}));
  await expect(f.other.run('search',()=>{},send,{wait:false})).rejects.toMatchObject({message:'MARKET_TRAFFIC_WAIT',retryAt:107000});expect(send).not.toHaveBeenCalled();

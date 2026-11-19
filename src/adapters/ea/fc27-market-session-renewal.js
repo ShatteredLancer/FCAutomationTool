@@ -11,6 +11,13 @@ export const FC27_MARKET_SESSION_METHODS = Object.freeze([
   ['FCAuthenticationService.prototype.getUtasSession', 'f6deec4ac3c788fa610e37721841db45f640fb46e4a04836103eae907c97414f'],
   ['FCAuthenticationService.prototype.requestTelemetry', 'c66d89d9248cd05ca0db8b24e4eb131c01de623550b8529057180ccbf247d860'],
 ]);
+// Public 2026-11-19 bodies are identical after decoding and identifier renaming.
+export const FC27_MARKET_SESSION_COMPATIBLE_HASHES = Object.freeze({
+  'FCAuthenticationService.prototype.authenticate':'b3aa43b5050213f42fafa6799df05b1b3a700801b6bcbebd6797f0b25311f307',
+  'FCAuthenticationService.prototype.authUTAS':'ccdf01f1feb4b2e0fac2095a7c2b6e4c918e9932c604981c1aa7829ffa96a5c5',
+  'FCAuthenticationService.prototype.getUtasSession':'e8283ed73c09ebed83ab91602c4382bac3298d9806c9f7cbad7b61b82f754722',
+  'FCAuthenticationService.prototype.requestTelemetry':'cac5a985b2f5cc02ace3b82f15cf70e451d4599a008bcd0155b38042f35c1391',
+});
 const fail = (reason, code = 401) => Object.assign(Error(`MARKET_SESSION_${reason}`), { code });
 
 // Used only by the running task's locked maintenance turn after a plain 401.
@@ -21,7 +28,7 @@ export async function renewFc27MarketSession(root, { beforeDispatch, onPhase = (
   const context = JSON.stringify(readFc27Context(root));
   const auth = root.services?.Item?.itemDao?.authDelegate;
   const proto = root.FCAuthenticationService?.prototype;
-  const runtime = await verifyFc27Methods(root, FC27_MARKET_SESSION_METHODS);
+  const runtime = await verifyFc27Methods(root, FC27_MARKET_SESSION_METHODS, FC27_MARKET_SESSION_COMPATIBLE_HASHES);
   const assert = () => {
     beforeDispatch(); runtime();
     if (context !== JSON.stringify(readFc27Context(root)) || !auth

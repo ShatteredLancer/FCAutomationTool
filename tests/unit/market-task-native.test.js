@@ -10,6 +10,10 @@ import { createMarketCoordinator } from '../../src/adapters/browser/fc27-market-
 import { createMarketTaskCatalog } from '../../src/trading/market-task-catalog.js';
 import { FC27_MARKET_SESSION_METHODS } from '../../src/adapters/ea/fc27-market-session-renewal.js';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
+import { createFc27MarketTraffic } from '../../src/adapters/browser/fc27-market-traffic.js';
+import { registerFc27MarketTraffic } from '../../src/adapters/ea/fc27-market-traffic.js';
+import vm from 'node:vm';
+import nativeListFixture from '../fixtures/fc27-market-native-list-response.json';
 
 async function fixture(mode = 'fixed', extra = {}) {
   const f = marketNativeRuntime();
@@ -49,6 +53,72 @@ async function fixture(mode = 'fixed', extra = {}) {
 }
 
 describe('native session maintenance', () => {
+  it.each(['TIMEOUT', 'NETWORK_ERROR'])('rechecks a transient %s once with a fresh reader after five seconds', async reason => {
+    const reads = vi.fn().mockRejectedValueOnce(Error(`FC27_MARKET_READ_${reason}`)).mockResolvedValue({ status: 'online' });
+    const factory = vi.fn(async () => ({ readSessionHealth: reads })), progress = vi.fn(), renewSession = vi.fn();
+    const f = await fixture('fixed', { sessionReaderFactory: factory, renewSession }), start = f.now();
+    await expect(f.native.maintainSession({ beforeDispatch: () => {}, onProgress: progress })).resolves.toMatchObject({ status: 'online' });
+    expect(f.now() - start).toBe(5000); expect(factory).toHaveBeenCalledTimes(2);
+    expect(progress.mock.calls.map(([p]) => p.state)).toEqual(['retry-wait', 'retrying']);
+    expect(f.native.sessionHealth().lastOnlineAt).toBe(f.now());
+    expect(renewSession).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
+  });
+  it.each(['stop', 'account'])('cancels transient recovery during the delay on %s', async cause => {
+    let active = true;
+    const reads = vi.fn(async () => { throw Error('FC27_MARKET_READ_TIMEOUT'); });
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }) }), start = f.now();
+    f.hooks.sleep = () => { if (cause === 'stop') active = false; else f.root.repositories.Item = {}; };
+    await expect(f.native.maintainSession({ beforeDispatch: () => { if (!active) throw Error('stopped'); } })).rejects.toThrow();
+    expect(f.now() - start).toBeLessThan(5000); expect(reads).toHaveBeenCalledTimes(1);
+    expect(f.native.sessionHealth().lastOnlineAt).toBeNull(); expect(f.calls).toEqual([]);
+  });
+  it('does not accumulate twenty delayed timers after browser suspension', async () => {
+    const reads = vi.fn().mockRejectedValueOnce(Error('FC27_MARKET_READ_TIMEOUT')).mockResolvedValue({ status: 'online' });
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    f.hooks.sleep = vi.fn(() => f.advance(60000));
+    await f.native.maintainSession({ beforeDispatch: () => {} });
+    expect(f.hooks.sleep).toHaveBeenCalledTimes(1); expect(reads).toHaveBeenCalledTimes(2);
+  });
+  it.each(['throw', 'reject'])('isolates %s from the progress display', async mode => {
+    const reads = vi.fn().mockRejectedValueOnce(Error('FC27_MARKET_READ_TIMEOUT')).mockResolvedValue({ status: 'online' });
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {}, onProgress: () => {
+      if (mode === 'throw') throw Error('display'); return Promise.reject(Error('display'));
+    } })).resolves.toMatchObject({ status: 'online' });
+    expect(reads).toHaveBeenCalledTimes(2);
+  });
+  it('never retries reader creation even if it reports a timeout', async () => {
+    const factory = vi.fn(async () => { throw Error('FC27_MARKET_READ_TIMEOUT'); });
+    const f = await fixture('fixed', { sessionReaderFactory: factory });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toThrow();
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+  it.each(['TIMEOUT', 'NETWORK_ERROR'])('stops after the second %s and cannot enter another renewal loop', async reason => {
+    const reads = vi.fn().mockRejectedValueOnce(Object.assign(Error('expired'), { marketFailure: { httpStatus: 401 } }))
+      .mockRejectedValue(Error(`FC27_MARKET_READ_${reason}`));
+    const renewSession = vi.fn(async () => {});
+    const f = await fixture('fixed', { renewSession, sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toThrow('MARKET_SESSION_UNVERIFIED');
+    expect(reads).toHaveBeenCalledTimes(3); expect(renewSession).toHaveBeenCalledTimes(1);
+    expect(f.native.sessionHealth().lastOnlineAt).toBeNull(); expect(f.calls).toEqual([]);
+  });
+  it.each([
+    ['FC27_MARKET_READ_ABORTED', null], ['FC27_MARKET_READ_FAILED', null],
+    ['FC27_MARKET_READ_TIMEOUT', { httpStatus: 429 }],
+    ['FC27_MARKET_READ_NETWORK_ERROR', { httpStatus: 0, eaCode: 512 }],
+  ])('does not retry an ambiguous, aborted or restricted read: %s %j', async (message, marketFailure) => {
+    const reads = vi.fn(async () => { throw Object.assign(Error(message), { marketFailure }); });
+    const f = await fixture('fixed', { sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toThrow();
+    expect(reads).toHaveBeenCalledTimes(1); expect(f.calls).toEqual([]);
+  });
+  it.each([['timeout', '401'], ['401', 'timeout']])('bounds combined renewal and transient recovery: %j', async (first, second) => {
+    const error = kind => kind === '401' ? Object.assign(Error('expired'), { marketFailure: { httpStatus: 401 } }) : Error('FC27_MARKET_READ_TIMEOUT');
+    const reads = vi.fn().mockRejectedValueOnce(error(first)).mockRejectedValueOnce(error(second)).mockResolvedValue({ status: 'online' });
+    const renewSession = vi.fn(async () => {}), f = await fixture('fixed', { renewSession, sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
+    await expect(f.native.maintainSession({ beforeDispatch: () => {} })).resolves.toMatchObject({ status: 'online' });
+    expect(reads).toHaveBeenCalledTimes(3); expect(renewSession).toHaveBeenCalledTimes(1); expect(f.calls).toEqual([]);
+  });
   it.each([
     ['FC27_MARKET_READ_TIMEOUT', null, 'session-read', 16000, null],
     ['FC27_MARKET_HTTP_429', { httpStatus: 429, eaCode: 429 }, 'session-read', 0, 429],
@@ -68,7 +138,7 @@ describe('native session maintenance', () => {
     await Promise.all(pending);
     const out = await log.exportPayload();
     expect(out.entries.at(-1)).toMatchObject({ area: 'trading', event: 'task-native', phase: 'session-check',
-      transportPhase: stage, status: 'blocked', durationMs: elapsed,
+      transportPhase: stage, status: 'blocked', durationMs: message === 'FC27_MARKET_READ_TIMEOUT' ? elapsed * 2 + 5000 : elapsed,
       localReason: message.startsWith('FC27_') ? message : 'FC27_MARKET_READ_FAILED' });
     expect(JSON.stringify(out)).not.toMatch(/private token|account data/);
     expect(renewSession).not.toHaveBeenCalled(); expect(f.calls).toEqual([]);
@@ -106,7 +176,7 @@ describe('native session maintenance', () => {
       return Promise.reject(Error('logging unavailable'));
     }, sessionReaderFactory: async () => ({ readSessionHealth: reads }) });
     await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'MARKET_SESSION_UNVERIFIED', code: null });
-    expect(reads).toHaveBeenCalledTimes(1); expect(f.calls).toEqual([]);
+    expect(reads).toHaveBeenCalledTimes(2); expect(f.calls).toEqual([]);
   });
   it('does not renew a 401 carrying an explicit EA restriction', async () => {
     const renewSession = vi.fn();
@@ -233,6 +303,130 @@ describe('native session maintenance', () => {
       await expect(f.native.maintainSession({ beforeDispatch: () => {} })).rejects.toMatchObject({ message: 'MARKET_SESSION_UNVERIFIED', code });
       expect(f.native.sessionHealth().lastOnlineAt).toBeNull();
     }
+  });
+});
+
+describe('market listing cadence', () => {
+  it('accepts the captured public EA list response after its internal auction refresh, without adding a read',async()=>{
+    const f=marketNativeRuntime(),card=f.makeCard(201,901,'transfer'),calls=[];
+    card.isStack=()=>false;
+    class Observable {
+      observe(owner,callback){this.callback=callback;return this;}
+      unobserve(){}
+      notify(dto){this.callback(this,dto);}
+    }
+    const response=dto=>({observe(owner,callback){queueMicrotask(()=>callback(this,dto));},unobserve(){}});
+    let release;
+    const service=f.root.services.Item;
+    service.itemDao={listItem:(id,start,bin,duration)=>{calls.push(['post',id,start,bin,duration]);return response({success:true,status:200,response:{auctionIds:[9001]}});}};
+    service.refreshAuctions=item=>{calls.push(['native-refresh',item.id]);return {observe(owner,callback){release=()=>callback(this,{success:true,status:200});},unobserve(){}};};
+    service.list=vm.runInNewContext(`(${nativeListFixture.decoded})`,{
+      _0x414345:()=>{},a0_0x7081:()=>{},EAObservable:Observable,UTServiceResponseDTO:class {},
+      JSUtils:{isObject:value=>value&&typeof value==='object'},ItemPile:{TRANSFER:5},
+      getDefaultDispatcher:()=>({notify:()=>{}}),AppNotification:{ITEM_LIST:1},
+    });
+    const native=await createFc27MarketTaskNative({...f,assertCurrent:()=>{},assertProtected:()=>true,checkOtherTransactions:async()=>{}});
+    const action={kind:'list',itemId:'201',definitionId:901,coins:700,listing:{startPrice:650,buyNow:700,durationSeconds:3600}};
+    const task={id:'t',mode:'sell',settings:defaultTradingTaskSettings()};
+    await native.preflight({action,task});
+    let settled=false;const pending=native.send({action,task,beforeDispatch:()=>{}}).then(r=>{settled=true;return r;});
+    for(let i=0;i<100&&!release;i++)await Promise.resolve();
+    expect(release).toBeTypeOf('function');expect(settled).toBe(false);expect(card.auction.tradeId).toBe(9001);
+    release();expect(await pending).toMatchObject({status:'confirmed',receipt:{itemId:'201',tradeId:'9001',coins:700}});
+    expect(calls).toEqual([['post',201,650,700,3600],['native-refresh',201]]);expect(f.calls).toEqual([]);
+  });
+  it.each(['transfer','mixed'])('serially lists 55 %s cards with zero artificial delay through the production scheduler and journal', async source => {
+    const f = await fixture('sell'), start = f.now(), data = new Map(), context = { scope:'cadence',season:'27',platform:'console' };
+    const get = async (key, fallback) => structuredClone(data.get(key) ?? fallback), set = async (key, value) => { data.set(key,structuredClone(value)); };
+    const locks = { request: async (name, _options, callback) => callback({name,mode:'exclusive'}) };
+    const store = createTradingTaskStore({context:()=>context,get,set,locks,id:()=> 't',now:f.now});
+    const coordinator = createMarketCoordinator({context:()=>context,get,set,locks});
+    const traffic = createFc27MarketTraffic({context:()=>context,get,set,locks,readSettings:()=>f.settings,now:f.now,sleep:f.sleep});
+    registerFc27MarketTraffic(f.root,traffic);
+    for (let i=0;i<55;i++) {
+      const pile=source==='transfer'?'transfer':['club','unassigned','transfer'][i%3];
+      f.makeCard(201+i,901,pile);
+      f.task.owned.push({itemId:String(201+i),definitionId:901,name:'A',pile});
+    }
+    const {mode,settings,players,owned,excluded}=f.task;
+    const snapshot = await store.saveTask({...await store.read(),input:{name:'Batch sale',mode,settings,players,owned,excluded}});
+    const scheduler = createMarketTaskScheduler({taskStore:store,coordinator,provider:f.provider,enabled:true,now:f.now,wait:f.sleep,
+      onStatus:state=>{ if(state.evidence.some(e=>e.counts[1]===55)) scheduler.pauseAll(); }});
+    await scheduler.run({approved:true,snapshot,taskIds:['t']});
+    const ledger = (await coordinator.inspect()).ledger;
+    expect(ledger.holdings).toHaveLength(55); expect(ledger.holdings.every(h=>h.phase==='listed')).toBe(true);
+    const moved=source==='transfer'?0:37;
+    expect(ledger.intents).toHaveLength(55+moved); expect(ledger.intents.every(i=>i.phase==='confirmed')).toBe(true);
+    expect((await traffic.inspect()).writes).toEqual({buy:0,move:moved,list:55,relist:0});
+    expect(f.now()-start).toBe(0); // Network/EA latency is not simulated.
+    expect(f.calls.filter(c=>c[0]==='read')).toEqual([['read','session']]); // One initial scheduler health check, no per-card reads.
+  });
+  it('uses native listing receipts without per-card fresh reads or artificial delays', async () => {
+    const f = await fixture('sell'), start = f.now();
+    for (let i = 0; i < 10; i++) {
+      f.makeCard(201+i, 901, 'transfer');
+      f.task.owned.push({ itemId: String(201+i), definitionId: 901, name: 'A', pile: 'transfer' });
+    }
+    const times = [];
+    for (let i = 0; i < 10; i++) {
+      await f.step(); // exact ownership claim
+      const result = await f.step();
+      expect(result.action.kind).toBe('list'); expect(result.response.status).toBe('confirmed');
+      times.push(f.now());
+    }
+    expect(f.now()-start).toBe(0);
+    expect(times.every(at => at === start)).toBe(true);
+    expect(f.calls.filter(c=>c[0]==='list')).toHaveLength(10);
+    expect(f.ledger.intents.every(i=>i.phase==='confirmed')).toBe(true);
+    expect(f.ledger.holdings.every(h=>h.phase==='listed')).toBe(true);
+    expect(f.calls.filter(c=>c[0]==='read')).toHaveLength(0);
+  });
+  it('lists both external piles before Club regardless of the saved selection order', async () => {
+    const f = await fixture('sell'),start=f.now();
+    for(const [id,pile] of [[201,'club'],[202,'unassigned'],[203,'transfer'],[204,'club']]) {
+      f.makeCard(id,901,pile);f.task.owned.push({itemId:String(id),definitionId:901,pile});
+    }
+    for(let i=0;i<11;i++)await f.step();
+    expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1])).toEqual([203,202,201,204]);
+    expect(f.now()).toBe(start);expect(f.calls.filter(c=>c[0]==='read')).toEqual([]);
+  });
+  it.each(['wrong-id','missing-id','missing-auction','unchanged-auction'])('retains an unknown native listing receipt: %s', async mode => {
+    const f=await fixture('sell'),card=f.makeCard(201,901,'transfer');
+    card.auction.tradeId=1001;f.task.owned=[{itemId:'201',definitionId:901,pile:'transfer'}];
+    f.hooks.list=()=>{
+      if(mode!=='unchanged-auction')card.auction.tradeId=mode==='missing-auction'?null:1002;
+      return {success:true,status:200,...(mode==='missing-id'?{}:{data:{itemIds:[mode==='wrong-id'?202:201]}})};
+    };
+    await f.step();const result=await f.step();
+    expect(result.response.status).toBe('unknown');expect(f.ledger.intents[0].phase).toBe('pending');
+    expect(f.calls.filter(c=>c[0]==='read')).toEqual([]);
+  });
+  it('requests price limits only when absent and keeps a missing range from dispatching',async()=>{
+    const f=await fixture('sell'),card=f.makeCard(201,901,'transfer');
+    f.task.owned=[{itemId:'201',definitionId:901,pile:'transfer'}];card._itemPriceLimits=null;
+    await f.step();await expect(f.step()).rejects.toThrow('MARKET_PRICE_LIMIT');
+    expect(f.calls.filter(c=>c[0]==='list')).toEqual([]);
+    f.hooks.limits=c=>{c._itemPriceLimits={minimum:150,maximum:10000};};
+    expect((await f.step()).response.status).toBe('confirmed');
+    expect(f.calls.filter(c=>c[0]==='read')).toEqual([['read','price-limits'],['read','price-limits']]);
+  });
+  it('resumes a claimed Club card after external cards, without losing the original holding',async()=>{
+    const f=await fixture('sell');
+    for(const [id,pile] of [[201,'club'],[202,'transfer'],[203,'unassigned']]){
+      f.makeCard(id,901,pile);f.task.owned.push({itemId:String(id),definitionId:901,pile});
+    }
+    claimMarketHolding(f.ledger,{taskId:'t',itemId:'201',definitionId:901,cost:500},'held');
+    for(let i=0;i<7;i++)await f.step();
+    expect(f.calls.filter(c=>c[0]==='list').map(c=>c[1])).toEqual([202,203,201]);
+    expect(f.ledger.holdings.find(h=>h.itemId==='201')).toMatchObject({cost:500,phase:'listed'});
+  });
+  it('uses a manually selected native Club entity even before the listing scan has populated its cache',async()=>{
+    const f=marketNativeRuntime(),card=f.makeCard(201,901,'club');
+    f.root.repositories.Item.club={items:{_collection:[card]}};
+    const native=await createFc27MarketTaskNative({...f,inventoryFactory:()=>({clubItems:()=>[]}),
+      assertCurrent:()=>{},assertProtected:()=>true,checkOtherTransactions:async()=>{}});
+    expect(await native.inspectOwned({itemId:'201',definitionId:901},{task:{mode:'sell'}})).toMatchObject({eligible:true,pile:'club'});
+    expect(f.calls).toEqual([]);
   });
 });
 
@@ -418,13 +612,13 @@ describe('market task native port with synthetic EA services', () => {
     const result = await f.step(); expect(result.response.status).toBe('rejected');
     expect(f.calls.filter(c => c[0] === 'bid')).toEqual([]);
   });
-  it('rechecks protection at the final native call after waiting for pacing', async () => {
+  it('rechecks protection at the final native call after an asynchronous checkpoint', async () => {
     const f = await fixture('sell'); f.makeCard(201, 901, 'transfer');
     f.task.owned = [{ itemId: '201', definitionId: 901, name: 'Owned', pile: 'transfer' }]; await f.step();
     const action = await f.provider.prepare({ task: f.task, settings: f.settings, ledger: f.ledger });
     await f.provider.preflight({ task: f.task, settings: f.settings, action, ledger: f.ledger });
-    f.hooks.sleep = () => f.assertProtected.mockReturnValue(false);
-    const boundary = vi.fn(); const result = await f.provider.send({ action, requestId: 'r', beforeDispatch: boundary });
+    const boundary = vi.fn(); const result = await f.provider.send({ action, requestId: 'r', beforeDispatch: boundary,
+      beforeRequest: async () => { await Promise.resolve();f.assertProtected.mockReturnValue(false); } });
     expect(result.status).toBe('rejected'); expect(boundary).not.toHaveBeenCalled();
     expect(f.calls.filter(c => c[0] === 'list')).toEqual([]);
   });

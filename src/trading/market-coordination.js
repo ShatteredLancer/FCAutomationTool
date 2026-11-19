@@ -254,7 +254,8 @@ export function resolveMarketUnlisted(state, requestId, proof) {
   entry.phase = 'resolved'; entry.resolution = structuredClone(proof);
 }
 
-// Only an adapter's independently verified exact receipt may call confirmed.
+// Confirmed requires an adapter's exact receipt: correlated native success or
+// independent reconciliation. A dispatched request alone is never a receipt.
 // A transport exception is not a rejection: leave the pending entry intact.
 export function settleMarketWrite(state, requestId, result) {
   fields(result, ['status', 'receipt', 'acknowledged']); choice(result.status, ['confirmed', 'rejected', 'unknown']);
