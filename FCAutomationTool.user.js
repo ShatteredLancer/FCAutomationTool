@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.115
+// @version      27.0.116
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.115", at: Date.now(), status: 'started',
+    state = { version: "27.0.116", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -1595,6 +1595,24 @@
       return item2;
     });
   }
+  var itemRarity11502 = Object.entries({
+    NONE: 0,
+    LOCK: 2,
+    MANNEQUIN: 201,
+    MULTI_MANNEQUIN: 202,
+    DEFAULT: 999,
+    0: "NONE",
+    2: "LOCK",
+    201: "MANNEQUIN",
+    202: "MULTI_MANNEQUIN",
+    999: "DEFAULT"
+  });
+  function verifiedPlayerRarityEncoding(root) {
+    const rarity = ownData(root, "ItemRarity");
+    if (ownData(rarity, "NONE") !== 0) return false;
+    if (ownData(rarity, "RARE") === 1) return true;
+    return typeof rarity === "object" && !("RARE" in rarity) && Object.getOwnPropertyNames(rarity).length === itemRarity11502.length && itemRarity11502.every(([key2, value]) => ownData(rarity, key2) === value);
+  }
   function snapshotFc27ClubPlayer(item2, root) {
     const get = (key2) => ownData(item2, key2);
     const id16 = get("id");
@@ -1606,8 +1624,6 @@
     const clubPile = at(root, ["ItemPile", "CLUB"]);
     const evolutionPile = at(root, ["ItemPile", "EVOLUTION"]);
     const baseRarity = integer3(get("_rareflag"), 0, 1e4);
-    const common = at(root, ["ItemRarity", "NONE"]);
-    const rare = at(root, ["ItemRarity", "RARE"]);
     const cosmetics = get("cosmetics");
     const hyper = get("_hyperCosmeticDTOs");
     const cosmetic = Array.isArray(cosmetics) && hyper && typeof hyper === "object" && !Array.isArray(hyper) ? cosmetics.length > 0 || Object.getOwnPropertyNames(hyper).length > 0 : null;
@@ -1641,7 +1657,7 @@
       pile: clubPile !== void 0 && pile === clubPile ? "club" : null,
       rating: noUpgrades ? integer3(get("_rating"), 1, 99) : null,
       rarity: noUpgrades ? baseRarity : null,
-      special: noUpgrades && baseRarity !== null && common === 0 && rare === 1 ? isSpecialPlayerCard({ rareflag: baseRarity }) : null,
+      special: noUpgrades && baseRarity !== null && verifiedPlayerRarityEncoding(root) ? isSpecialPlayerCard({ rareflag: baseRarity }) : null,
       evolution: evolutionPile !== void 0 && pile === evolutionPile ? true : noUpgrades ? false : upgrades === void 0 ? null : true,
       cosmetic,
       concept: boolean(get("concept")),
@@ -52748,7 +52764,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.115" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.116" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53163,8 +53179,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.115"}`,
-    version: "27.0.115",
+    title: `FC Automation Tool ${"27.0.116"}`,
+    version: "27.0.116",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

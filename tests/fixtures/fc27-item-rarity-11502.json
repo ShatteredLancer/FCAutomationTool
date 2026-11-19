@@ -1,0 +1,9 @@
+{
+  "build": 11502,
+  "asset": "https://www.ea.com/ea-sports-fc/ultimate-team/web-app/js/ocompiled.js?_=11502",
+  "assetSha256": "328fe5003064d570fb9705f31d7ab8e59f40093d7c1f926432dc3403e7f0e224",
+  "enum": {
+    "0": "NONE", "2": "LOCK", "201": "MANNEQUIN", "202": "MULTI_MANNEQUIN", "999": "DEFAULT",
+    "NONE": 0, "LOCK": 2, "MANNEQUIN": 201, "MULTI_MANNEQUIN": 202, "DEFAULT": 999
+  }
+}

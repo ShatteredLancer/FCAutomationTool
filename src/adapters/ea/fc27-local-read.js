@@ -71,6 +71,21 @@ function entries(value) {
   });
 }
 
+// EA Web App 11502's enum has presentation-only entries and no RARE member.
+// Its player entity still stores the explicit card payload's rareflag; FSU
+// admits exactly 0/1 as normal and the FC27 market reader uses the same bound.
+// Recognize this observed enum, not an arbitrary missing or changed enum.
+const itemRarity11502 = Object.entries({ NONE: 0, LOCK: 2, MANNEQUIN: 201, MULTI_MANNEQUIN: 202, DEFAULT: 999,
+  0: 'NONE', 2: 'LOCK', 201: 'MANNEQUIN', 202: 'MULTI_MANNEQUIN', 999: 'DEFAULT' });
+function verifiedPlayerRarityEncoding(root) {
+  const rarity = ownData(root, 'ItemRarity');
+  if (ownData(rarity, 'NONE') !== 0) return false;
+  if (ownData(rarity, 'RARE') === 1) return true;
+  return typeof rarity === 'object' && !('RARE' in rarity)
+    && Object.getOwnPropertyNames(rarity).length === itemRarity11502.length
+    && itemRarity11502.every(([key, value]) => ownData(rarity, key) === value);
+}
+
 export function snapshotFc27ClubPlayer(item, root) {
   const get = key => ownData(item, key);
   const id = get('id');
@@ -82,8 +97,6 @@ export function snapshotFc27ClubPlayer(item, root) {
   const clubPile = at(root, ['ItemPile', 'CLUB']);
   const evolutionPile = at(root, ['ItemPile', 'EVOLUTION']);
   const baseRarity = integer(get('_rareflag'), 0, 10000);
-  const common = at(root, ['ItemRarity', 'NONE']);
-  const rare = at(root, ['ItemRarity', 'RARE']);
   const cosmetics = get('cosmetics');
   const hyper = get('_hyperCosmeticDTOs');
   const cosmetic = Array.isArray(cosmetics) && hyper && typeof hyper === 'object'
@@ -129,7 +142,7 @@ export function snapshotFc27ClubPlayer(item, root) {
     pile: clubPile !== undefined && pile === clubPile ? 'club' : null,
     rating: noUpgrades ? integer(get('_rating'), 1, 99) : null,
     rarity: noUpgrades ? baseRarity : null,
-    special: noUpgrades && baseRarity !== null && common === 0 && rare === 1
+    special: noUpgrades && baseRarity !== null && verifiedPlayerRarityEncoding(root)
       ? isSpecialPlayerCard({ rareflag: baseRarity }) : null,
     evolution: evolutionPile !== undefined && pile === evolutionPile ? true : noUpgrades ? false : upgrades === undefined ? null : true,
     cosmetic, concept: boolean(get('concept')),
