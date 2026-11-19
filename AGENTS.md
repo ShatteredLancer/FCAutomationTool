@@ -1,5 +1,7 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-19 Streamlined 27.0.115：.113日志20万分已算200030，执行初始化methods.notify指纹114bf518未收录，未新增买卡/贡献；非.113截止时间。EA公开11502同指纹，notify/七HTTP原语/bid+move/两Storage函数共12个解码同旧已审核行为，真实SHA先红后绿；只精确别名，未知/运行中换函数不放行。其他核对/贡献原生方法指纹仍匹配，FSU dirty来自现有本地FSU代码，不当作EA方法。库存优先快照196（Club188/Storage8）可用0，旧日志仅见尾部6个special分类，不推断其余190。新增只读 UI已读/可用/采用和首要排除充分汇总，诊断保留在计划有界快照内；不改选材/保护/预算/回执、FSU或ad的.114策略。详见docs/releases/27.0.115.md。
+
 2026-11-18 用户授权升版提交27.0.114：fetch发现远程已至338fe93/.113，独立release/trading-27.0.114分支快进合入72aaf10/3c22893/338fe93并恢复本地累计Trading工作；AGENTS保留双方历史，生成脚本从合并源码重建。纳入竞价/多评分、按评分持续出售、挂牌拒绝及旧未决恢复、交易保活单次续期、原生姓名控件与移除批量填价；交互式选卡自动续期仍未接线，不宣称全部401解决。最终verify516/6747、专项106/1978及完整离线Chrome、发布就绪/本地打包通过；首次Gallery two-pass时间测试失败，原断言单独5项与完整复跑通过。root/dist3045243字节/SHAe761704dba77d4d2a0fe4972831bef1bdd082daa8cbc79052b27d5bde4669042，FSU26.09.10不变；未重装新版或真实交易。本轮提交后快进合回本地main，不push/tag/Release，两份私人.tmp和artifacts不入Git，保留合并前stash备份。见docs/releases/27.0.114.md；本段覆盖此前累计WIP“不升版提交”状态。
 
 2026-11-18 Trading选卡401单浏览器对照：用户确认同账号日常Chrome同时登录；首次检查器续期后defid200但正式UI再次401，故未将续期一次成功当持续恢复。用户关闭日常Chrome的EA页后，只保留专用31163；同页一次原生续期、正式最新.110选卡显示Raya88/89，以及两分多钟后不续期/不使用picker缓存的鲜读均成功。强支持双浏览器会话干扰，未抓另端请求或SID，不断言所有401唯一原因。最终原生搜索UI桌面390px/清空/重开/真实版本核验完成，源码SHA8eacba96…未变；无任务保存启动/买卖。自动续期目前仅交易保活，交互式版本恢复仍待开发，不以环境恢复冒充代码完成。见docs/FC27_TRADING_NATIVE_PLAYER_SEARCH_ZH.md最新段和artifacts/fc27-browser/market-player-final-ui-result.json、market-player-single-browser-fresh-read.json。无升版提交，保留所有WIP/私人.tmp；专用窗口保持登录且已恢复1280×720。
