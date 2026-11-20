@@ -3,7 +3,8 @@ import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
 import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
-import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
+import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver, isFc27TotwCard,
+  isFc27TotwRatingOnly } from './sbc-requirements.js';
 import { puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 import { planPuzzleNationalityAffinity, planPuzzleLeagueMinimumAffinity, planPuzzleNationalMinimumAffinity,
@@ -447,12 +448,22 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
 }
 
 export function marketCandidates(input, entries) {
+  return normalizeMarketCandidates(input, entries, false);
+}
+
+export function puzzleTotwMarketCandidates(input, entries) {
+  const rules = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+  return rules.status === 'observed' && isFc27TotwRatingOnly(rules.rules) ? normalizeMarketCandidates(input, entries, true) : [];
+}
+
+function normalizeMarketCandidates(input, entries, totwOnly) {
   const owned = new Set(input.inventory.items.map(item => item.definitionId));
   const seen = new Set();
   return entries.filter(item => {
     if (!positive(item?.definitionId) || owned.has(item.definitionId) || seen.has(item.definitionId)) return false;
     seen.add(item.definitionId);
-    return item.special === false && item.evolution === false && item.cosmetic === false && [0, 1].includes(item.rarity)
+    return (totwOnly ? isFc27TotwCard(item) && item.marketable !== false : item.special === false && [0, 1].includes(item.rarity))
+      && item.evolution === false && item.cosmetic === false
       && Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= input.policy.maxRating
       && (item.rating < 75 || item.rating >= input.policy.goldRange[0] && item.rating <= input.policy.goldRange[1])
       && [item.nationId, item.leagueId, item.teamId].every(positive) && !input.policy.excludedLeagueIds.includes(item.leagueId)
@@ -462,7 +473,7 @@ export function marketCandidates(input, entries) {
     ...(typeof item.displayName === 'string' && item.displayName.length <= 201 && !/[\u0000-\u001f]/.test(item.displayName)
       ? { displayName: item.displayName } : {}),
     leagueId: item.leagueId, teamId: item.teamId, positions: [...item.positions], groups: [...item.groups],
-    special: false, evolution: false, cosmetic: false, type: 'player', concept: false, academyEnrolled: false,
+    special: totwOnly, evolution: false, cosmetic: false, type: 'player', concept: false, academyEnrolled: false,
     catalogRef: `fc27:${item.definitionId}` }));
 }
 
@@ -871,7 +882,7 @@ export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, opt
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
   costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null,
-  searchBudget = null, reuseOwnedOnly = false } = {}) {
+  searchBudget = null, reuseOwnedOnly = false, oneTotw = false } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
   if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
@@ -885,7 +896,10 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  const market = prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
+  if (oneTotw && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly))
+    return stop('FC27_MARKET_POLICY_INVALID');
+  const market = oneTotw ? puzzleTotwMarketCandidates(input, entries).filter(item => validValue(prices.get(item.definitionId)))
+    : prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
   // With no public candidate, only an explicitly supplied feasible incumbent
   // warrants an owned replacement pass. Ordinary shortage routes keep the
   // remote fast exit instead of repeating a futile full inventory search.
@@ -958,7 +972,8 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes, searchBudget,
     pool: { ...pool, candidates },
     procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
-      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: required(input),
+      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: oneTotw ? 1 : required(input),
+      oneTotw,
       priceAware: prices instanceof Map, objective,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1
         : materialPrices ? materialPrices.get(item.definitionId) : 0 },

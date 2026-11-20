@@ -10,6 +10,8 @@ const reasons = {
   FC27_BUY_STOPPED: '已停止，已购买结果保留。',
   FC27_BUY_ALREADY_OWNED: '缺失版本已在 Club 中，请先替换对应概念卡，避免重复购买。',
   FC27_BUY_SQUAD_CHANGED: '阵容已被修改，本次未继续购买或覆盖阵容。',
+  FC27_BUY_PLAN_CHANGED: '挑战或材料保护设置已变化，已暂停。请核对阵容和购买记录。',
+  FC27_BUY_MATERIAL_UNVERIFIED: '已购材料或当前阵容尚未通过核验，已保留回执，不会重复购买。',
   FC27_BUY_INSUFFICIENT_COINS: '部分球员金币不足，已继续处理其余球员。',
   FC27_BUY_REJECTED: '部分买断被 EA 拒绝，已继续处理其余球员。',
   FC27_BUY_SEARCH_FAILED: '部分球员查价失败，已继续处理其余球员。',
@@ -120,7 +122,8 @@ export function mountFc27PuzzleBuyButton({ document, readTarget, inspect, buy, s
       }
       if (switched || result.remaining > 0 || result.recovery) button.hidden = false;
       button.textContent = result.recovery ? 'FCAT 核对并继续购买' : result.retryContext && result.results?.some(row => row.attempt?.failed)
-        ? 'FCAT 查看购买结果／重试' : `FCAT 批量购买概念球员（${result.remaining} 张）`;
+        ? 'FCAT 查看购买结果／重试' : Number.isSafeInteger(result.totwMaxBuy)
+          ? `FCAT 确认买 1 张周黑（上限 ${result.totwMaxBuy.toLocaleString()}）` : `FCAT 批量购买概念球员（${result.remaining} 张）`;
       button.disabled = false;
       if (switched) output.textContent = '点击后逐张查询、买入并替换当前概念卡；不会提交 SBC。';
       attach(next);
@@ -134,7 +137,8 @@ export function mountFc27PuzzleBuyButton({ document, readTarget, inspect, buy, s
     try {
       await wait(500);
       loading(true); message('正在查询并购买当前概念球员…');
-      const result = await buy(selected, { approved: true, budget: null, expectedOperationId: summary.operationId, ...(retry ? { retry } : {}) }, {
+      const budget = Number.isSafeInteger(summary.totwMaxBuy) ? Math.max(summary.totwMaxBuy, summary.spent) : null;
+      const result = await buy(selected, { approved: true, budget, expectedOperationId: summary.operationId, ...(retry ? { retry } : {}) }, {
         isCurrent: () => { const now = readTarget(); return !!now && now.setId === selected.setId && now.challengeId === selected.challengeId; },
         onProgress: progress => { try { if (!refreshPrices) foregroundProgress?.update?.(progress); } catch { /* Presentation cannot change a transaction. */ }
           resultView?.show(progress, { running: true });

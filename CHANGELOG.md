@@ -5,6 +5,11 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.121] - 2026-11-20
+
+- 普通 SBC 的单周黑评分挑战保留库存优先。缺合规周黑时，按现有评分上限、预算和限价推荐一张 TOTW；明确确认后才买入，成交后重新核对整队，不自动提交。
+- 市场购买锁定方案里的卡版本和参考价上限，保留原交易记录与恢复保护；没找到合规报价不买入、不修改阵容。
+
 ## [27.0.120] - 2026-11-20
 
 - Support rating-only Puzzle SBCs with an explicit one-TOTW requirement, using one eligible owned TOTW from Club or SBC Storage.

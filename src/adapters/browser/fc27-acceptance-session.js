@@ -18,7 +18,8 @@ import { createFc27PuzzleFillTransaction } from '../../fc27/puzzle-fill-transact
 import { createFc27PuzzleProcurementSession } from '../../fc27/puzzle-procurement-session.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, isPuzzleQuoteCeiling, DEFAULT_PUZZLE_OBJECTIVE, isPuzzleObjective } from '../../fc27/puzzle-procurement-policy.js';
 import { createFc27MarketReadTransport, readFc27MarketPlayerName } from '../ea/fc27-market-read.js';
-import { createFc27PuzzleConceptSession, readFc27ConceptPending, readFc27ConceptReservation } from '../../fc27/puzzle-concept-session.js';
+import { createFc27PuzzleConceptSession, fc27ConceptDraftKey, readFc27ConceptPending, readFc27ConceptReservation } from '../../fc27/puzzle-concept-session.js';
+import { isFc27TotwConceptDraft } from '../../fc27/puzzle-concept-draft.js';
 import { createFc27PuzzleBuySession, puzzleBuyKey, puzzleBuyPendingKey } from '../../fc27/puzzle-buy-session.js';
 import { assertPuzzleBuyTargetAvailable } from '../../fc27/puzzle-buy-lifecycle.js';
 import { maintainFc27PuzzlePurchases } from './fc27-puzzle-buy-lifecycle.js';
@@ -394,20 +395,22 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         let preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
           onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
         privateData = { inputs, preview };
-        // Explicit TOTW is initially supported only from Club/Storage. Never
-        // fall into generic market planning (including optional value search)
-        // or build a concept/auto-buy draft for the required special.
-        if (requiresFc27SingleTotw(parseFc27SbcRequirements(inputs.challenge.rawRequirements,
-          inputs.challenge.slotCount - inputs.challenge.brickIndices.length).rules)) return preview;
+        // Keep the owned TOTW path first. Only the explicit missing-TOTW
+        // result may enter the narrowly scoped one-card market fallback.
+        const totw = requiresFc27SingleTotw(parseFc27SbcRequirements(inputs.challenge.rawRequirements,
+          inputs.challenge.slotCount - inputs.challenge.brickIndices.length).rules);
+        if (totw && preview.reason !== 'FC27_PUZZLE_TOTW_REQUIRED') return preview;
         // Without a valuation source, an already legal owned lineup cannot
         // be cost-compared. Do not add catalogue reads just for that attempt.
         // The result keeps its explicit incomplete-value notice.
         const compareOwnedCost = purchaseSettings.objective === 'material-value'
           && preview.status === 'preview' && typeof publicPrices?.load === 'function';
-        if (inputs.squadEmpty === true && (compareOwnedCost || ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
+        if (inputs.squadEmpty === true && (totw || compareOwnedCost || ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE',
           'FC27_PUZZLE_SEARCH_LIMIT', 'FC27_PUZZLE_NO_PLAN_FOUND'].includes(preview.reason))) {
           progress('procurement');
           const purchaseSuggestion = await persistence.exclusive(scope, () => procurement.plan(inputs, { quoteCeiling: purchaseSettings.quoteCeiling, adaptiveSearch: true,
+            ...(totw ? { totwBudget: root.services.User.getUser?.()?.getCurrency?.(root.GameCurrency?.COINS)?.amount,
+              excludedTotwDefinitions: excludedDefinitionIds } : {}),
             optimizeMaterialValue: purchaseSettings.objective === 'material-value',
             materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
             ownedIncumbent: compareOwnedCost ? preview : null,
@@ -516,7 +519,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
             armed = true;
             try {
               const result = await conceptSession(assertTarget, purchaseSettings).save(inputs, purchaseSuggestion.plans[0]);
-              privateData.conceptResult = result;
+              privateData.conceptResult = totw && result.status === 'concept-filled' ? { ...result, needsTotwPurchase: true } : result;
               if (result?.status === 'concept-filled') {
                 try {
                   await rememberPuzzleReservations({ setId, challengeId: candidates[0].id },
@@ -530,7 +533,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           // inventory result. In particular, an expired reference after a
           // capped local search is the actionable blocker, not proof of no plan.
           const marketFailure = purchaseSuggestion.status === 'blocked'
-            && /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG)|FC27_BUY_REFERENCE_PRICE_)/.test(purchaseSuggestion.reason ?? '');
+            && (totw || /^(?:FC27_MARKET_|FC27_PURCHASE_(?:READ|QUOTE|CATALOG)|FC27_BUY_REFERENCE_PRICE_)/.test(purchaseSuggestion.reason ?? ''));
           return { ...preview, ...(marketFailure ? { status: 'blocked', reason: purchaseSuggestion.reason } : {}), purchaseSuggestion };
         }
         return preview;
@@ -696,6 +699,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
     });
   let buyStopped = false;
   const freshBuyDrafts = new Map();
+  const totwCapFor = (plan, ceiling) => isFc27TotwConceptDraft(plan)
+    ? Math.min(plan.estimatedCost, ceiling ?? Infinity) : null;
   const readBuyDraft = async target => {
     unchanged();
     const buy = await gmGetValue(puzzleBuyKey(scope, target), null);
@@ -705,6 +710,23 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           || buy.entries.filter(e => e.state === 'club').length !== buy.applied.length
           || puzzleBuyMatchesSlots(buy, readFc27PurchasePageSlots(root, target, buy)))) {
       return { phase: 'saved', operationId: buy.operationId, plan: buy.base };
+    }
+    const saved = await gmGetValue(fc27ConceptDraftKey(scope, target), null);
+    if (saved?.schema === 1 && saved.phase === 'saved' && saved.submitted === false && !saved.invalidation
+        && saved.scope === scope && saved.account?.accountScope === context.accountScope && saved.account?.platform === context.platform
+        && saved.plan?.setId === target.setId && saved.plan?.challengeId === target.challengeId
+        && JSON.stringify(saved.plan.context) === JSON.stringify(context) && isFc27TotwConceptDraft(saved.plan)) {
+      const initial = { base: saved.plan, entries: [], applied: [] };
+      const slots = readFc27PurchasePageSlots(root, target, initial);
+      if (puzzleBuyMatchesSlots(initial, slots) && saved.operationId !== (buy?.closure ? buy.operationId : null)) {
+        return { phase: 'saved', operationId: saved.operationId, plan: saved.plan,
+          ...(buy?.closure ? { closedOperationId: buy.operationId } : {}) };
+      }
+      // A moved FCAT concept is not permission to use the broader native
+      // buy path with a different lineup or without its frozen cap.
+      if (slots?.some(slot => slot?.concept && slot.definitionId === saved.plan.purchases[0].definitionId)) {
+        throw new Error('FC27_BUY_SQUAD_CHANGED');
+      }
     }
     const plan = readFc27PuzzleBuyPlan(root, target);
     if (buy?.closure) {
@@ -728,17 +750,21 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
     const acquired = entries.filter(e => ['club', 'bought', 'move-pending', 'move-rejected'].includes(e.state));
     const spent = acquired.reduce((sum, e) => sum + e.price, 0);
     const remaining = draft.plan.slots.filter(item => item?.kind === 'concept' && !acquired.some(e => e.slot === item.slot));
-    const page = readFc27PurchasePageSlots(root, target, record);
+    const settings = record || isFc27TotwConceptDraft(draft.plan) ? await readPuzzleSettings() : null;
+    const totwMaxBuy = totwCapFor(draft.plan, settings?.quoteCeiling);
+    const binding = record ?? { base: draft.plan, entries: [], applied: [] };
+    const page = readFc27PurchasePageSlots(root, target, binding);
     // Recovery may still show the pre-save pitch. The executor performs the
     // exact readback; this local summary never sends a request or authorizes it.
     const pending = record?.phase === 'save-pending' || entries.some(e => ['buy-pending', 'bought', 'move-pending', 'move-rejected'].includes(e.state))
       || entries.filter(e => e.state === 'club').length !== (record?.applied?.length ?? 0);
-    if (!pending && !puzzleBuyMatchesSlots(record ?? { base: draft.plan, entries: [], applied: [] }, page)) return { status: 'blocked', reason: 'FC27_BUY_SQUAD_CHANGED' };
+    if (!pending && !puzzleBuyMatchesSlots(binding, page)) return { status: 'blocked', reason: 'FC27_BUY_SQUAD_CHANGED' };
     return { status: 'ready', operationId: draft.operationId, total: draft.plan.purchaseCount,
-      remaining: remaining.length, spent, budget: spent + remaining.reduce((sum, item) => sum + (item.observedBuyNow ?? 0), 0),
+      remaining: remaining.length, spent, budget: spent + remaining.reduce((sum, item) => sum + (item.observedBuyNow ?? item.estimatedUnitPrice ?? 0), 0),
+      ...(totwMaxBuy === null ? {} : { totwMaxBuy }),
       ...(record ? { results: purchaseAttemptResults(record), retryContext: purchaseRetryContext(record, {
         remainingBudget: record.budget == null ? null : Math.max(0, record.budget - spent),
-        absoluteCap: (await readPuzzleSettings()).quoteCeiling,
+        absoluteCap: totwMaxBuy ?? settings.quoteCeiling,
         balance: root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount,
         priceTiers: root.UTCurrencyInputControl?.PRICE_TIERS?.map(row => ({ min: row.min, inc: row.inc })),
       }) } : {}),
@@ -755,12 +781,27 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
       const assertTarget = () => { unchanged(); if (!isCurrent()) throw new Error('FC27_BUY_TARGET_CHANGED'); };
       try {
         const settings = await readPuzzleSettings();
+        const coins = root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount;
+        const draft = await readBuyDraft(target);
+        const quoteCeiling = totwCapFor(draft?.plan, settings.quoteCeiling) ?? settings.quoteCeiling;
         const buyer = createFc27PuzzleBuySession({ scope, context, get: gmGetValue, set: gmSetValue,
           exclusive: persistence.exclusive, assertCurrent: assertTarget, shouldStop: () => buyStopped, onProgress, deferNoListing: true,
-          preparePrices: publicPrices ? record => {
+          preparePrices: publicPrices ? async record => {
             publicPrices.remember(record.base.purchases);
-            return publicPrices.preparePurchase(record, { isCurrent: () => { assertTarget(); return !buyStopped; },
-              onProgress: value => onProgress?.({ ...value, phase: 'reference-prices', purchased: 0, spent: 0 }) });
+            const priced = isFc27TotwConceptDraft(record.base) ? { ...record, plan: record.base.purchases } : record;
+            const priceOptions = { isCurrent: () => { assertTarget(); return !buyStopped; },
+              onProgress: value => onProgress?.({ ...value, phase: 'reference-prices', purchased: 0, spent: 0 }) };
+            if (priced !== record) {
+              const [card] = priced.plan, source = card.pricePolicy?.source;
+              if (card.priceReference?.quotes?.[source]?.expiresAt <= Date.now()) {
+                const refreshed = await publicPrices.load([card.definitionId], { ...priceOptions, purpose: 'purchase',
+                  policy: card.pricePolicy, rows: [card] });
+                // Refresh the quote within its original source and spend limit.
+                // Only the private price evidence passed to the verifier changes.
+                priced.plan = [{ ...card, priceReference: refreshed.references[card.definitionId] }];
+              }
+            }
+            return publicPrices.preparePurchase(priced, priceOptions);
           } : null,
           loadDraft: async currentTarget => {
             if (await gmGetValue(galleryPurchasePendingKey(scope), null) !== null) throw new Error('FC27_GALLERY_PURCHASE_RECOVERY_REQUIRED');
@@ -776,6 +817,18 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
                 refreshReference: publicPrices ? async (definitionId, policy) =>
                   (await publicPrices.load([definitionId], { purpose: 'puzzle', policy, isCurrent: () => { assertTarget(); return !buyStopped; } })).references[definitionId] : null,
                 attempts: settings.queriesNumber, skipRejectedListings: true,
+                readTotwInputs: async record => {
+                  assertTarget();
+                  const snapshot = readFc27PuzzlePageSnapshot(root, record.target);
+                  if (snapshot?.challenge?.status !== 'IN_PROGRESS' || snapshot.challenge.eligibilityOperation !== 'AND') {
+                    throw new Error('FC27_BUY_TARGET_CHANGED');
+                  }
+                  const links = readFc27PuzzleClubLinks(root);
+                  return { context, challenge: { ...record.base.challenge, rawRequirements: snapshot.challenge.requirements,
+                    formation: snapshot.layout.formation, brickIndices: snapshot.layout.simpleBrickIndices },
+                    policy: readFc27PuzzlePolicy(root, await readPuzzleMaxRating()), clubLinks: links,
+                    chemistry: record.base.chemistry ? readFc27PuzzleChemistry(root, links) : record.base.chemistry };
+                },
                 onEvent: event => { if (events.length < 300) events.push(event); },
                 canWrite: () => liveEnabled === true && armed && persistence.inspect().active,
               });
@@ -789,10 +842,9 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           },
         });
         const summary = await inspectPurchases(target);
-        const coins = root.services.User.getUser()?.getCurrency(root.GameCurrency.COINS)?.amount;
         result = await buyer.execute(target, { ...approval,
           budget: approval.budget ?? (Number.isSafeInteger(coins) && coins >= 0 ? Math.min(165000000, coins + summary.spent) : null),
-          quoteCeiling: settings.quoteCeiling });
+          quoteCeiling });
         return result;
       } catch (error) {
         result = blocked(safeReason(error));

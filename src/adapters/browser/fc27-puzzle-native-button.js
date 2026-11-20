@@ -56,7 +56,7 @@ function materialPolicyText(result) {
 const resultText = result => {
   if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
   if (result?.reason === 'FC27_BUY_DRAFT_ACTIVE') return '此阵容已有确认购买的卡；可继续批量购买剩余概念卡，或在原生页面提交已完成的阵容。';
-  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。${Number.isSafeInteger(result.materialValue) ? `整套材料估值 ${result.materialValue} 金币，其中现有卡 ${result.inventoryValue} 金币；按材料总价值优化。${result.valueCoverageComplete === false ? valueScopeText(result) : ''}` : result.valueReason ? '库存估值不完整，本方案仅列新增购卡支出，不把未知市值视为0。' : ''}尚未购买或提交 SBC；${result.valueCoverageComplete === false ? '' : '该建议不保证全市场最低价。'}`;
+  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.needsTotwPurchase ? '1 张待购周黑（TOTW）概念卡' : `${result.purchaseCount} 张待购概念卡`}；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。${Number.isSafeInteger(result.materialValue) ? `整套材料估值 ${result.materialValue} 金币，其中现有卡 ${result.inventoryValue} 金币；按材料总价值优化。${result.valueCoverageComplete === false ? valueScopeText(result) : ''}` : result.valueReason ? '库存估值不完整，本方案仅列新增购卡支出，不把未知市值视为0。' : ''}尚未购买或提交 SBC；${result.valueCoverageComplete === false ? '' : '该建议不保证全市场最低价。'}`;
   const purchase = result?.purchaseSuggestion;
   if (purchase?.reason === 'FC27_PURCHASE_CACHE_EXPIRED') return '补卡资料或报价已过期，本次未采用旧价格、未再次请求或购买；需要更新补卡资料。';
   if (purchase?.reason === 'FC27_MARKET_HTTP_429') return 'EA 市场请求限流，本次已停止并记录，不会自动重试或购买。';
@@ -80,6 +80,8 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
   if (result?.reason === 'FC27_PUZZLE_TOTW_REQUIRED') return '本题需要 1 张周黑（TOTW）；俱乐部和 SBC 仓库中没有通过当前保护设置的周黑卡。本次未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PURCHASE_TOTW_UNAVAILABLE') return '库存没有合规周黑；本轮在评分上限、限价和金币余额内也没有找到可用的周黑报价。未买卡或修改阵容。';
+  if (result?.reason === 'FC27_BUY_INSUFFICIENT_COINS') return '当前金币余额不足或未读到；未买卡或修改阵容。';
   if (result?.reason === 'FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED') return '当前周黑解题只支持无化学要求的评分挑战。本次未买卡或修改阵容。';
   if (result?.reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') return '补卡参考报价在规划结束前过期；本次没有可用补卡方案，请再次点击解题以刷新报价并重新规划。';
   if (shortageReasons.includes(result?.reason)) {

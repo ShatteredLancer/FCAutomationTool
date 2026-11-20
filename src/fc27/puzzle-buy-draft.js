@@ -1,4 +1,4 @@
-import { validateFc27PuzzleConceptDraft } from './puzzle-concept-draft.js';
+import { isFc27TotwConceptDraft, validateFc27PuzzleConceptDraft } from './puzzle-concept-draft.js';
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fail = () => { throw new Error('FC27_BUY_MATERIAL_UNVERIFIED'); };
 
@@ -11,17 +11,20 @@ export function materializePurchasedPuzzleDraft(base, current, entries, fresh) {
   const original = base.owned.map(ref => fresh.find(item => item.id === ref.id && item.definitionId === ref.definitionId));
   if (original.some(item => !item)
       || validateFc27PuzzleConceptDraft(base, current, original).status !== 'verified') fail();
+  const totw = isFc27TotwConceptDraft(base);
+  const protectedBy = (item, field, list) => item[field] === true
+    || (totw && Array.isArray(current.policy[list]) ? current.policy[list].includes(item.id) : item[field] !== false);
   const acquired = entries.map(entry => {
     const concept = base.slots[entry.slot];
     const expected = base.purchases.find(item => item.definitionId === entry.definitionId);
     const item = fresh.find(item => item.id === entry.itemId && item.definitionId === entry.definitionId);
     if (entry.state !== 'club' || concept?.kind !== 'concept' || concept.definitionId !== entry.definitionId
         || !expected || !item || item.pile !== 'club' || item.state !== 'free' || item.tradeable !== true
-        || item.concept !== false || item.evolution !== false || item.special !== false || item.cosmetic !== false
+        || item.concept !== false || item.evolution !== false || item.special !== totw || item.cosmetic !== false
         || item.academyEnrolled !== false || item.activeTrade !== false || item.limitedUse !== false
         || item.loans !== -1 || item.protected !== false
-        || current.policy.protectFsuLockedPlayers && item.locked !== false
-        || current.policy.protectActiveSquad && item.activeSquad !== false
+        || current.policy.protectFsuLockedPlayers && protectedBy(item, 'locked', 'lockedItemIds')
+        || current.policy.protectActiveSquad && protectedBy(item, 'activeSquad', 'activeSquadItemIds')
         || ['rating', 'rarity', 'nationId', 'leagueId', 'teamId', 'positions', 'groups'].some(key => !same(item[key], expected[key]))) fail();
     return { ...item, slot: entry.slot };
   });
