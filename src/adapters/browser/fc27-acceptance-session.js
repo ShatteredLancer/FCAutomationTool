@@ -513,9 +513,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
                 requests: purchaseSuggestion.requests, cacheHits: purchaseSuggestion.cacheHits,
                 diagnostics: { ...purchaseSuggestion.diagnostics }, purchaseCount: plan.purchaseCount,
                 ownedCount: plan.selectedOwned.length, estimatedCost: plan.estimatedCost,
+                teamRating: totw ? plan.teamFacts?.teamRating : undefined,
                 materialValue: plan.materialValue ?? null, inventoryValue: plan.inventoryValue ?? null,
                 valueReason: plan.valueReason,
-                cards: plan.purchases.slice(0, 11).map(item => ({ definitionId: item.definitionId,
+                cards: plan.purchases.slice(0, 11).map(item => ({ definitionId: item.definitionId, rating: item.rating,
                   referencePrice: item.estimatedUnitPrice ?? item.observedBuyNow, source: item.priceSource ?? 'ea-visible-buy-now' })) };
             } catch { /* Optional diagnostics cannot block a fill. */ }
             assertTarget(); progress('validating');
@@ -523,7 +524,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
             try {
               const result = await conceptSession(assertTarget, purchaseSettings).save(inputs, purchaseSuggestion.plans[0]);
               privateData.conceptResult = totw && result.status === 'concept-filled'
-                ? { ...result, needsTotwPurchase: !keepOwnedTotw, keptOwnedTotw: keepOwnedTotw } : result;
+                ? { ...result, needsTotwPurchase: !keepOwnedTotw, keptOwnedTotw: keepOwnedTotw,
+                  teamRating: purchaseSuggestion.plans[0].teamFacts?.teamRating } : result;
               if (result?.status === 'concept-filled') {
                 try {
                   await rememberPuzzleReservations({ setId, challengeId: candidates[0].id },
@@ -1075,6 +1077,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           evaluationNodes: d?.search?.evaluations, boundNodes: d?.search?.bounds,
           usableCandidates: d?.usableCandidates, excludedUnavailable: d?.excludedUnavailable,
           estimatedCost: purchase.estimatedCost ?? d?.estimatedCost, purchaseCount: purchase.purchaseCount,
+          teamRating: purchase.teamRating,
           ownedCount: purchase.ownedCount, priceSource: d?.priceSource,
           initialEstimatedCost: d?.initialEstimatedCost, refinementPasses: d?.refinementPasses,
           initialMaterialValue: d?.initialMaterialValue, coveragePages: d?.coveragePages, hintNodes: d?.hintNodes, hintPairs: d?.hintPairs,
@@ -1101,7 +1104,7 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
           responseCount: query.returnedCount, cached: query.cached });
         for (const card of purchase?.cards ?? []) await diagnosticLog?.record?.({ area: 'puzzle', event: 'procurement-card',
           setId: target.setId, challengeId: target.challengeId, definitionId: card.definitionId,
-          referencePrice: card.referencePrice, source: card.source });
+          referencePrice: card.referencePrice, rating: card.rating, source: card.source });
       } catch { /* Diagnostic failure never changes a solve/save result. */ }
       if (result?.status === 'recovery-required') {
         // Later blocked clicks may replace last-attempt, never this first write failure.

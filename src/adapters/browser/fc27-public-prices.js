@@ -200,7 +200,7 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
         if (!publicPriceSourceEnabled(await policyStore.read(captured.scope), 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
         captured.assert();
       };
-      return readFc27RatedFodderIds(ratings, { request, check,
+      return readFc27RatedFodderIds(ratings, { request, check, now, cache: futbinPages, quoteTtlMs: settings.quoteValidityMinutes * 60000,
         platform: settings.futbinPlatform ? (settings.futbinPlatform === 'pc' ? 'pc' : 'console') : captured.platform });
     },
     async cachedEstimates(ids, options = {}) {

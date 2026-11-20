@@ -36,7 +36,7 @@ const NUMBER_FIELDS = Object.freeze(['startPrice','buyNow','durationSeconds','mi
   'referenceInspectedCount','referenceCompletedCount','referencePendingCount','referenceVerifiedCount','optimizationPendingCount',
   'validationMs','microSteps','checkpointCount','reconciledCount','portfolioCount','comparisonCount',
   'pendingWriteCount', 'unconsumedPurchaseCount', 'contributedCount', 'confirmedBatches', 'waitingBatches', 'initialScore', 'plannedScore', 'setId', 'challengeId', 'requests', 'firstListMs',
-  'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt',
+  'definitionId', 'referencePrice', 'searchCeiling', 'futggPrice', 'futbinPrice', 'maxBuy', 'actualPrice', 'attempt', 'attemptLimit', 'fetchedAt', 'sourceUpdatedAt', 'expiresAt', 'teamRating',
   'catalogAttempts', 'quoteAttempts', 'queryTeamId', 'queryNationId', 'queryLeagueId', 'safeCandidates', 'usableCandidates', 'excludedUnavailable', 'estimatedCost', 'purchaseCount', 'ownedCount',
   'initialEstimatedCost', 'refinementPasses', 'materialValue', 'totalValue', 'initialMaterialValue', 'coveragePages', 'hintNodes', 'hintPairs',
   'positionSkippedCount', 'seedMs', 'catalogMs', 'pricingMs', 'searchMs', 'hintMs',

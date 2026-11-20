@@ -631,7 +631,7 @@ it('163/266 retains the held TOTW with only six unique safe versions and buys ex
   const result = await x.fill();
   expect(result, JSON.stringify(result)).toMatchObject({ status: 'concept-filled', keptOwnedTotw: true, needsTotwPurchase: false,
     purchaseCount: 5, estimatedCost: 2500, submitted: false });
-  expect(x.publicPrices.puzzleRatedFodder.mock.calls[0][0]).toEqual([82, 81, 80]);
+  expect(x.publicPrices.puzzleRatedFodder.mock.calls[0][0]).toEqual([82, 81, 80, 79, 78, 77, 76]);
   expect(x.challenge.squad._players.filter(slot => slot._item._rareflag === 3).map(slot => slot._item.id)).toEqual([1]);
   expect(x.calls.filter(call => call.kind === 'buy' || call.kind === 'search')).toEqual([]);
   expect(await x.session.inspectPuzzlePurchases(x.target)).toMatchObject({ keptOwnedTotw: true, approvedMaterialsBudget: 2500 });

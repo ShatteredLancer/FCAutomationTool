@@ -14,6 +14,19 @@ it('shortlists an exact rating and ordinary rarity, ranking both PC and console 
   await expect(readFc27RatedFodderIds([81], { request, platform: 'pc' })).rejects.toThrow('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
 });
 
+it('passes a fresh discovery page to the existing quote reader without another network request or a newer timestamp', async () => {
+  let now = 1000;
+  const cache = new Map(), request = vi.fn(async () => JSON.stringify({ data: [
+    { resource_id: 1, rating: 79, raretype: 0, pc_LCPrice: 300, ps_LCPrice: 350 },
+  ] }));
+  expect(await readFc27RatedFodderIds([79], { platform: 'pc', request, cache, now: () => now })).toEqual([[1]]);
+  now += 1000;
+  expect(await readFutbinBatchPrices([1], [{ definitionId: 1, rating: 79 }], {
+    platform: 'pc', request, cache, now: () => now, cacheOnly: true,
+  })).toMatchObject({ requests: 0, rows: [{ definitionId: 1, price: 300, fetchedAt: 1000 }] });
+  expect(request).toHaveBeenCalledOnce();
+});
+
 const players = Array.from({ length: 12 }, (_, i) => ({ definitionId: i + 1, rating: 84 }));
 const payload = rows => JSON.stringify({ errorcode: '200', data: rows });
 const row = (id, pc = 1000) => ({ resource_id: id, rating: 84, pc_LCPrice: pc, ps_LCPrice: 2500 });

@@ -724,7 +724,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || a.rating - b.rating
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
-  if ((!procurement || procurement.oneTotw || procurement.keepOwnedTotw) && searchHint === null && isFc27TotwRatingOnly(parsed.rules)
+  if ((!procurement || procurement.oneTotw) && searchHint === null && isFc27TotwRatingOnly(parsed.rules)
       && parsed.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))) {
     const target = Math.max(...parsed.rules.filter(rule => rule.kind === 'min-team-rating').map(rule => rule.value));
     // A large stock of low-rated cards can spend the entire DFS allowance on
@@ -733,7 +733,6 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
     // mixed combinations and let EA's exact rating formula decide.
     candidates = candidates.slice().sort((a, b) => Number(isFc27TotwCard(b)) - Number(isFc27TotwCard(a))
       || (procurement?.oneTotw && isFc27TotwCard(a) && isFc27TotwCard(b) ? procurement.costOf(a) - procurement.costOf(b) : 0)
-      || (procurement?.keepOwnedTotw ? Number(Boolean(a.catalogRef)) - Number(Boolean(b.catalogRef)) : 0)
       || Number(a.rating < target) - Number(b.rating < target)
       || Math.abs(a.rating - target) - Math.abs(b.rating - target)
       || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0));

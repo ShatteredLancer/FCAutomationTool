@@ -3,7 +3,7 @@ import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
 import * as procurement from '../../src/fc27/puzzle-procurement.js';
 import clubAffinity from '../fixtures/fc27-puzzle-club-affinity-2026-10-09.json';
-import { evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
+import { evaluateFc27PuzzleRating, evaluateFc27PuzzleSquad, boundFc27PuzzleChemistry } from '../../src/fc27/puzzle-evaluator.js';
 import { previewFc27PuzzleSquad } from '../../src/fc27/puzzle-preview.js';
 import { createGalleryReferencePrices } from '../../src/gallery/reference-prices.js';
 import { marketRow } from '../helpers/fc27-market-fixture.js';
@@ -128,6 +128,75 @@ function publicPrices(x, priceOf) {
         fetchedAt: x.now, sourceUpdatedAt: null, expiresAt: x.now + 300000, error: null,
       }])) }])) }));
 }
+
+it.each([false, true])('163/266 prices lower-rated combinations before keeping a high-rated first-page solution (float=%s)', async float => {
+  const x = fixture();
+  x.input.challenge.rawRequirements = [marketRow(18, 3, 1), marketRow(19, 81)];
+  x.input.policy.maxRating = 82;
+  x.input.chemistry.rating.floatCalculationEnabled = float;
+  x.input.inventory.items = [{ ...x.input.inventory.items[0], rating: 82, rarity: 3, special: true }];
+  const cards = new Map();
+  const lanes = new Map([[82, [14, 1100]], [80, [6, 700]], [79, [9, 200]]].map(([rating, [count, price]]) => [
+    rating, Array.from({ length: count }, (_, index) => {
+      const definitionId = rating * 100 + index;
+      cards.set(definitionId, { definitionId, rating, price, rarity: 0, nationId: 1, leagueId: 1, teamId: 11,
+        positions: [5], groups: [], special: false, evolution: false, cosmetic: false });
+      return definitionId;
+    }),
+  ]));
+  x.transport.readCatalogPage.mockImplementation(async query => ({ status: 'observed', season: '27', source: 'ea-defid',
+    query, observedAt: x.now, pageEndObserved: true, entries: (query.definitionIds ?? []).map(id => cards.get(id)) }));
+  const result = await createFc27PuzzleProcurementSession({ ...x.options,
+    loadRatedFodder: async ratings => ratings.map(rating => lanes.get(rating) ?? []),
+    loadPublicPrices: publicPrices(x, id => cards.get(id).price) }).plan(x.input, { keepOwnedTotw: true, totwBudget: 10000 });
+  expect(result.plans[0]).toMatchObject({ purchaseCount: 10, estimatedCost: 5600, teamFacts: { teamRating: 81 },
+    selectedOwned: [{ id: 1, rating: 82 }] });
+  expect(result.plans[0].purchases.filter(card => card.rating === 79)).toHaveLength(6);
+  expect(x.transport.readCatalogPage.mock.calls.some(([query]) => query.definitionIds?.some(id => cards.get(id).rating < 80))).toBe(true);
+  expect(result.diagnostics.nodes).toBeLessThan(1000);
+});
+
+it.each([false, true])('owned-TOTW rating counts agree with full enumeration and prefer lower rating on coin ties (float=%s)', float => {
+  const input = puzzleFillFixture();
+  input.challenge.rawRequirements = [marketRow(18, 3, 1), marketRow(19, 81)];
+  input.policy.maxRating = 82;
+  input.chemistry.rating.floatCalculationEnabled = float;
+  const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
+  const counter = { ties: 0, feasible: 0 };
+  const item = input.inventory.items[0];
+  for (let trial = 0; trial < 24; trial++) {
+    const stock = [{ ...item, rarity: 3, special: true, rating: 82 }, ...Array.from({ length: trial === 0 ? 0 : 5 }, (_, i) => ({
+      ...item, id: 20 + i, definitionId: 120 + i, rating: 79 + (trial + i) % 4,
+    }))];
+    input.inventory.items = stock;
+    const market = Array.from({ length: trial === 0 ? 14 : 8 }, (_, i) => ({ definitionId: 500 + i,
+      rating: trial === 0 ? i < 10 ? 82 : 79 : 79 + (trial * 5 + i * i + i) % 4,
+      rarity: 0, nationId: 1, leagueId: 1, teamId: 1, positions: [5], groups: [], special: false, evolution: false, cosmetic: false,
+    }));
+    const prices = new Map(market.map((card, i) => [card.definitionId, trial === 0 ? 500 : 200 + (trial + i) % 4 * 100]));
+    const all = [...stock.slice(1), ...market], scores = [];
+    for (let mask = 0; mask < 2 ** all.length; mask++) {
+      const normal = all.filter((_card, i) => (mask & (1 << i)) !== 0);
+      if (normal.length !== 10) continue;
+      const squad = [stock[0], ...normal];
+      const facts = evaluateFc27PuzzleRating({ squad, rating: input.chemistry.rating });
+      if (facts.teamRating < 81) continue;
+      scores.push([normal.reduce((sum, c) => sum + (prices.get(c.definitionId) ?? 0), 0), facts.teamRating,
+        squad.reduce((sum, c) => sum + c.rating, 0), normal.filter(c => prices.has(c.definitionId)).length]);
+    }
+    const wanted = scores.sort(compare)[0];
+    const result = procurement.suggestFc27PuzzleJointPurchases(input, market, { keepOwnedTotw: 10, walletLimit: 20000, prices });
+    if (!wanted) { expect(result.status).toBe('blocked'); continue; }
+    expect(result.status, JSON.stringify({ trial, wanted, reason: result.reason })).toBe('suggested');
+    const [plan] = result.plans;
+    expect([plan.estimatedCost, plan.teamFacts.teamRating, [...plan.selectedOwned, ...plan.purchases].reduce((sum, card) => sum + card.rating, 0),
+      plan.purchaseCount]).toEqual(wanted);
+    if (scores.some(score => score[0] === wanted[0] && score[1] > wanted[1])) counter.ties++;
+    counter.feasible++;
+  }
+  expect(counter.feasible).toBeGreaterThan(1);
+  expect(counter.ties).toBeGreaterThan(0);
+});
 
 it.each(['deadline', 'expiry'])('keeps the cheaper owned refinement after optional search %s', async mode => {
   const x = fixture();

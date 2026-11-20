@@ -9,7 +9,8 @@ import { isFc27TotwCard, isFc27TotwRatingOnly, parseFc27SbcRequirements } from '
 import { collectSafePuzzleCandidates } from './puzzle-material-policy.js';
 import { allowedFc27MarketTiers } from './market-query-route.js';
 import { readFc27PuzzleCatalogHints, yieldPuzzleHintTask } from './puzzle-catalog-hints.js';
-import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
+import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, MAX_PUZZLE_RATED_FODDER_LANES,
+  PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
 import { comparePuzzlePlans, sortPuzzlePlans } from './puzzle-plan-ranking.js';
 import { createFc27PuzzleSearchBudget } from './puzzle-preview.js';
 
@@ -364,14 +365,19 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         let discovery = [0, 20, 40].map(start => ({ start, count: 20, level: keepOwnedTotw ? 'gold' : 'totw' }));
         if (keepOwnedTotw && typeof loadRatedFodder === 'function') {
           const maxRating = input.policy.maxRating;
-          const ratings = [maxRating, maxRating - 1, maxRating - 2].filter(rating => rating >= Math.max(75, input.policy.goldRange[0]));
+          const target = Math.max(...rules.rules.filter(rule => rule.kind === 'min-team-rating').map(rule => rule.value));
+          const anchor = Math.min(maxRating, Math.max(75, target + 1));
+          const lanesBelow = MAX_PUZZLE_RATED_FODDER_LANES - Number(maxRating > anchor);
+          const ratings = [...Array.from({ length: lanesBelow }, (_, i) => anchor - i), ...(maxRating > anchor ? [maxRating] : [])]
+            .filter(rating => rating >= Math.max(75, input.policy.goldRange[0]));
           let lanes = [];
           try {
             lanes = await measure('hintMs', () => loadRatedFodder(ratings, { isCurrent: () => { assertCurrent(); return true; } }));
           } catch { assertCurrent(); /* A failed optional shortlist leaves the native gold pages available. */ }
           const inClub = new Set(input.inventory.items.map(card => card.definitionId));
           const shortlist = new Set();
-          if (Array.isArray(lanes) && lanes.length <= 3 && lanes.every(lane => Array.isArray(lane) && lane.length <= 100)) {
+          if (Array.isArray(lanes) && lanes.length <= MAX_PUZZLE_RATED_FODDER_LANES
+              && lanes.every(lane => Array.isArray(lane) && lane.length <= 100)) {
             for (let row = 0; row < 100 && shortlist.size < 60; row++) for (const lane of lanes) {
               const id = lane[row];
               if (shortlist.size < 60 && Number.isSafeInteger(id) && id > 0 && id <= 0x7fffffff
@@ -383,7 +389,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             for (let start = 0; start < ids.length; start += 20) {
               exactQueries.push({ start: 0, count: 20, level: 'gold', definitionIds: ids.slice(start, start + 20) });
             }
-            discovery = [...exactQueries, ...discovery].slice(0, 3);
+            discovery = (shortlist.size >= gap ? exactQueries : [...exactQueries, ...discovery]).slice(0, 3);
           }
         }
         const search = async maxPurchases => {
@@ -396,6 +402,11 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           assertCurrent(); spent += result.nodes ?? 0; diagnostics.nodes = spent;
           diagnostics.usableCandidates = result.marketCandidates;
           diagnostics.localReason = result.reason; diagnostics.search = result.search;
+          if (keepOwnedTotw) {
+            diagnostics.searchComplete = result.searchComplete;
+            diagnostics.optimalWithinPool = result.optimalWithinPool;
+            diagnostics.optimizationBudgetExhausted = result.truncated === true;
+          }
           if (result.status === 'suggested') {
             const plan = result.plans?.[0];
             if (!plan?.purchases?.length || plan.purchases.length > maxPurchases
@@ -414,6 +425,28 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             'FC27_PURCHASE_REPAIR_NO_PLAN', 'FC27_PUZZLE_SEARCH_LIMIT'].includes(result.reason)) return { ...result, queries };
           return null;
         };
+        const quoteCandidates = async () => {
+          const normalize = keepOwnedTotw ? marketCandidates : puzzleTotwMarketCandidates;
+          const candidates = normalize(input, [...entries.values()]).filter(row => !references.has(row.definitionId));
+          if (!candidates.length) return false;
+          diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
+          const definitions = candidates.map(card => card.definitionId);
+          const snapshot = await measure('pricingMs', () => loadPublicPrices(definitions, { purpose: 'puzzle', rows: candidates,
+            ...(pricePolicy ? { policy: pricePolicy } : {}), isCurrent: () => { assertCurrent(); return true; },
+            onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } }));
+          assertCurrent();
+          const approval = createPurchasePriceApproval({ scope, definitionIds: definitions, references: snapshot.references,
+            policy: snapshot.policy, season: '27', platform, now: now() });
+          if (pricePolicy && !same(pricePolicy, approval.policy)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
+          pricePolicy = approval.policy; diagnostics.priceSource = pricePolicy.source;
+          for (const row of approval.rows) {
+            references.set(row.definitionId, row);
+            if (row.estimate !== null && row.maxBuy !== null && row.estimate <= cap && row.estimate <= row.maxBuy) {
+              prices.set(row.definitionId, row.estimate);
+            } else diagnostics.excludedUnavailable++;
+          }
+          return true;
+        };
         for (const query of discovery) {
           const before = cacheHits;
           const page = await measure('catalogMs', () => cachedRead('catalog', query));
@@ -431,39 +464,17 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             if (!excluded.has(row?.definitionId)) entries.set(row?.definitionId, row);
           }
           diagnostics.catalogCandidates = entries.size;
-          const normalize = keepOwnedTotw ? marketCandidates : puzzleTotwMarketCandidates;
-          const candidates = normalize(input, [...entries.values()]).filter(row => !references.has(row.definitionId));
-          if (candidates.length) {
-            diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
-            const definitions = candidates.map(card => card.definitionId);
-            const snapshot = await measure('pricingMs', () => loadPublicPrices(definitions, { purpose: 'puzzle', rows: candidates,
-              ...(pricePolicy ? { policy: pricePolicy } : {}), isCurrent: () => { assertCurrent(); return true; },
-              onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } }));
-            assertCurrent();
-            const approval = createPurchasePriceApproval({ scope, definitionIds: definitions, references: snapshot.references,
-              policy: snapshot.policy, season: '27', platform, now: now() });
-            if (pricePolicy && !same(pricePolicy, approval.policy)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
-            pricePolicy = approval.policy; diagnostics.priceSource = pricePolicy.source;
-            for (const row of approval.rows) {
-              references.set(row.definitionId, row);
-              if (row.estimate !== null && row.maxBuy !== null && row.estimate <= cap && row.estimate <= row.maxBuy) {
-                prices.set(row.definitionId, row.estimate);
-              } else diagnostics.excludedUnavailable++;
-            }
-          }
-          if (prices.size >= gap && spent < limit && candidates.length) {
+          if (!keepOwnedTotw && await quoteCandidates() && prices.size && spent < limit) {
             const result = await search(gap);
             if (result) return finish(result);
           }
           if (spent >= limit || !query.definitionIds && (page.pageEndObserved || page.entries.length < query.count)) break;
         }
-        // Only add a replacement above the headcount gap if the full priced
-        // pool needs it to reach the native rating. Preserve the exact TOTW.
-        if (keepOwnedTotw && prices.size >= gap) {
-          for (let count = gap + 1; count < required && spent < limit; count++) {
-            const result = await search(count);
-            if (result) return finish(result);
-          }
+        // Compare the bounded set at once, rather than accepting the first
+        // eligible high-rating page or repeating the search per headcount.
+        if (keepOwnedTotw && await quoteCandidates() && prices.size >= gap) {
+          const result = await search(required - 1);
+          if (result) return finish(result);
         }
         return finish({ ...stop(spent >= limit ? 'FC27_PUZZLE_SEARCH_LIMIT'
           : keepOwnedTotw ? 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE'
