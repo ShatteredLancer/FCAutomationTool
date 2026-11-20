@@ -81,6 +81,7 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
   if (result?.reason === 'FC27_PUZZLE_TOTW_REQUIRED') return '本题需要 1 张周黑（TOTW）；俱乐部和 SBC 仓库中没有通过当前保护设置的周黑卡。本次未买卡或修改阵容。';
   if (result?.reason === 'FC27_PURCHASE_TOTW_UNAVAILABLE') return '库存没有合规周黑；本轮在评分上限、限价和金币余额内也没有找到可用的周黑报价。未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE') return '已有合规库存周黑，但在当前评分上限、预算及已核价的普通卡范围内未找到完整方案。未买卡或修改阵容。';
   if (result?.reason === 'FC27_BUY_INSUFFICIENT_COINS') return '当前金币余额不足或未读到；未买卡或修改阵容。';
   if (result?.reason === 'FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED') return '当前周黑解题只支持无化学要求的评分挑战。本次未买卡或修改阵容。';
   if (result?.reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') return '补卡参考报价在规划结束前过期；本次没有可用补卡方案，请再次点击解题以刷新报价并重新规划。';

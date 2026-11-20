@@ -13,7 +13,8 @@ const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const protectedItem = item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false });
-const protectionFor = plan => plan.kind === 'puzzle-fill' ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
+const protectionFor = plan => ['puzzle-fill', 'puzzle-concept-draft'].includes(plan.kind)
+  ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
 const identity = value => Number.isSafeInteger(value) && value > 0;
 const count = value => Number.isSafeInteger(value) && value >= 0;
 export const FC27_SBC_EXECUTION_METHODS = Object.freeze([
@@ -311,6 +312,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       const layout = projectFc27PuzzleLayout(root, squad, target);
       assertFc27PuzzleLayout(plan, layout);
       const slots = ownData(squad, '_players'); const owned = []; const concepts = [];
+      const projectProtection = protectionFor(plan);
       const playable = index => index < 11 && !plan.challenge.brickIndices.includes(index);
       const occupied = slots.slice(0, 11).filter((slot, index) => playable(index)
         && Number(ownData(ownData(slot, '_item'), 'id')) > 0).length;
@@ -328,7 +330,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       if (!identityMatches) return fail('FC27_CONCEPT_SQUAD_MANUAL_EDITED');
       for (const ref of plan.slots.filter(Boolean)) {
         const item = ownData(slots[ref.slot], '_item');
-        if (ref.kind === 'owned') owned.push({ ...protectedItem(snapshotOwned(item, plan.kind)), slot: ref.slot });
+        if (ref.kind === 'owned') owned.push({ ...projectProtection(snapshotOwned(item, plan.kind)), slot: ref.slot });
         else {
           // EA's saved concept entity must reproduce the catalog facts used by
           // the solver, including alternative positions and eligibility groups.
@@ -375,7 +377,8 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
     },
     async validateItems(plan) {
       const items = await freshRefs(plan.selected, ['puzzle-fill', 'puzzle-fill-recovery', 'puzzle-concept-draft'].includes(plan.kind));
-      return { context, fresh: true, observedAt: Date.now(), items: plan.kind === 'puzzle-fill' ? items.map(protectionFor(plan)) : items };
+      return { context, fresh: true, observedAt: Date.now(),
+        items: ['puzzle-fill', 'puzzle-concept-draft'].includes(plan.kind) ? items.map(protectionFor(plan)) : items };
     },
     assertCurrent() { assert(); return true; },
     async readSquadState(plan) {

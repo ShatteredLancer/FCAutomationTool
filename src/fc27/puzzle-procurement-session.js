@@ -5,7 +5,8 @@ import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, sug
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
-import { isFc27TotwRatingOnly, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { isFc27TotwCard, isFc27TotwRatingOnly, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { collectSafePuzzleCandidates } from './puzzle-material-policy.js';
 import { allowedFc27MarketTiers } from './market-query-route.js';
 import { readFc27PuzzleCatalogHints, yieldPuzzleHintTask } from './puzzle-catalog-hints.js';
 import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
@@ -127,7 +128,7 @@ const failureDetails = (reason, value) => {
 // cooldown, or revalidate a method fingerprint locally. No same-action retry;
 // pending and other failures stay blocked.
 // The caller holds the account lock across this operation.
-export function createFc27PuzzleProcurementSession({ createTransport, get, set, list = null,
+export function createFc27PuzzleProcurementSession({ createTransport, get, set, list = null, loadRatedFodder = null,
   loadPublicPrices = null, loadCachedPrices = null, now = Date.now } = {}) {
   let busy = false;
   const ownedValues = async (input, { assertCurrent, onProgress, preferred = [] }) => {
@@ -195,7 +196,7 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
   },
   async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
     onProgress = null, optimizeMaterialValue = false, materialCeiling = null, ownedIncumbent = null, adaptiveSearch = false,
-    totwBudget = null, excludedTotwDefinitions = [] } = {}) {
+    totwBudget = null, excludedTotwDefinitions = [], keepOwnedTotw = false } = {}) {
     if (busy) return stop('FC27_PURCHASE_BUSY');
     busy = true;
     let requests = 0; let cacheHits = 0; let transport; let adaptiveBudget = null;
@@ -347,25 +348,80 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         diagnostics.requestedObjective = diagnostics.objective = 'additional-coins';
         if (!Number.isSafeInteger(totwBudget) || totwBudget < 150) return finish(stop('FC27_BUY_INSUFFICIENT_COINS'));
         if (!Array.isArray(excludedTotwDefinitions)) return finish(stop('FC27_PUZZLE_RESERVATION_UNVERIFIED'));
-        // This is a one-card repair only. Retain the no-change result if the
-        // rest of the lineup cannot be made from the current safe inventory.
-        if (new Set(puzzleOwnedValueCandidates(input).map(card => card.definitionId)).size < required - 1) {
+        const normalOwnedCount = new Set(puzzleOwnedValueCandidates(input).map(card => card.definitionId)).size;
+        if (!keepOwnedTotw && normalOwnedCount < required - 1) {
           return finish(stop('SAFE_MATERIAL_SHORTAGE'));
         }
+        if (keepOwnedTotw && (!rules.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))
+            || !collectSafePuzzleCandidates(input).candidates?.some(isFc27TotwCard))) return finish(stop('SAFE_MATERIAL_SHORTAGE'));
         if (typeof loadPublicPrices !== 'function') return finish(stop('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE'));
         const cap = Math.min(quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE, totwBudget);
         const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? 'console' : null;
         const excluded = new Set(excludedTotwDefinitions), prices = new Map(), references = new Map(), entries = new Map(), queries = [];
         let pricePolicy, spent = 0;
         const limit = 50000;
-        for (const start of [0, 20, 40]) {
-          const query = { start, count: 20, level: 'totw' };
+        const gap = keepOwnedTotw ? Math.max(1, required - 1 - normalOwnedCount) : 1;
+        let discovery = [0, 20, 40].map(start => ({ start, count: 20, level: keepOwnedTotw ? 'gold' : 'totw' }));
+        if (keepOwnedTotw && typeof loadRatedFodder === 'function') {
+          const maxRating = input.policy.maxRating;
+          const ratings = [maxRating, maxRating - 1, maxRating - 2].filter(rating => rating >= Math.max(75, input.policy.goldRange[0]));
+          let lanes = [];
+          try {
+            lanes = await measure('hintMs', () => loadRatedFodder(ratings, { isCurrent: () => { assertCurrent(); return true; } }));
+          } catch { assertCurrent(); /* A failed optional shortlist leaves the native gold pages available. */ }
+          const inClub = new Set(input.inventory.items.map(card => card.definitionId));
+          const shortlist = new Set();
+          if (Array.isArray(lanes) && lanes.length <= 3 && lanes.every(lane => Array.isArray(lane) && lane.length <= 100)) {
+            for (let row = 0; row < 100 && shortlist.size < 60; row++) for (const lane of lanes) {
+              const id = lane[row];
+              if (shortlist.size < 60 && Number.isSafeInteger(id) && id > 0 && id <= 0x7fffffff
+                  && !inClub.has(id) && !excluded.has(id)) shortlist.add(id);
+            }
+          }
+          if (shortlist.size) {
+            const ids = [...shortlist], exactQueries = [];
+            for (let start = 0; start < ids.length; start += 20) {
+              exactQueries.push({ start: 0, count: 20, level: 'gold', definitionIds: ids.slice(start, start + 20) });
+            }
+            discovery = [...exactQueries, ...discovery].slice(0, 3);
+          }
+        }
+        const search = async maxPurchases => {
+          diagnostics.stage = 'local-market-search';
+          const result = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input, [...entries.values()], {
+            ...(keepOwnedTotw ? { keepOwnedTotw: maxPurchases, walletLimit: totwBudget } : { oneTotw: true }),
+            prices, priceSource: pricePolicy.source, maxNodes: limit - spent, assertCurrent,
+            onProgress: value => reportProgress({ ...value, nodes: spent + value.nodes, maxNodes: limit }),
+          }));
+          assertCurrent(); spent += result.nodes ?? 0; diagnostics.nodes = spent;
+          diagnostics.usableCandidates = result.marketCandidates;
+          diagnostics.localReason = result.reason; diagnostics.search = result.search;
+          if (result.status === 'suggested') {
+            const plan = result.plans?.[0];
+            if (!plan?.purchases?.length || plan.purchases.length > maxPurchases
+                || plan.purchases.some(item => !prices.has(item.definitionId))) return stop('FC27_CONCEPT_PLAN_UNVERIFIED');
+            const purchases = plan.purchases.map(item => {
+              const row = references.get(item.definitionId), quote = row.quotes[pricePolicy.source];
+              if (quote.expiresAt <= now()) throw Error('FC27_BUY_REFERENCE_PRICE_EXPIRED');
+              return { ...item, estimatedUnitPrice: prices.get(item.definitionId), quotedAt: quote.fetchedAt,
+                priceReference: { definitionId: item.definitionId, platform, season: '27', quotes: row.quotes },
+                pricePolicy, priceSource: pricePolicy.source };
+            });
+            diagnostics.estimatedCost = plan.estimatedCost;
+            return { ...result, queries, plans: [{ ...plan, purchases }] };
+          }
+          if (!['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND',
+            'FC27_PURCHASE_REPAIR_NO_PLAN', 'FC27_PUZZLE_SEARCH_LIMIT'].includes(result.reason)) return { ...result, queries };
+          return null;
+        };
+        for (const query of discovery) {
           const before = cacheHits;
           const page = await measure('catalogMs', () => cachedRead('catalog', query));
           if (page?.status !== 'observed' || page.source !== 'ea-defid' || page.season !== '27' || !same(page.query, query)
               || !id(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 86400000
               || !Array.isArray(page.entries) || page.entries.length > query.count
-              || new Set(page.entries.map(row => row?.definitionId)).size !== page.entries.length) {
+              || new Set(page.entries.map(row => row?.definitionId)).size !== page.entries.length
+              || query.definitionIds && page.entries.some(row => !query.definitionIds.includes(row?.definitionId))) {
             throw Error('FC27_PURCHASE_CATALOG_UNVERIFIED');
           }
           queries.push(query); diagnostics.catalogPages++;
@@ -375,7 +431,8 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
             if (!excluded.has(row?.definitionId)) entries.set(row?.definitionId, row);
           }
           diagnostics.catalogCandidates = entries.size;
-          const candidates = puzzleTotwMarketCandidates(input, [...entries.values()]).filter(row => !references.has(row.definitionId));
+          const normalize = keepOwnedTotw ? marketCandidates : puzzleTotwMarketCandidates;
+          const candidates = normalize(input, [...entries.values()]).filter(row => !references.has(row.definitionId));
           if (candidates.length) {
             diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
             const definitions = candidates.map(card => card.definitionId);
@@ -394,37 +451,23 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
               } else diagnostics.excludedUnavailable++;
             }
           }
-          if (prices.size && spent < limit) {
-            diagnostics.stage = 'local-market-search';
-            const result = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input, [...entries.values()], {
-              oneTotw: true, prices, priceSource: pricePolicy.source, maxNodes: limit - spent, assertCurrent,
-              onProgress: value => reportProgress({ ...value, nodes: spent + value.nodes, maxNodes: limit }),
-            }));
-            assertCurrent(); spent += result.nodes ?? 0; diagnostics.nodes = spent;
-            diagnostics.usableCandidates = result.marketCandidates;
-            diagnostics.localReason = result.reason; diagnostics.search = result.search;
-            const plan = result.plans?.[0], item = plan?.purchases?.[0];
-            if (result.status === 'suggested') {
-              if (plan?.purchases?.length !== 1 || !prices.has(item.definitionId)) {
-                return finish(stop('FC27_CONCEPT_PLAN_UNVERIFIED'));
-              }
-              const row = references.get(item.definitionId), quote = row.quotes[pricePolicy.source];
-              if (quote.expiresAt <= now()) return finish(stop('FC27_BUY_REFERENCE_PRICE_EXPIRED'));
-              diagnostics.estimatedCost = plan.estimatedCost;
-              return finish({ ...result, queries, plans: [{ ...plan, purchases: [{ ...item,
-                estimatedUnitPrice: prices.get(item.definitionId), quotedAt: quote.fetchedAt,
-                priceReference: { definitionId: item.definitionId, platform, season: '27', quotes: row.quotes },
-                pricePolicy, priceSource: pricePolicy.source }] }] });
-            }
-            if (!['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND',
-              'FC27_PURCHASE_REPAIR_NO_PLAN', 'FC27_PUZZLE_SEARCH_LIMIT'].includes(result.reason)) {
-              return finish({ ...result, queries });
-            }
+          if (prices.size >= gap && spent < limit && candidates.length) {
+            const result = await search(gap);
+            if (result) return finish(result);
           }
-          if (page.pageEndObserved || page.entries.length < query.count || spent >= limit) break;
+          if (spent >= limit || !query.definitionIds && (page.pageEndObserved || page.entries.length < query.count)) break;
+        }
+        // Only add a replacement above the headcount gap if the full priced
+        // pool needs it to reach the native rating. Preserve the exact TOTW.
+        if (keepOwnedTotw && prices.size >= gap) {
+          for (let count = gap + 1; count < required && spent < limit; count++) {
+            const result = await search(count);
+            if (result) return finish(result);
+          }
         }
         return finish({ ...stop(spent >= limit ? 'FC27_PUZZLE_SEARCH_LIMIT'
-          : prices.size ? 'FC27_PURCHASE_REPAIR_NO_PLAN' : 'FC27_PURCHASE_TOTW_UNAVAILABLE'), queries });
+          : keepOwnedTotw ? 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE'
+            : prices.size ? 'FC27_PURCHASE_REPAIR_NO_PLAN' : 'FC27_PURCHASE_TOTW_UNAVAILABLE'), queries });
       }
       // A verified owned lineup avoids a second repair search.
       const hasOwnedIncumbent = ownedIncumbent?.status === 'preview'

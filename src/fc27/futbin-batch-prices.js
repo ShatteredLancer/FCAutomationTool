@@ -1,5 +1,35 @@
 import { parsePublicFutbinPrice } from './public-price-responses.js';
 
+const ratedPage = (platform, rating, page) =>
+  `https://www.futbin.org/futbin/api/27/getFilteredPlayers?platform=${platform === 'pc' ? 'PC' : 'PS'}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`;
+
+// Discovery only. EA re-reads these exact definitions and the selected quote
+// source supplies purchase prices; FUTBIN prices here just rank each lane.
+export async function readFc27RatedFodderIds(ratings, { platform, request, check = async () => {} }) {
+  if (!['pc', 'console'].includes(platform) || !Array.isArray(ratings) || ratings.length > 3
+      || ratings.some(rating => !Number.isSafeInteger(rating) || rating < 75 || rating > 99)) {
+    throw Error('FC27_PUBLIC_PRICE_PLAYER_INVALID');
+  }
+  const lanes = [];
+  for (const rating of new Set(ratings)) {
+    await check();
+    const reply = await request(ratedPage(platform, rating, 1)); await check();
+    let payload;
+    try { payload = typeof reply === 'string' ? JSON.parse(reply) : reply; }
+    catch { throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID'); }
+    if (!payload?.data || typeof payload.data !== 'object'
+        || payload.errorcode != null && String(payload.errorcode) !== '200') throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
+    const rows = Object.values(payload.data);
+    if (rows.length > 100 || new Set(rows.map(row => row?.resource_id)).size !== rows.length
+        || rows.some(row => row?.rating !== rating || !Number.isSafeInteger(row.resource_id)
+          || row.resource_id < 1 || row.resource_id > 0x7fffffff)) throw Error('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
+    lanes.push(rows.filter(row => [0, 1].includes(row.raretype)).map(row => ({
+      id: row.resource_id, price: parsePublicFutbinPrice({ data: [row] }, row.resource_id, platform, false).price,
+    })).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || a.id - b.id).map(row => row.id));
+  }
+  return lanes;
+}
+
 // Same public filtered-price endpoint used by FSU. This is quote batching,
 // never a candidate database or an assertion that an omitted version is absent.
 export async function readFutbinBatchPrices(ids, players, { season = '27', platform, request,
@@ -24,7 +54,7 @@ export async function readFutbinBatchPrices(ids, players, { season = '27', platf
     if (cached) { payload = { data: saved.rows }; fetchedAt = saved.fetchedAt; }
     else {
       if (cacheOnly) continue;
-      const response = await request(`https://www.futbin.org/futbin/api/${season}/getFilteredPlayers?platform=${platform === 'pc' ? 'PC' : 'PS'}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`);
+      const response = await request(ratedPage(platform, rating, page));
       requests++;
       await check();
       try { payload = typeof response === 'string' ? JSON.parse(response) : response; }

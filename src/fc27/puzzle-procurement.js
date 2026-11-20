@@ -5,7 +5,7 @@ import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
 import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver, isFc27TotwCard,
   isFc27TotwRatingOnly } from './sbc-requirements.js';
-import { puzzleMaterialRules } from './puzzle-material-policy.js';
+import { collectSafePuzzleCandidates, puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 import { planPuzzleNationalityAffinity, planPuzzleLeagueMinimumAffinity, planPuzzleNationalMinimumAffinity,
   planPuzzleCappedLeagueDiscovery } from './puzzle-query-affinity.js';
@@ -882,7 +882,7 @@ export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, opt
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
   costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null,
-  searchBudget = null, reuseOwnedOnly = false, oneTotw = false } = {}) {
+  searchBudget = null, reuseOwnedOnly = false, oneTotw = false, keepOwnedTotw = null, walletLimit = Infinity } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
   if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
@@ -892,14 +892,17 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
     return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
     return stop('FC27_MARKET_POLICY_INVALID');
-  const pool = poolOf(input);
+  const pool = keepOwnedTotw === null ? poolOf(input) : collectSafePuzzleCandidates(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  if (oneTotw && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly))
+  if ((oneTotw || keepOwnedTotw !== null) && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly)
+      || keepOwnedTotw !== null && (oneTotw || !positive(keepOwnedTotw) || keepOwnedTotw >= required(input)
+        || !positive(walletLimit) || !pool.candidates.some(isFc27TotwCard)))
     return stop('FC27_MARKET_POLICY_INVALID');
   const market = oneTotw ? puzzleTotwMarketCandidates(input, entries).filter(item => validValue(prices.get(item.definitionId)))
-    : prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
+    : keepOwnedTotw !== null ? marketCandidates(input, entries).filter(item => validValue(prices.get(item.definitionId)))
+      : prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
   // With no public candidate, only an explicitly supplied feasible incumbent
   // warrants an owned replacement pass. Ordinary shortage routes keep the
   // remote fast exit instead of repeating a futile full inventory search.
@@ -971,9 +974,9 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   }
   const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes, searchBudget,
     pool: { ...pool, candidates },
-    procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
-      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: oneTotw ? 1 : required(input),
-      oneTotw,
+    procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE, walletLimit,
+      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input),
+      maxPurchases: oneTotw ? 1 : keepOwnedTotw ?? required(input), oneTotw, keepOwnedTotw: keepOwnedTotw !== null,
       priceAware: prices instanceof Map, objective,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1
         : materialPrices ? materialPrices.get(item.definitionId) : 0 },

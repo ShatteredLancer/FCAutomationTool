@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.121
+// @version      27.0.122
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.121", at: Date.now(), status: 'started',
+    state = { version: "27.0.122", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -3887,7 +3887,7 @@
   var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var at5 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var protectedItem = (item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false });
-  var protectionFor = (plan) => plan.kind === "puzzle-fill" ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
+  var protectionFor = (plan) => ["puzzle-fill", "puzzle-concept-draft"].includes(plan.kind) ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
   var identity4 = (value) => Number.isSafeInteger(value) && value > 0;
   var count = (value) => Number.isSafeInteger(value) && value >= 0;
   var FC27_SBC_EXECUTION_METHODS = Object.freeze([
@@ -4191,6 +4191,7 @@
         const slots = ownData(squad, "_players");
         const owned2 = [];
         const concepts = [];
+        const projectProtection = protectionFor(plan);
         const playable = (index) => index < 11 && !plan.challenge.brickIndices.includes(index);
         const occupied = slots.slice(0, 11).filter((slot, index) => playable(index) && Number(ownData(ownData(slot, "_item"), "id")) > 0).length;
         if (occupied === 0) return fail12("FC27_CONCEPT_SQUAD_CLEARED");
@@ -4202,7 +4203,7 @@
         if (!identityMatches) return fail12("FC27_CONCEPT_SQUAD_MANUAL_EDITED");
         for (const ref of plan.slots.filter(Boolean)) {
           const item2 = ownData(slots[ref.slot], "_item");
-          if (ref.kind === "owned") owned2.push({ ...protectedItem(snapshotOwned(item2, plan.kind)), slot: ref.slot });
+          if (ref.kind === "owned") owned2.push({ ...projectProtection(snapshotOwned(item2, plan.kind)), slot: ref.slot });
           else {
             const expected = plan.purchases.find((entry) => entry.definitionId === ref.definitionId);
             const snapshot = snapshotFc27ClubPlayer(item2, root);
@@ -4258,7 +4259,12 @@
       },
       async validateItems(plan) {
         const items = await freshRefs(plan.selected, ["puzzle-fill", "puzzle-fill-recovery", "puzzle-concept-draft"].includes(plan.kind));
-        return { context, fresh: true, observedAt: Date.now(), items: plan.kind === "puzzle-fill" ? items.map(protectionFor(plan)) : items };
+        return {
+          context,
+          fresh: true,
+          observedAt: Date.now(),
+          items: ["puzzle-fill", "puzzle-concept-draft"].includes(plan.kind) ? items.map(protectionFor(plan)) : items
+        };
       },
       assertCurrent() {
         assert();
@@ -6311,9 +6317,9 @@
     if ((forced.size || mixedClubRequirements) && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
       candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || (groupFirst ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0) || (["nation", "league", "club"].includes(searchHint?.strategy) ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
     }
-    if ((!procurement || procurement.oneTotw) && searchHint === null && isFc27TotwRatingOnly(parsed.rules) && parsed.rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind))) {
+    if ((!procurement || procurement.oneTotw || procurement.keepOwnedTotw) && searchHint === null && isFc27TotwRatingOnly(parsed.rules) && parsed.rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind))) {
       const target = Math.max(...parsed.rules.filter((rule) => rule.kind === "min-team-rating").map((rule) => rule.value));
-      candidates = candidates.slice().sort((a, b) => Number(isFc27TotwCard(b)) - Number(isFc27TotwCard(a)) || (procurement?.oneTotw && isFc27TotwCard(a) && isFc27TotwCard(b) ? procurement.costOf(a) - procurement.costOf(b) : 0) || Number(a.rating < target) - Number(b.rating < target) || Math.abs(a.rating - target) - Math.abs(b.rating - target) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0));
+      candidates = candidates.slice().sort((a, b) => Number(isFc27TotwCard(b)) - Number(isFc27TotwCard(a)) || (procurement?.oneTotw && isFc27TotwCard(a) && isFc27TotwCard(b) ? procurement.costOf(a) - procurement.costOf(b) : 0) || (procurement?.keepOwnedTotw ? Number(Boolean(a.catalogRef)) - Number(Boolean(b.catalogRef)) : 0) || Number(a.rating < target) - Number(b.rating < target) || Math.abs(a.rating - target) - Math.abs(b.rating - target) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0));
     }
     const metrics = {
       safeCandidates: candidates.length,
@@ -8861,7 +8867,9 @@
     onIncumbentCheck = null,
     searchBudget = null,
     reuseOwnedOnly = false,
-    oneTotw = false
+    oneTotw = false,
+    keepOwnedTotw = null,
+    walletLimit = Infinity
   } = {}) {
     if (!Array.isArray(entries2) || entries2.length > 60) return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop4("FC27_MARKET_POLICY_INVALID");
@@ -8872,13 +8880,13 @@
       return stop4("FC27_PURCHASE_REPAIR_BUDGET_INVALID");
     if (costCeiling !== null && (!positive7(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE2))
       return stop4("FC27_MARKET_POLICY_INVALID");
-    const pool = poolOf(input);
+    const pool = keepOwnedTotw === null ? poolOf(input) : collectSafePuzzleCandidates(input);
     if (pool.status !== "candidates") return stop4(pool.reason);
     const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
     if (parsed.status !== "observed") return stop4(parsed.reason);
-    if (oneTotw && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly))
+    if ((oneTotw || keepOwnedTotw !== null) && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly) || keepOwnedTotw !== null && (oneTotw || !positive7(keepOwnedTotw) || keepOwnedTotw >= required(input) || !positive7(walletLimit) || !pool.candidates.some(isFc27TotwCard)))
       return stop4("FC27_MARKET_POLICY_INVALID");
-    const market = oneTotw ? puzzleTotwMarketCandidates(input, entries2).filter((item2) => validValue(prices.get(item2.definitionId))) : prices instanceof Map ? puzzleMarketValueCandidates(input, entries2) : marketCandidates(input, entries2);
+    const market = oneTotw ? puzzleTotwMarketCandidates(input, entries2).filter((item2) => validValue(prices.get(item2.definitionId))) : keepOwnedTotw !== null ? marketCandidates(input, entries2).filter((item2) => validValue(prices.get(item2.definitionId))) : prices instanceof Map ? puzzleMarketValueCandidates(input, entries2) : marketCandidates(input, entries2);
     if (!market.length && !incumbent) return {
       ...stop4("FC27_PURCHASE_REPAIR_NO_PLAN"),
       marketCandidates: 0,
@@ -8988,11 +8996,13 @@
       procurement: {
         budget: prices ? Math.min(
           required(input) * MAX_PUZZLE_QUOTE_PRICE2,
+          walletLimit,
           costCeiling === null ? Infinity : costCeiling - 1,
           localValue - 1
         ) : required(input),
-        maxPurchases: oneTotw ? 1 : required(input),
+        maxPurchases: oneTotw ? 1 : keepOwnedTotw ?? required(input),
         oneTotw,
+        keepOwnedTotw: keepOwnedTotw !== null,
         priceAware: prices instanceof Map,
         objective,
         costOf: (item2) => item2.catalogRef ? prices ? prices.get(item2.definitionId) : 1 : materialPrices ? materialPrices.get(item2.definitionId) : 0
@@ -9554,6 +9564,7 @@
     get,
     set,
     list: list3 = null,
+    loadRatedFodder = null,
     loadPublicPrices = null,
     loadCachedPrices = null,
     now = Date.now
@@ -9642,7 +9653,8 @@
         ownedIncumbent = null,
         adaptiveSearch = false,
         totwBudget = null,
-        excludedTotwDefinitions = []
+        excludedTotwDefinitions = [],
+        keepOwnedTotw = false
       } = {}) {
         if (busy) return stop5("FC27_PURCHASE_BUSY");
         busy = true;
@@ -9867,20 +9879,94 @@
             diagnostics.requestedObjective = diagnostics.objective = "additional-coins";
             if (!Number.isSafeInteger(totwBudget) || totwBudget < 150) return finish(stop5("FC27_BUY_INSUFFICIENT_COINS"));
             if (!Array.isArray(excludedTotwDefinitions)) return finish(stop5("FC27_PUZZLE_RESERVATION_UNVERIFIED"));
-            if (new Set(puzzleOwnedValueCandidates(input).map((card) => card.definitionId)).size < required2 - 1) {
+            const normalOwnedCount = new Set(puzzleOwnedValueCandidates(input).map((card) => card.definitionId)).size;
+            if (!keepOwnedTotw && normalOwnedCount < required2 - 1) {
               return finish(stop5("SAFE_MATERIAL_SHORTAGE"));
             }
+            if (keepOwnedTotw && (!rules.rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind)) || !collectSafePuzzleCandidates(input).candidates?.some(isFc27TotwCard))) return finish(stop5("SAFE_MATERIAL_SHORTAGE"));
             if (typeof loadPublicPrices !== "function") return finish(stop5("FC27_BUY_REFERENCE_PRICE_UNAVAILABLE"));
             const cap = Math.min(quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE2, totwBudget);
             const platform = /^pc(?::|$)/i.test(input.context.platform) ? "pc" : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? "console" : null;
             const excluded = new Set(excludedTotwDefinitions), prices = /* @__PURE__ */ new Map(), references2 = /* @__PURE__ */ new Map(), entries3 = /* @__PURE__ */ new Map(), queries = [];
             let pricePolicy, spent = 0;
             const limit = 5e4;
-            for (const start of [0, 20, 40]) {
-              const query = { start, count: 20, level: "totw" };
+            const gap = keepOwnedTotw ? Math.max(1, required2 - 1 - normalOwnedCount) : 1;
+            let discovery = [0, 20, 40].map((start) => ({ start, count: 20, level: keepOwnedTotw ? "gold" : "totw" }));
+            if (keepOwnedTotw && typeof loadRatedFodder === "function") {
+              const maxRating = input.policy.maxRating;
+              const ratings = [maxRating, maxRating - 1, maxRating - 2].filter((rating) => rating >= Math.max(75, input.policy.goldRange[0]));
+              let lanes = [];
+              try {
+                lanes = await measure("hintMs", () => loadRatedFodder(ratings, { isCurrent: () => {
+                  assertCurrent();
+                  return true;
+                } }));
+              } catch {
+                assertCurrent();
+              }
+              const inClub = new Set(input.inventory.items.map((card) => card.definitionId));
+              const shortlist = /* @__PURE__ */ new Set();
+              if (Array.isArray(lanes) && lanes.length <= 3 && lanes.every((lane) => Array.isArray(lane) && lane.length <= 100)) {
+                for (let row = 0; row < 100 && shortlist.size < 60; row++) for (const lane of lanes) {
+                  const id16 = lane[row];
+                  if (shortlist.size < 60 && Number.isSafeInteger(id16) && id16 > 0 && id16 <= 2147483647 && !inClub.has(id16) && !excluded.has(id16)) shortlist.add(id16);
+                }
+              }
+              if (shortlist.size) {
+                const ids2 = [...shortlist], exactQueries = [];
+                for (let start = 0; start < ids2.length; start += 20) {
+                  exactQueries.push({ start: 0, count: 20, level: "gold", definitionIds: ids2.slice(start, start + 20) });
+                }
+                discovery = [...exactQueries, ...discovery].slice(0, 3);
+              }
+            }
+            const search = async (maxPurchases) => {
+              diagnostics.stage = "local-market-search";
+              const result = await measure("searchMs", () => suggestFc27PuzzleJointPurchasesCooperatively(input, [...entries3.values()], {
+                ...keepOwnedTotw ? { keepOwnedTotw: maxPurchases, walletLimit: totwBudget } : { oneTotw: true },
+                prices,
+                priceSource: pricePolicy.source,
+                maxNodes: limit - spent,
+                assertCurrent,
+                onProgress: (value) => reportProgress({ ...value, nodes: spent + value.nodes, maxNodes: limit })
+              }));
+              assertCurrent();
+              spent += result.nodes ?? 0;
+              diagnostics.nodes = spent;
+              diagnostics.usableCandidates = result.marketCandidates;
+              diagnostics.localReason = result.reason;
+              diagnostics.search = result.search;
+              if (result.status === "suggested") {
+                const plan = result.plans?.[0];
+                if (!plan?.purchases?.length || plan.purchases.length > maxPurchases || plan.purchases.some((item2) => !prices.has(item2.definitionId))) return stop5("FC27_CONCEPT_PLAN_UNVERIFIED");
+                const purchases = plan.purchases.map((item2) => {
+                  const row = references2.get(item2.definitionId), quote2 = row.quotes[pricePolicy.source];
+                  if (quote2.expiresAt <= now()) throw Error("FC27_BUY_REFERENCE_PRICE_EXPIRED");
+                  return {
+                    ...item2,
+                    estimatedUnitPrice: prices.get(item2.definitionId),
+                    quotedAt: quote2.fetchedAt,
+                    priceReference: { definitionId: item2.definitionId, platform, season: "27", quotes: row.quotes },
+                    pricePolicy,
+                    priceSource: pricePolicy.source
+                  };
+                });
+                diagnostics.estimatedCost = plan.estimatedCost;
+                return { ...result, queries, plans: [{ ...plan, purchases }] };
+              }
+              if (![
+                "SAFE_MATERIAL_SHORTAGE",
+                "FC27_PUZZLE_CONSTRAINT_SHORTAGE",
+                "FC27_PUZZLE_NO_PLAN_FOUND",
+                "FC27_PURCHASE_REPAIR_NO_PLAN",
+                "FC27_PUZZLE_SEARCH_LIMIT"
+              ].includes(result.reason)) return { ...result, queries };
+              return null;
+            };
+            for (const query of discovery) {
               const before = cacheHits;
               const page = await measure("catalogMs", () => cachedRead("catalog", query));
-              if (page?.status !== "observed" || page.source !== "ea-defid" || page.season !== "27" || !same15(page.query, query) || !id5(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((row) => row?.definitionId)).size !== page.entries.length) {
+              if (page?.status !== "observed" || page.source !== "ea-defid" || page.season !== "27" || !same15(page.query, query) || !id5(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 864e5 || !Array.isArray(page.entries) || page.entries.length > query.count || new Set(page.entries.map((row) => row?.definitionId)).size !== page.entries.length || query.definitionIds && page.entries.some((row) => !query.definitionIds.includes(row?.definitionId))) {
                 throw Error("FC27_PURCHASE_CATALOG_UNVERIFIED");
               }
               queries.push(query);
@@ -9891,7 +9977,8 @@
                 if (!excluded.has(row?.definitionId)) entries3.set(row?.definitionId, row);
               }
               diagnostics.catalogCandidates = entries3.size;
-              const candidates = puzzleTotwMarketCandidates(input, [...entries3.values()]).filter((row) => !references2.has(row.definitionId));
+              const normalize2 = keepOwnedTotw ? marketCandidates : puzzleTotwMarketCandidates;
+              const candidates = normalize2(input, [...entries3.values()]).filter((row) => !references2.has(row.definitionId));
               if (candidates.length) {
                 diagnostics.stage = "quote-read";
                 quoteTotal = candidates.length;
@@ -9932,52 +10019,19 @@
                   } else diagnostics.excludedUnavailable++;
                 }
               }
-              if (prices.size && spent < limit) {
-                diagnostics.stage = "local-market-search";
-                const result = await measure("searchMs", () => suggestFc27PuzzleJointPurchasesCooperatively(input, [...entries3.values()], {
-                  oneTotw: true,
-                  prices,
-                  priceSource: pricePolicy.source,
-                  maxNodes: limit - spent,
-                  assertCurrent,
-                  onProgress: (value) => reportProgress({ ...value, nodes: spent + value.nodes, maxNodes: limit })
-                }));
-                assertCurrent();
-                spent += result.nodes ?? 0;
-                diagnostics.nodes = spent;
-                diagnostics.usableCandidates = result.marketCandidates;
-                diagnostics.localReason = result.reason;
-                diagnostics.search = result.search;
-                const plan = result.plans?.[0], item2 = plan?.purchases?.[0];
-                if (result.status === "suggested") {
-                  if (plan?.purchases?.length !== 1 || !prices.has(item2.definitionId)) {
-                    return finish(stop5("FC27_CONCEPT_PLAN_UNVERIFIED"));
-                  }
-                  const row = references2.get(item2.definitionId), quote2 = row.quotes[pricePolicy.source];
-                  if (quote2.expiresAt <= now()) return finish(stop5("FC27_BUY_REFERENCE_PRICE_EXPIRED"));
-                  diagnostics.estimatedCost = plan.estimatedCost;
-                  return finish({ ...result, queries, plans: [{ ...plan, purchases: [{
-                    ...item2,
-                    estimatedUnitPrice: prices.get(item2.definitionId),
-                    quotedAt: quote2.fetchedAt,
-                    priceReference: { definitionId: item2.definitionId, platform, season: "27", quotes: row.quotes },
-                    pricePolicy,
-                    priceSource: pricePolicy.source
-                  }] }] });
-                }
-                if (![
-                  "SAFE_MATERIAL_SHORTAGE",
-                  "FC27_PUZZLE_CONSTRAINT_SHORTAGE",
-                  "FC27_PUZZLE_NO_PLAN_FOUND",
-                  "FC27_PURCHASE_REPAIR_NO_PLAN",
-                  "FC27_PUZZLE_SEARCH_LIMIT"
-                ].includes(result.reason)) {
-                  return finish({ ...result, queries });
-                }
+              if (prices.size >= gap && spent < limit && candidates.length) {
+                const result = await search(gap);
+                if (result) return finish(result);
               }
-              if (page.pageEndObserved || page.entries.length < query.count || spent >= limit) break;
+              if (spent >= limit || !query.definitionIds && (page.pageEndObserved || page.entries.length < query.count)) break;
             }
-            return finish({ ...stop5(spent >= limit ? "FC27_PUZZLE_SEARCH_LIMIT" : prices.size ? "FC27_PURCHASE_REPAIR_NO_PLAN" : "FC27_PURCHASE_TOTW_UNAVAILABLE"), queries });
+            if (keepOwnedTotw && prices.size >= gap) {
+              for (let count3 = gap + 1; count3 < required2 && spent < limit; count3++) {
+                const result = await search(count3);
+                if (result) return finish(result);
+              }
+            }
+            return finish({ ...stop5(spent >= limit ? "FC27_PUZZLE_SEARCH_LIMIT" : keepOwnedTotw ? "FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE" : prices.size ? "FC27_PURCHASE_REPAIR_NO_PLAN" : "FC27_PURCHASE_TOTW_UNAVAILABLE"), queries });
           }
           const hasOwnedIncumbent = ownedIncumbent?.status === "preview" && Array.isArray(ownedIncumbent.selected) && ownedIncumbent.selected.length === required2;
           const seed = hasOwnedIncumbent ? { status: "unavailable", reason: "FC27_PURCHASE_REPAIR_SEED_NOT_NEEDED" } : await measure("seedMs", () => findFc27PuzzleRepairSeedCooperatively(
@@ -11067,12 +11121,14 @@
       readCatalogPage: async (query = {}) => {
         if (quotesOnly) throw error("CATALOG_DISABLED");
         const totw = query?.level === "totw";
-        if (!query || Object.keys(query).some((k) => !["start", "count", "level", "nation", "league", "team"].includes(k)) || !valid(query.start, 0, 1e3) || !valid(query.count, 1, 50) || !["bronze", "silver", "gold", "totw"].includes(query.level) || ["nation", "league", "team"].some((k) => query[k] !== void 0 && (totw || !valid(query[k], 1, 1e9))) || totw && (query.count !== 20 || ![0, 20, 40].includes(query.start))) throw error("QUERY_INVALID");
-        const filters = totw ? { start: query.start, count: query.count, rarityIds: FC27_TOTW_RARITY } : query;
+        const definitions = query?.definitionIds;
+        if (!query || Object.keys(query).some((k) => !["start", "count", "level", "nation", "league", "team", "definitionIds"].includes(k)) || !valid(query.start, 0, 1e3) || !valid(query.count, 1, 50) || !["bronze", "silver", "gold", "totw"].includes(query.level) || ["nation", "league", "team"].some((k) => query[k] !== void 0 && (totw || !valid(query[k], 1, 1e9))) || totw && (query.count !== 20 || ![0, 20, 40].includes(query.start)) || definitions !== void 0 && (query.level !== "gold" || query.start !== 0 || query.count !== 20 || ["nation", "league", "team"].some((key2) => query[key2] !== void 0) || !Array.isArray(definitions) || !valid(definitions.length, 1, 20) || new Set(definitions).size !== definitions.length || definitions.some((id16) => !valid(id16, 1, 2147483647)))) throw error("QUERY_INVALID");
+        const filters = totw ? { start: query.start, count: query.count, rarityIds: FC27_TOTW_RARITY } : definitions ? { start: 0, count: 20, level: "gold", defId: definitions, rarityIds: [0, 1] } : query;
         return request("catalog", { type: "player", sort: "asc", ...filters }, (body) => {
           const raw = ownData(body, "itemData");
           if (!Array.isArray(raw) || raw.length > query.count) throw error("PAYLOAD_UNVERIFIED");
           const entries2 = raw.map(materialize3);
+          if (definitions && entries2.some((row) => !definitions.includes(row.definitionId))) throw error("DEFINITION_MISMATCH");
           if (new Set(entries2.map((p) => p.definitionId)).size !== entries2.length) throw error("DUPLICATE_DEFINITION");
           return {
             status: "observed",
@@ -11188,21 +11244,25 @@
     return value;
   };
   function isFc27TotwConceptDraft(plan) {
-    if (plan?.kind !== "puzzle-concept-draft" || plan.purchaseCount !== 1 || plan.purchases?.length !== 1 || !isFc27TotwCard(plan.purchases[0]) || !Array.isArray(plan.challenge?.brickIndices)) return false;
+    if (plan?.kind !== "puzzle-concept-draft" || !Array.isArray(plan.owned) || !Array.isArray(plan.purchases) || plan.purchaseCount < 1 || plan.purchases.length !== plan.purchaseCount || !Array.isArray(plan.challenge?.brickIndices)) return false;
     const { rules } = parseFc27SbcRequirements(
       plan.challenge.rawRequirements,
       plan.challenge.slotCount - plan.challenge.brickIndices.length
     );
-    return isFc27TotwRatingOnly(rules);
+    return isFc27TotwRatingOnly(rules) && (plan.purchaseCount === 1 && isFc27TotwCard(plan.purchases[0]) && !plan.owned.some(isFc27TotwCard) || plan.owned.filter(isFc27TotwCard).length === 1 && plan.purchases.every((card) => card.special === false && [0, 1].includes(card.rarity)));
   }
   function assess2(input, slots, owned2, purchases) {
     const { challenge, context, policy } = input;
     if (challenge?.mechanism !== "traditional-puzzle" || challenge.slotCount !== 11 || typeof policy?.onlyUntradeable !== "boolean" || !same16(challenge.context, context)) return blocked6("FC27_CONCEPT_SCOPE_UNVERIFIED");
-    const pool = collectSafeTraditionalCandidates({
+    const parsed = parseFc27SbcRequirements(challenge.rawRequirements, slots.filter(Boolean).length);
+    if (parsed.status !== "observed") return blocked6(parsed.reason);
+    const totwOnly = isFc27TotwRatingOnly(parsed.rules);
+    const inventory = { schema: 1, context, kind: "normalized-inventory", status: "provisional", items: owned2 };
+    const pool = totwOnly ? collectSafePuzzleCandidates({ context, policy, challenge, inventory }) : collectSafeTraditionalCandidates({
       context,
       policy,
-      challenge: { ...challenge, mechanism: "traditional", requirements: [{ kind: "player-count", count: slots.filter(Boolean).length }] },
-      inventory: { schema: 1, context, kind: "normalized-inventory", status: "provisional", items: owned2 }
+      inventory,
+      challenge: { ...challenge, mechanism: "traditional", requirements: [{ kind: "player-count", count: slots.filter(Boolean).length }] }
     });
     if (pool.status !== "candidates" || pool.candidates.length !== owned2.length || owned2.some((item2) => !["club", "storage"].includes(item2.pile) || item2.state !== "free" || fields3.some((key2) => item2[key2] === void 0))) {
       return blocked6("FC27_CONCEPT_MATERIAL_PROTECTED");
@@ -11213,12 +11273,12 @@
       return item2 && { ...item2, slot: slot.slot };
     });
     if (squad.some((item2, slot) => slots[slot] && (!item2 || item2.definitionId !== slots[slot].definitionId || item2.rating !== slots[slot].rating))) return blocked6("FC27_CONCEPT_ITEMS_CHANGED");
-    const parsed = parseFc27SbcRequirements(challenge.rawRequirements, squad.filter(Boolean).length);
-    if (parsed.status !== "observed") return blocked6(parsed.reason);
-    const totwOnly = isFc27TotwRatingOnly(parsed.rules);
-    if (totwOnly && purchases.length !== 1) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
+    const buyTotw = totwOnly && !owned2.some(isFc27TotwCard);
+    if (totwOnly && (squad.filter(isFc27TotwCard).length !== 1 || buyTotw && purchases.length !== 1)) {
+      return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
+    }
     for (const item2 of purchases) {
-      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || (totwOnly ? !isFc27TotwCard(item2) : item2.special !== false || ![0, 1].includes(item2.rarity)) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id16) => Number.isSafeInteger(id16) && id16 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id16) => !Number.isSafeInteger(id16) || id16 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
+      if (item2.id !== void 0 || item2.pile !== void 0 || item2.catalogRef !== `fc27:${item2.definitionId}` || item2.type !== "player" || item2.evolution !== false || item2.cosmetic !== false || item2.concept !== false || item2.academyEnrolled !== false || (buyTotw ? !isFc27TotwCard(item2) : item2.special !== false || ![0, 1].includes(item2.rarity)) || item2.rating > policy.maxRating || item2.rating >= 75 && (item2.rating < policy.goldRange[0] || item2.rating > policy.goldRange[1]) || policy.excludedLeagueIds.includes(item2.leagueId) || ![item2.nationId, item2.leagueId, item2.teamId].every((id16) => Number.isSafeInteger(id16) && id16 > 0) || !Array.isArray(item2.positions) || !item2.positions.length || item2.positions.some((p) => !Number.isInteger(p) || p < 0 || p > 27) || !Array.isArray(item2.groups) || item2.groups.some((id16) => !Number.isSafeInteger(id16) || id16 < 0)) return blocked6("FC27_CONCEPT_CATALOG_UNVERIFIED");
     }
     const needsFacts = parsed.rules.some((rule) => /-(chemistry|team-rating)$/.test(rule.kind));
     const facts2 = totwOnly ? { ...evaluateFc27PuzzleRating({ squad: squad.filter(Boolean), rating: input.chemistry?.rating }), chemistry: null } : needsFacts ? evaluateFc27PuzzleSquad({
@@ -11424,7 +11484,7 @@
             if (current2.squadEmpty !== true) fail19("FC27_PUZZLE_EXISTING_SQUAD_BLOCKED");
             const replaceBaseline = typeof provider.readPuzzleBaseline === "function" ? await provider.readPuzzleBaseline(plan) : null;
             const selected = plan.slots.filter((ref) => ref?.kind === "owned");
-            const fresh = selected.length ? await provider.validateItems({ kind: plan.kind, selected }) : { context: plan.context, fresh: true, observedAt: now(), items: [] };
+            const fresh = selected.length ? await provider.validateItems({ kind: plan.kind, challenge: plan.challenge, selected }) : { context: plan.context, fresh: true, observedAt: now(), items: [] };
             evidence(fresh, plan);
             validate3(plan, await readCurrent(plan), fresh.items);
             const identifier = operationId();
@@ -12505,7 +12565,7 @@
       const concept = base.slots[entry.slot];
       const expected = base.purchases.find((item3) => item3.definitionId === entry.definitionId);
       const item2 = fresh.find((item3) => item3.id === entry.itemId && item3.definitionId === entry.definitionId);
-      if (entry.state !== "club" || concept?.kind !== "concept" || concept.definitionId !== entry.definitionId || !expected || !item2 || item2.pile !== "club" || item2.state !== "free" || item2.tradeable !== true || item2.concept !== false || item2.evolution !== false || item2.special !== totw || item2.cosmetic !== false || item2.academyEnrolled !== false || item2.activeTrade !== false || item2.limitedUse !== false || item2.loans !== -1 || item2.protected !== false || current2.policy.protectFsuLockedPlayers && protectedBy(item2, "locked", "lockedItemIds") || current2.policy.protectActiveSquad && protectedBy(item2, "activeSquad", "activeSquadItemIds") || ["rating", "rarity", "nationId", "leagueId", "teamId", "positions", "groups"].some((key2) => !same22(item2[key2], expected[key2]))) fail23();
+      if (entry.state !== "club" || concept?.kind !== "concept" || concept.definitionId !== entry.definitionId || !expected || !item2 || item2.pile !== "club" || item2.state !== "free" || item2.tradeable !== true || item2.concept !== false || item2.evolution !== false || item2.special !== (totw ? expected.special : false) || item2.cosmetic !== false || item2.academyEnrolled !== false || item2.activeTrade !== false || item2.limitedUse !== false || item2.loans !== -1 || item2.protected !== false || current2.policy.protectFsuLockedPlayers && protectedBy(item2, "locked", "lockedItemIds") || current2.policy.protectActiveSquad && protectedBy(item2, "activeSquad", "activeSquadItemIds") || ["rating", "rarity", "nationId", "leagueId", "teamId", "positions", "groups"].some((key2) => !same22(item2[key2], expected[key2]))) fail23();
       return { ...item2, slot: entry.slot };
     });
     if (fresh.length !== original.length + acquired.length) fail23();
@@ -12672,11 +12732,12 @@
     const approvedCap = (definitionId, ceiling, item2, fresh = null) => {
       const approval = currentRecord && purchasePriceApprovalFor(currentRecord, definitionId);
       if (totwRecord) {
-        const expected = totwRecord.base.purchases[0];
-        if (!approval || expected.definitionId !== definitionId || !id7(expected.estimatedUnitPrice)) {
+        const expected = totwRecord.base.purchases.find((card) => card.definitionId === definitionId);
+        if (!approval || !id7(expected?.estimatedUnitPrice)) {
           return { maxBuy: null, reason: "FC27_BUY_PRICE_APPROVAL_REQUIRED" };
         }
-        ceiling = Math.min(ceiling, expected.estimatedUnitPrice, currentRecord.budget);
+        const spent = currentRecord.entries.filter((entry) => entry.definitionId !== definitionId && ["club", "bought", "move-pending", "move-rejected"].includes(entry.state)).reduce((total, entry) => total + entry.price, 0);
+        ceiling = Math.min(ceiling, expected.estimatedUnitPrice, Math.max(0, currentRecord.budget - spent));
       }
       if (!approval) return { maxBuy: ceiling };
       validatePurchasePriceApproval(approval, currentRecord.scope, currentRecord.entries.map((entry) => entry.definitionId));
@@ -12725,12 +12786,12 @@
         reader.cancel();
       }
     };
-    const matchingTotw = (item2) => {
+    const matchesApprovedMaterial = (item2) => {
       if (!totwRecord) return true;
       try {
         const card = snapshotFc27ClubPlayer(item2, root);
-        const expected = totwRecord.base.purchases[0];
-        return isFc27TotwCard(card) && card.definitionId === expected.definitionId && card.evolution === false && card.cosmetic === false && card.concept === false && card.academyEnrolled === false && card.limitedUse === false && card.loans === -1 && ["rating", "nationId", "leagueId", "teamId", "positions", "groups"].every((key2) => same23(card[key2], expected[key2]));
+        const expected = totwRecord.base.purchases.find((row) => row.definitionId === card.definitionId);
+        return Boolean(expected) && card.special === expected.special && card.rarity === expected.rarity && card.evolution === false && card.cosmetic === false && card.concept === false && card.academyEnrolled === false && card.limitedUse === false && card.loans === -1 && ["rating", "nationId", "leagueId", "teamId", "positions", "groups"].every((key2) => same23(card[key2], expected[key2]));
       } catch {
         return false;
       }
@@ -12744,7 +12805,7 @@
           totwRecord = record;
           if (record.entries.some((entry) => entry.state === "waiting")) {
             await (await legacyProvider()).verifySquad(record);
-            await checkTotwMaterials(record);
+            await checkTotwMaterials(record, record.entries.filter((entry) => entry.state === "club"));
             await verifyCurrent(record);
           }
         }
@@ -12848,7 +12909,7 @@
             return reply;
           }
         });
-        const priced3 = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy && matchingTotw(card));
+        const priced3 = found.filter((card) => Number.isSafeInteger(card.getAuctionData()?.buyNowPrice) && card.getAuctionData().buyNowPrice >= 150 && card.getAuctionData().buyNowPrice <= maxBuy && matchesApprovedMaterial(card));
         const items = typeof excludeOffer === "function" ? priced3.filter((card) => {
           const auction2 = card.getAuctionData();
           return excludeOffer(Object.freeze({
@@ -12874,7 +12935,7 @@
         writable();
         const item2 = auctions.get(entry.tradeId);
         const auction = item2?.getAuctionData();
-        if (!item2 || item2.id !== entry.itemId || item2.definitionId !== entry.definitionId || String(auction.tradeId) !== entry.tradeId || auction.buyNowPrice !== entry.price || !matchingTotw(item2)) {
+        if (!item2 || item2.id !== entry.itemId || item2.definitionId !== entry.definitionId || String(auction.tradeId) !== entry.tradeId || auction.buyNowPrice !== entry.price || !matchesApprovedMaterial(item2)) {
           rememberRejected(entry);
           return { status: "rejected", reason: "FC27_BUY_LISTING_CHANGED" };
         }
@@ -12897,7 +12958,7 @@
               await verifyCurrent(currentRecord);
               writable();
               const liveCap = approvedCap(entry.definitionId, cap.maxBuy, item2, cap.fresh);
-              if (liveCap.maxBuy === null || entry.price > liveCap.maxBuy || auction.buyNowPrice !== entry.price || !matchingTotw(item2) || !auction.canBuy(coins()) || !(auction.getSecondsRemaining() > 0)) fail24("FC27_BUY_LISTING_CHANGED");
+              if (liveCap.maxBuy === null || entry.price > liveCap.maxBuy || auction.buyNowPrice !== entry.price || !matchesApprovedMaterial(item2) || !auction.canBuy(coins()) || !(auction.getSecondsRemaining() > 0)) fail24("FC27_BUY_LISTING_CHANGED");
             },
             (mark) => observe(() => {
               mark();
@@ -12978,7 +13039,7 @@
         await verifyCurrent(record);
         if (isFc27TotwConceptDraft(record.base)) {
           const acquired = record.entries.filter((entry) => entry.state === "club");
-          if (acquired.length !== 1) fail24("FC27_BUY_MATERIAL_UNVERIFIED");
+          if (acquired.length < 1 || acquired.length > record.base.purchaseCount) fail24("FC27_BUY_MATERIAL_UNVERIFIED");
           const observedAt = await checkTotwMaterials(record, acquired);
           return (await legacyProvider()).save(record, async () => {
             await verifyCurrent(record);
@@ -12996,7 +13057,7 @@
         if (isFc27TotwConceptDraft(record.base)) {
           await verifyCurrent(record);
           const acquired = record.entries.filter((entry) => entry.state === "club");
-          if (acquired.length !== 1) fail24("FC27_BUY_MATERIAL_UNVERIFIED");
+          if (acquired.length < 1 || acquired.length > record.base.purchaseCount) fail24("FC27_BUY_MATERIAL_UNVERIFIED");
           await checkTotwMaterials(record, acquired);
         }
         await (await legacyProvider()).recoverSave(record);
@@ -14542,6 +14603,7 @@
     const procurement = createFc27PuzzleProcurementSession({
       createTransport: (options) => createFc27MarketReadTransport(root, options),
       loadPublicPrices: publicPrices2 ? (ids2, options) => publicPrices2.load(ids2, options) : null,
+      loadRatedFodder: typeof publicPrices2?.puzzleRatedFodder === "function" ? (ratings, options) => publicPrices2.puzzleRatedFodder(ratings, options) : null,
       loadCachedPrices: typeof publicPrices2?.cachedEstimates === "function" ? (ids2, options) => publicPrices2.cachedEstimates(ids2, options) : null,
       list: gmListValues,
       get: gmGetValue,
@@ -14895,7 +14957,8 @@
           inputs.challenge.rawRequirements,
           inputs.challenge.slotCount - inputs.challenge.brickIndices.length
         ).rules);
-        if (totw && preview.reason !== "FC27_PUZZLE_TOTW_REQUIRED") return preview;
+        const keepOwnedTotw = totw && ["SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND", "FC27_PUZZLE_CONSTRAINT_SHORTAGE"].includes(preview.reason);
+        if (totw && !keepOwnedTotw && preview.reason !== "FC27_PUZZLE_TOTW_REQUIRED") return preview;
         const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview" && typeof publicPrices2?.load === "function";
         if (inputs.squadEmpty === true && (totw || compareOwnedCost || [
           "SAFE_MATERIAL_SHORTAGE",
@@ -14908,6 +14971,7 @@
             quoteCeiling: purchaseSettings.quoteCeiling,
             adaptiveSearch: true,
             ...totw ? {
+              keepOwnedTotw,
               totwBudget: root.services.User.getUser?.()?.getCurrency?.(root.GameCurrency?.COINS)?.amount,
               excludedTotwDefinitions: excludedDefinitionIds
             } : {},
@@ -15041,7 +15105,7 @@
             armed = true;
             try {
               const result = await conceptSession(assertTarget, purchaseSettings).save(inputs, purchaseSuggestion.plans[0]);
-              privateData.conceptResult = totw && result.status === "concept-filled" ? { ...result, needsTotwPurchase: true } : result;
+              privateData.conceptResult = totw && result.status === "concept-filled" ? { ...result, needsTotwPurchase: !keepOwnedTotw, keptOwnedTotw: keepOwnedTotw } : result;
               if (result?.status === "concept-filled") {
                 try {
                   await rememberPuzzleReservations(
@@ -15258,7 +15322,7 @@
     });
     let buyStopped = false;
     const freshBuyDrafts = /* @__PURE__ */ new Map();
-    const totwCapFor = (plan, ceiling) => isFc27TotwConceptDraft(plan) ? Math.min(plan.estimatedCost, ceiling ?? Infinity) : null;
+    const totwCapFor = (plan, ceiling) => isFc27TotwConceptDraft(plan) ? Math.min(Math.max(...plan.purchases.map((card) => card.estimatedUnitPrice)), ceiling ?? Infinity) : null;
     const readBuyDraft = async (target) => {
       unchanged();
       const buy = await gmGetValue(puzzleBuyKey(scope2, target), null);
@@ -15277,7 +15341,7 @@
             ...buy?.closure ? { closedOperationId: buy.operationId } : {}
           };
         }
-        if (slots?.some((slot) => slot?.concept && slot.definitionId === saved.plan.purchases[0].definitionId)) {
+        if (slots?.some((slot) => slot?.concept && saved.plan.purchases.some((card) => card.definitionId === slot.definitionId))) {
           throw new Error("FC27_BUY_SQUAD_CHANGED");
         }
       }
@@ -15307,6 +15371,7 @@
       const remaining = draft.plan.slots.filter((item2) => item2?.kind === "concept" && !acquired.some((e) => e.slot === item2.slot));
       const settings = record || isFc27TotwConceptDraft(draft.plan) ? await readPuzzleSettings() : null;
       const totwMaxBuy = totwCapFor(draft.plan, settings?.quoteCeiling);
+      const shortBudget = totwMaxBuy === null ? null : spent + remaining.reduce((sum2, item2) => sum2 + Math.min(item2.estimatedUnitPrice, settings.quoteCeiling ?? Infinity), 0);
       const binding = record ?? { base: draft.plan, entries: [], applied: [] };
       const page = readFc27PurchasePageSlots(root, target, binding);
       const pending3 = record?.phase === "save-pending" || entries2.some((e) => ["buy-pending", "bought", "move-pending", "move-rejected"].includes(e.state)) || entries2.filter((e) => e.state === "club").length !== (record?.applied?.length ?? 0);
@@ -15318,7 +15383,10 @@
         remaining: remaining.length,
         spent,
         budget: spent + remaining.reduce((sum2, item2) => sum2 + (item2.observedBuyNow ?? item2.estimatedUnitPrice ?? 0), 0),
-        ...totwMaxBuy === null ? {} : { totwMaxBuy },
+        ...shortBudget === null ? {} : {
+          approvedMaterialsBudget: shortBudget,
+          ...draft.plan.purchases.some(isFc27TotwCard) ? { totwMaxBuy } : { keptOwnedTotw: true }
+        },
         ...record ? { results: purchaseAttemptResults(record), retryContext: purchaseRetryContext(record, {
           remainingBudget: record.budget == null ? null : Math.max(0, record.budget - spent),
           absoluteCap: totwMaxBuy ?? settings.quoteCeiling,
@@ -15371,15 +15439,15 @@
                 onProgress: (value) => onProgress?.({ ...value, phase: "reference-prices", purchased: 0, spent: 0 })
               };
               if (priced3 !== record) {
-                const [card] = priced3.plan, source = card.pricePolicy?.source;
-                if (card.priceReference?.quotes?.[source]?.expiresAt <= Date.now()) {
-                  const refreshed = await publicPrices2.load([card.definitionId], {
+                const expired = priced3.plan.filter((card) => record.entries.some((entry) => entry.state === "waiting" && entry.definitionId === card.definitionId) && card.priceReference?.quotes?.[card.pricePolicy?.source]?.expiresAt <= Date.now());
+                if (expired.length) {
+                  const refreshed = await publicPrices2.load(expired.map((card) => card.definitionId), {
                     ...priceOptions,
                     purpose: "purchase",
-                    policy: card.pricePolicy,
-                    rows: [card]
+                    policy: expired[0].pricePolicy,
+                    rows: expired
                   });
-                  priced3.plan = [{ ...card, priceReference: refreshed.references[card.definitionId] }];
+                  priced3.plan = priced3.plan.map((card) => expired.includes(card) ? { ...card, priceReference: refreshed.references[card.definitionId] } : card);
                 }
               }
               return publicPrices2.preparePurchase(priced3, priceOptions);
@@ -15445,7 +15513,7 @@
           const summary3 = await inspectPurchases(target);
           result = await buyer.execute(target, {
             ...approval,
-            budget: approval.budget ?? (Number.isSafeInteger(coins) && coins >= 0 ? Math.min(165e6, coins + summary3.spent) : null),
+            budget: approval.budget ?? summary3.approvedMaterialsBudget ?? (Number.isSafeInteger(coins) && coins >= 0 ? Math.min(165e6, coins + summary3.spent) : null),
             quoteCeiling
           });
           return result;
@@ -32168,6 +32236,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (result?.reason === "FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED") return "\u8BE5\u9635\u5BB9\u672A\u901A\u8FC7\u9009\u6750\u590D\u6838\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u66FF\u6362\u53D7\u4FDD\u62A4\u5361\u3002";
     if (result?.reason === "FC27_PUZZLE_TOTW_REQUIRED") return "\u672C\u9898\u9700\u8981 1 \u5F20\u5468\u9ED1\uFF08TOTW\uFF09\uFF1B\u4FF1\u4E50\u90E8\u548C SBC \u4ED3\u5E93\u4E2D\u6CA1\u6709\u901A\u8FC7\u5F53\u524D\u4FDD\u62A4\u8BBE\u7F6E\u7684\u5468\u9ED1\u5361\u3002\u672C\u6B21\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_PURCHASE_TOTW_UNAVAILABLE") return "\u5E93\u5B58\u6CA1\u6709\u5408\u89C4\u5468\u9ED1\uFF1B\u672C\u8F6E\u5728\u8BC4\u5206\u4E0A\u9650\u3001\u9650\u4EF7\u548C\u91D1\u5E01\u4F59\u989D\u5185\u4E5F\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u5468\u9ED1\u62A5\u4EF7\u3002\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
+    if (result?.reason === "FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE") return "\u5DF2\u6709\u5408\u89C4\u5E93\u5B58\u5468\u9ED1\uFF0C\u4F46\u5728\u5F53\u524D\u8BC4\u5206\u4E0A\u9650\u3001\u9884\u7B97\u53CA\u5DF2\u6838\u4EF7\u7684\u666E\u901A\u5361\u8303\u56F4\u5185\u672A\u627E\u5230\u5B8C\u6574\u65B9\u6848\u3002\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_BUY_INSUFFICIENT_COINS") return "\u5F53\u524D\u91D1\u5E01\u4F59\u989D\u4E0D\u8DB3\u6216\u672A\u8BFB\u5230\uFF1B\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED") return "\u5F53\u524D\u5468\u9ED1\u89E3\u9898\u53EA\u652F\u6301\u65E0\u5316\u5B66\u8981\u6C42\u7684\u8BC4\u5206\u6311\u6218\u3002\u672C\u6B21\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") return "\u8865\u5361\u53C2\u8003\u62A5\u4EF7\u5728\u89C4\u5212\u7ED3\u675F\u524D\u8FC7\u671F\uFF1B\u672C\u6B21\u6CA1\u6709\u53EF\u7528\u8865\u5361\u65B9\u6848\uFF0C\u8BF7\u518D\u6B21\u70B9\u51FB\u89E3\u9898\u4EE5\u5237\u65B0\u62A5\u4EF7\u5E76\u91CD\u65B0\u89C4\u5212\u3002";
@@ -32588,7 +32657,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
           return;
         }
         if (switched || result.remaining > 0 || result.recovery) button.hidden = false;
-        button.textContent = result.recovery ? "FCAT \u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70" : result.retryContext && result.results?.some((row) => row.attempt?.failed) ? "FCAT \u67E5\u770B\u8D2D\u4E70\u7ED3\u679C\uFF0F\u91CD\u8BD5" : Number.isSafeInteger(result.totwMaxBuy) ? `FCAT \u786E\u8BA4\u4E70 1 \u5F20\u5468\u9ED1\uFF08\u4E0A\u9650 ${result.totwMaxBuy.toLocaleString()}\uFF09` : `FCAT \u6279\u91CF\u8D2D\u4E70\u6982\u5FF5\u7403\u5458\uFF08${result.remaining} \u5F20\uFF09`;
+        button.textContent = result.recovery ? "FCAT \u6838\u5BF9\u5E76\u7EE7\u7EED\u8D2D\u4E70" : result.retryContext && result.results?.some((row) => row.attempt?.failed) ? "FCAT \u67E5\u770B\u8D2D\u4E70\u7ED3\u679C\uFF0F\u91CD\u8BD5" : Number.isSafeInteger(result.totwMaxBuy) ? `FCAT \u786E\u8BA4\u4E70 1 \u5F20\u5468\u9ED1\uFF08\u4E0A\u9650 ${result.totwMaxBuy.toLocaleString()}\uFF09` : result.keptOwnedTotw ? `FCAT \u786E\u8BA4\u4E70 ${result.remaining} \u5F20\u666E\u901A\u5361\uFF08\u5269\u4F59\u4E0A\u9650 ${(result.approvedMaterialsBudget - result.spent).toLocaleString()}\uFF09` : `FCAT \u6279\u91CF\u8D2D\u4E70\u6982\u5FF5\u7403\u5458\uFF08${result.remaining} \u5F20\uFF09`;
         button.disabled = false;
         if (switched) output.textContent = "\u70B9\u51FB\u540E\u9010\u5F20\u67E5\u8BE2\u3001\u4E70\u5165\u5E76\u66FF\u6362\u5F53\u524D\u6982\u5FF5\u5361\uFF1B\u4E0D\u4F1A\u63D0\u4EA4 SBC\u3002";
         attach(next);
@@ -32610,7 +32679,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         await wait(500);
         loading(true);
         message("\u6B63\u5728\u67E5\u8BE2\u5E76\u8D2D\u4E70\u5F53\u524D\u6982\u5FF5\u7403\u5458\u2026");
-        const budget = Number.isSafeInteger(summary3.totwMaxBuy) ? Math.max(summary3.totwMaxBuy, summary3.spent) : null;
+        const budget = summary3.approvedMaterialsBudget ?? (Number.isSafeInteger(summary3.totwMaxBuy) ? Math.max(summary3.totwMaxBuy, summary3.spent) : null);
         const result = await buy(selected, { approved: true, budget, expectedOperationId: summary3.operationId, ...retry ? { retry } : {} }, {
           isCurrent: () => {
             const now = readTarget();
@@ -44906,6 +44975,33 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   }
 
   // src/fc27/futbin-batch-prices.js
+  var ratedPage = (platform, rating, page) => `https://www.futbin.org/futbin/api/27/getFilteredPlayers?platform=${platform === "pc" ? "PC" : "PS"}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`;
+  async function readFc27RatedFodderIds(ratings, { platform, request, check = async () => {
+  } }) {
+    if (!["pc", "console"].includes(platform) || !Array.isArray(ratings) || ratings.length > 3 || ratings.some((rating) => !Number.isSafeInteger(rating) || rating < 75 || rating > 99)) {
+      throw Error("FC27_PUBLIC_PRICE_PLAYER_INVALID");
+    }
+    const lanes = [];
+    for (const rating of new Set(ratings)) {
+      await check();
+      const reply = await request(ratedPage(platform, rating, 1));
+      await check();
+      let payload;
+      try {
+        payload = typeof reply === "string" ? JSON.parse(reply) : reply;
+      } catch {
+        throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      }
+      if (!payload?.data || typeof payload.data !== "object" || payload.errorcode != null && String(payload.errorcode) !== "200") throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      const rows = Object.values(payload.data);
+      if (rows.length > 100 || new Set(rows.map((row) => row?.resource_id)).size !== rows.length || rows.some((row) => row?.rating !== rating || !Number.isSafeInteger(row.resource_id) || row.resource_id < 1 || row.resource_id > 2147483647)) throw Error("FC27_PUBLIC_PRICE_RESPONSE_INVALID");
+      lanes.push(rows.filter((row) => [0, 1].includes(row.raretype)).map((row) => ({
+        id: row.resource_id,
+        price: parsePublicFutbinPrice({ data: [row] }, row.resource_id, platform, false).price
+      })).sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || a.id - b.id).map((row) => row.id));
+    }
+    return lanes;
+  }
   async function readFutbinBatchPrices(ids2, players, {
     season = "27",
     platform,
@@ -44936,7 +45032,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         fetchedAt = saved.fetchedAt;
       } else {
         if (cacheOnly) continue;
-        const response = await request(`https://www.futbin.org/futbin/api/${season}/getFilteredPlayers?platform=${platform === "pc" ? "PC" : "PS"}&rating=${rating}-${rating}&sort=rating&order=desc&page=${page}`);
+        const response = await request(ratedPage(platform, rating, page));
         requests++;
         await check();
         try {
@@ -45262,6 +45358,21 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         }
       },
       load,
+      async puzzleRatedFodder(ratings, { isCurrent = () => true } = {}) {
+        const captured = capture(), settings = await policyStore.read(captured.scope);
+        if (!publicPriceSourceEnabled(settings, "futbin")) return [];
+        const check = async () => {
+          captured.assert();
+          if (!isCurrent()) throw Error("FC27_PUBLIC_PRICE_CONTEXT_CHANGED");
+          if (!publicPriceSourceEnabled(await policyStore.read(captured.scope), "futbin")) throw Error("FC27_PUBLIC_PRICE_FUTBIN_DISABLED");
+          captured.assert();
+        };
+        return readFc27RatedFodderIds(ratings, {
+          request,
+          check,
+          platform: settings.futbinPlatform ? settings.futbinPlatform === "pc" ? "pc" : "console" : captured.platform
+        });
+      },
       async cachedEstimates(ids2, options = {}) {
         const captured = capture(), settings = await policyStore.read(captured.scope);
         captured.assert();
@@ -53607,7 +53718,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.121" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.122" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -54022,8 +54133,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.121"}`,
-    version: "27.0.121",
+    title: `FC Automation Tool ${"27.0.122"}`,
+    version: "27.0.122",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

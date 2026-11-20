@@ -20,7 +20,7 @@ export function materializePurchasedPuzzleDraft(base, current, entries, fresh) {
     const item = fresh.find(item => item.id === entry.itemId && item.definitionId === entry.definitionId);
     if (entry.state !== 'club' || concept?.kind !== 'concept' || concept.definitionId !== entry.definitionId
         || !expected || !item || item.pile !== 'club' || item.state !== 'free' || item.tradeable !== true
-        || item.concept !== false || item.evolution !== false || item.special !== totw || item.cosmetic !== false
+        || item.concept !== false || item.evolution !== false || item.special !== (totw ? expected.special : false) || item.cosmetic !== false
         || item.academyEnrolled !== false || item.activeTrade !== false || item.limitedUse !== false
         || item.loans !== -1 || item.protected !== false
         || current.policy.protectFsuLockedPlayers && protectedBy(item, 'locked', 'lockedItemIds')

@@ -17,10 +17,13 @@ export async function exercisePuzzleBuyButton(context, root) {
       const state = globalThis.buySmoke = { buys: [], stops: 0, finish: null, blocked: false, totw: false };
       globalThis.BuySmoke.mountFc27PuzzleBuyButton({ document: globalThis.document,
         readTarget: () => ({ setId: 4, challengeId: 16, anchor: globalThis.document.getElementById('exchange'),
-          purchaseAnchor: globalThis.document.getElementById('requirements'), squadSignature: state.totw ? 'totw' : 'concepts',
+          purchaseAnchor: globalThis.document.getElementById('requirements'),
+          squadSignature: state.fodder ? 'fodder' : state.totw ? 'totw' : 'concepts',
           slots: [null, { slot: 1, definitionId: 902, concept: true }] }),
         inspect: async () => state.blocked ? { status: 'blocked', reason: 'FC27_BUY_SQUAD_CHANGED' }
-          : state.totw ? { status: 'ready', operationId: 'totw', total: 1, remaining: 1, spent: 0, totwMaxBuy: 11000 }
+          : state.fodder ? { status: 'ready', operationId: 'fodder', total: 5, remaining: 5, spent: 0,
+            keptOwnedTotw: true, approvedMaterialsBudget: 2500 }
+            : state.totw ? { status: 'ready', operationId: 'totw', total: 1, remaining: 1, spent: 0, totwMaxBuy: 11000 }
             : { status: 'ready', operationId: 'test', total: 2, remaining: 2, spent: 0, budget: 400 },
         buy: (target, approval, callbacks) => {
           state.progress = callbacks.onProgress;
@@ -84,6 +87,18 @@ export async function exercisePuzzleBuyButton(context, root) {
     assert.deepEqual(await page.evaluate(() => globalThis.buySmoke.buys[2].approval),
       { approved: true, budget: 11000, expectedOperationId: 'totw' });
     await page.evaluate(() => globalThis.buySmoke.finish());
-    console.log('Puzzle bulk-buy button smoke passed: native header, trusted click, TOTW cap, loader, progress, stop; synthetic only.');
+    await page.waitForFunction(() => !globalThis.document.querySelector('#fcat-fc27-puzzle-buy button').disabled);
+    await page.evaluate(() => { globalThis.buySmoke.fodder = true; });
+    const fodder = box.getByRole('button', { name: /确认买 5 张普通卡.*剩余上限/ });
+    await fodder.waitFor();
+    assert.match(await fodder.innerText(), /2[,\s]?500/);
+    await fodder.evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => globalThis.buySmoke.buys.length), 3);
+    await fodder.click();
+    await page.waitForFunction(() => globalThis.buySmoke.buys.length === 4);
+    assert.deepEqual(await page.evaluate(() => globalThis.buySmoke.buys[3].approval),
+      { approved: true, budget: 2500, expectedOperationId: 'fodder' });
+    await page.evaluate(() => globalThis.buySmoke.finish());
+    console.log('Puzzle bulk-buy button smoke passed: trusted confirmation and budget for TOTW and normal fillers; synthetic only.');
   } finally { await page.close(); }
 }
