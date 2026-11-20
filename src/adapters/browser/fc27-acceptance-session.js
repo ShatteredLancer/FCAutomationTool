@@ -11,6 +11,7 @@ import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks, readFc27PuzzleChemistry
 import { readFc27PuzzlePage, readFc27PuzzlePageSnapshot, readFc27CurrentPuzzleChallenge } from '../ea/fc27-puzzle-page.js';
 import { previewFc27PuzzleSquadCooperatively } from '../../fc27/puzzle-preview.js';
 import { DEFAULT_PUZZLE_MAX_RATING } from '../../fc27/puzzle-material-policy.js';
+import { parseFc27SbcRequirements, requiresFc27SingleTotw } from '../../fc27/sbc-requirements.js';
 import { readFc27PuzzlePolicy } from '../ea/fc27-fsu-read.js';
 import { createFc27PuzzleFillPersistence } from '../../fc27/puzzle-fill-journal.js';
 import { createFc27PuzzleFillTransaction } from '../../fc27/puzzle-fill-transaction.js';
@@ -393,6 +394,11 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         let preview = await previewFc27PuzzleSquadCooperatively({ ...inputs,
           onProgress: value => progress({ ...value, stage: 'planning' }) }, { assertCurrent: () => { assertTarget(); unchanged(); } });
         privateData = { inputs, preview };
+        // Explicit TOTW is initially supported only from Club/Storage. Never
+        // fall into generic market planning (including optional value search)
+        // or build a concept/auto-buy draft for the required special.
+        if (requiresFc27SingleTotw(parseFc27SbcRequirements(inputs.challenge.rawRequirements,
+          inputs.challenge.slotCount - inputs.challenge.brickIndices.length).rules)) return preview;
         // Without a valuation source, an already legal owned lineup cannot
         // be cost-compared. Do not add catalogue reads just for that attempt.
         // The result keeps its explicit incomplete-value notice.

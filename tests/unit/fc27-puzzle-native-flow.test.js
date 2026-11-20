@@ -156,6 +156,36 @@ it('carries mixed Club/Storage through the production native session, exact read
   expect(x.calls.some(call => call.url?.includes('skipUserSquadValidation'))).toBe(false);
 });
 
+it.each([true, false])('163/266 supports an explicit rating-81 plus a single owned TOTW (available=%s), with no market or submit', async available => {
+  const publicPrices = { load: vi.fn() }, x = fixture({ gold: true, publicPrices });
+  x.controller._challengeId = x.challenge.id = 266;
+  x.set.id = x.challenge.setId = 163;
+  Object.assign(x.root.SBCEligibilityKey, { PLAYER_RARITY: 18, TEAM_RATING: 19 });
+  x.challenge.eligibilityRequirements = [
+    { count: 1, scope: 0, kvPairs: { _collection: { 18: [3] } } },
+    { count: -1, scope: 0, kvPairs: { _collection: { 19: [81] } } },
+  ];
+  x.root.services.SBC.repository.sets._collection = { 163: { ...x.set, challenges: [x.challenge] } };
+  x.state.playerFacts._rating = 81;
+  x.state.playerFactsById = { 1: { _rareflag: available ? 3 : 5 } };
+  for (const card of x.state.players) x.root.repositories.Item.club.items._collection[card.id] = x.root.factories.Item.createItem(card);
+  if (available) moveFixtureCardToStorage(x);
+  const result = await x.fill();
+  if (available) {
+    expect(result, JSON.stringify({ result, calls: x.calls })).toMatchObject({ status: 'filled', saved: true, submitted: false, selectedCount: 11 });
+    expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+    expect(x.challenge.squad._players.filter(slot => slot._item._rareflag > 1).map(slot => slot._item._rareflag)).toEqual([3]);
+    expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED' });
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  } else {
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_TOTW_REQUIRED' });
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+  }
+  expect(publicPrices.load).not.toHaveBeenCalled();
+  expect(x.calls.some(call => /skipUserSquadValidation|transfermarket|\/defid/.test(call.url ?? ''))).toBe(false);
+});
+
 it.each(['missing', 'version', 'pile', 'http'])('blocks native mixed-pile fill before saving on fresh Storage %s', async kind => {
   const x = fixture(); const storage = moveFixtureCardToStorage(x);
   if (kind === 'missing') storage.payload = [];

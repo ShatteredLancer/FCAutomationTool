@@ -5,6 +5,11 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.120] - 2026-11-20
+
+- Support rating-only Puzzle SBCs with an explicit one-TOTW requirement, using one eligible owned TOTW from Club or SBC Storage.
+- Preserve protection checks and confirm the exact saved lineup without buying players or submitting the SBC.
+
 ## [27.0.119] - 2026-11-19
 
 - Keep scheduled trading tasks armed when a keepalive check fails and report the failed step.

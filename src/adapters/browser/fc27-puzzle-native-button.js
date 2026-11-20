@@ -79,6 +79,8 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_SERVER_SQUAD_CHANGED') return '解题期间服务器阵容发生变化，本次未覆盖；请核对当前阵容后再试。';
   if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
+  if (result?.reason === 'FC27_PUZZLE_TOTW_REQUIRED') return '本题需要 1 张周黑（TOTW）；俱乐部和 SBC 仓库中没有通过当前保护设置的周黑卡。本次未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED') return '当前周黑解题只支持无化学要求的评分挑战。本次未买卡或修改阵容。';
   if (result?.reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') return '补卡参考报价在规划结束前过期；本次没有可用补卡方案，请再次点击解题以刷新报价并重新规划。';
   if (shortageReasons.includes(result?.reason)) {
     const composition = result.policy?.materialComposition?.filter(rule => rule.count > 0)

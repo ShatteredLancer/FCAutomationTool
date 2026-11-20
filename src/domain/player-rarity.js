@@ -120,6 +120,11 @@ export function isSpecialPlayerCard(item = {}) {
   return readPlayerRareFlag(item) > 1;
 }
 
+// FC27 11502: EA's item.raretype3 localization explicitly names Team of the
+// Week. Only use this with a verified FC27 requirement and normalized DTOs.
+export const FC27_TOTW_RARITY = 3;
+export const isFc27TotwCard = item => item?.rarity === FC27_TOTW_RARITY && item?.special === true;
+
 export function normalPlayerRarity(item = {}) {
   if (isSpecialPlayerCard(item)) return 'special';
   return isRarePlayerCard(item) ? 'rare' : 'common';

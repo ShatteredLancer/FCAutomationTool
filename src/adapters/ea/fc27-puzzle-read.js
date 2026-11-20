@@ -1,10 +1,10 @@
 import { ownData } from '../../fc27/prelaunch-contract.js';
 import { readFc27Context, readFc27CachedClub, readFc27CachedPile } from './fc27-local-read.js';
 import { readFc27PuzzlePolicy } from './fc27-fsu-read.js';
-import { DEFAULT_PUZZLE_MAX_RATING, puzzleMaterialRules } from '../../fc27/puzzle-material-policy.js';
+import { DEFAULT_PUZZLE_MAX_RATING, projectFc27PuzzleIntrinsicProtection, puzzleMaterialRules } from '../../fc27/puzzle-material-policy.js';
 import { inspectFc27ChallengeCatalog } from './fc27-challenge-catalog.js';
 import { inspectInProgressSquad } from './fc27-sbc-read.js';
-import { parseFc27SbcRequirements } from '../../fc27/sbc-requirements.js';
+import { isFc27TotwCard, isFc27TotwRatingOnly, parseFc27SbcRequirements } from '../../fc27/sbc-requirements.js';
 import { previewFc27PuzzleSquad } from '../../fc27/puzzle-preview.js';
 import { createFc27PuzzleEvaluator } from '../../fc27/puzzle-evaluator.js';
 
@@ -17,7 +17,7 @@ const enumNames = { 3: 'PLAYER_QUALITY', 4: 'SAME_NATION_COUNT', 5: 'SAME_LEAGUE
 // Compare a read-only Puzzle plan with fresh Club/Storage projections. The planner
 // never receives refreshed EA entities, and this helper deliberately returns
 // only aggregate evidence so item identities cannot escape the adapter.
-export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
+export function validateFc27PuzzleSelection(selected, freshItems, plannedItems, challenge = null) {
   const failed = (mismatch = 'shape') => ({ status: 'blocked', reason: 'FC27_EXACT_ITEMS_CHANGED',
     mismatch: typeof mismatch === 'string' && /^[a-z-]{1,40}$/.test(mismatch) ? mismatch : 'shape' });
   const validId = value => Number.isSafeInteger(value) && value > 0;
@@ -32,7 +32,9 @@ export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) 
   if (byId.size !== freshItems.length || expected.size !== selected.length
       || freshItems.some(item => !validId(item?.id) || !validId(item?.definitionId)
         || !selected.some(ref => ref.definitionId === item.definitionId))) return failed();
-  const seenIds = new Set(); const seenDefinitions = new Set();
+  const parsed = parseFc27SbcRequirements(challenge?.rawRequirements, selected.length);
+  const totwRequired = challenge?.mechanism === 'traditional-puzzle' && parsed.status === 'observed' && isFc27TotwRatingOnly(parsed.rules);
+  const seenIds = new Set(); const seenDefinitions = new Set(); let totwCount = 0;
   for (const plan of selected) {
     const current = byId.get(plan?.id);
     const before = expected.get(plan?.id);
@@ -42,7 +44,7 @@ export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) 
         || fields.some(key => !Object.hasOwn(current, key) || !Object.hasOwn(before, key)
           || JSON.stringify(current[key]) !== JSON.stringify(before[key]))
         || current.type !== 'player' || current.pile !== plan.pile
-        || current.rating !== plan.rating || current.special !== false
+        || current.rating !== plan.rating || current.special !== false && !(totwRequired && isFc27TotwCard(current))
         || current.evolution !== false || current.cosmetic !== false
         || current.concept !== false || current.academyEnrolled !== false
         || current.activeTrade !== false || current.limitedUse !== false
@@ -50,7 +52,9 @@ export function validateFc27PuzzleSelection(selected, freshItems, plannedItems) 
       return failed('identity');
     }
     seenIds.add(plan.id); seenDefinitions.add(plan.definitionId);
+    if (isFc27TotwCard(current)) totwCount++;
   }
+  if (totwRequired && totwCount !== 1) return failed('material');
   return { status: 'verified', selectedCount: selected.length, presentCount: selected.length,
     uniqueDefinitions: seenDefinitions.size === selected.length };
 }
@@ -200,9 +204,6 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
     const merged = [...cached.items, ...storage.items]
       .filter(item => !excludedItems.has(item.id) && !excludedDefinitions.has(item.definitionId));
     if (new Set(merged.map(item => item.id)).size !== merged.length) return blocked('FC27_INVENTORY_IDENTITY_CONFLICT');
-    const inventory = { schema: 1, context, kind: 'normalized-inventory', status: 'provisional',
-      scope: storage.status === 'unavailable' ? 'club-only' : 'club-and-storage', complete: false,
-      items: merged.map(item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false })) };
     const challenge = { schema: 1, context, mechanism: 'traditional-puzzle', requirementsOperation: 'AND',
       completed: false, setId, id: challengeId, slotCount: layout.slotCount,
       formation: layout.formation,
@@ -210,6 +211,9 @@ export async function inspectFc27PuzzlePlan(root, { setId, challengeId, maxRatin
     const parsed = parseFc27SbcRequirements(observed.requirements, layout.requiredPlayerCount);
     if (parsed.status === 'unsupported') return blocked('FC27_REQUIREMENT_UNSUPPORTED', { unsupported: parsed.unsupported });
     if (parsed.status !== 'observed') return blocked(parsed.reason);
+    const inventory = { schema: 1, context, kind: 'normalized-inventory', status: 'provisional',
+      scope: storage.status === 'unavailable' ? 'club-only' : 'club-and-storage', complete: false,
+      items: merged.map(projectFc27PuzzleIntrinsicProtection(challenge)) };
     const clubLinks = readFc27PuzzleClubLinks(root);
     const needsTeamFacts = parsed.rules.some(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating',
       'min-chemistry', 'max-chemistry', 'exact-chemistry'].includes(rule.kind));

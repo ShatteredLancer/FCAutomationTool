@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.119
+// @version      27.0.120
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.119", at: Date.now(), status: 'started',
+    state = { version: "27.0.120", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -1541,6 +1541,8 @@
   function isSpecialPlayerCard(item2 = {}) {
     return readPlayerRareFlag(item2) > 1;
   }
+  var FC27_TOTW_RARITY = 3;
+  var isFc27TotwCard = (item2) => item2?.rarity === FC27_TOTW_RARITY && item2?.special === true;
 
   // src/adapters/ea/fc27-local-read.js
   var identity2 = (value) => Number.isSafeInteger(value) && value > 0;
@@ -2106,7 +2108,19 @@
     return counts;
   }, { bronze: 0, silver: 0, gold: 0, unknown: 0 });
   var stop2 = (reason) => ({ status: "blocked", reason, liveExecutionEnabled: false, selected: [] });
-  function collectSafeTraditionalCandidates({ context, challenge, inventory, policy } = {}) {
+  function collectSafeTraditionalCandidates(input) {
+    return collectCandidates(input);
+  }
+  function collectPuzzleCandidatePool({ context, challenge, inventory, policy } = {}, totwRequired = false) {
+    if (challenge?.mechanism !== "traditional-puzzle") return stop2("CHALLENGE_UNVERIFIED");
+    const required2 = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
+    return collectCandidates({ context, inventory, policy, challenge: {
+      ...challenge,
+      mechanism: "traditional",
+      requirements: [{ kind: "player-count", count: required2 }]
+    } }, totwRequired === true);
+  }
+  function collectCandidates({ context, challenge, inventory, policy } = {}, totwRequired = false) {
     let scope2;
     try {
       scope2 = createSeasonContext(context);
@@ -2174,7 +2188,7 @@
         ["type-or-pile-unverified", item2.type === "player" && ["club", "storage"].includes(item2.pile)],
         ["rating-outside-range", integer4(item2.rating, minRating, Math.min(maxRating, policy.maxRating))],
         ["fsu-gold-range", item2.rating < 75 || integer4(item2.rating, policy.goldRange[0], policy.goldRange[1])],
-        ["special-or-unknown", item2.special === false],
+        ["special-or-unknown", totwRequired ? item2.special === false && item2.rarity !== FC27_TOTW_RARITY || isFc27TotwCard(item2) : item2.special === false],
         ["evolution-or-unknown", item2.evolution === false],
         ["cosmetic-or-unknown", item2.cosmetic === false],
         ["concept-or-unknown", item2.concept === false],
@@ -3500,6 +3514,372 @@
     return { status: "synchronized", selectedCount: refs3.length };
   }
 
+  // src/fc27/sbc-requirements.js
+  var FC27_SBC_SCOPE = Object.freeze({ GREATER: 0, LOWER: 1, EXACT: 2 });
+  var requiresFc27SingleTotw = (rules) => Array.isArray(rules) && rules.some((rule) => rule.kind === "totw");
+  var isFc27TotwRatingOnly = (rules) => requiresFc27SingleTotw(rules) && rules.some((rule) => rule.kind.endsWith("-team-rating")) && !rules.some((rule) => rule.kind.endsWith("-chemistry"));
+  var FC27_SBC_KEY = Object.freeze({
+    QUALITY: 3,
+    SAME_NATION: 4,
+    SAME_LEAGUE: 5,
+    SAME_CLUB: 6,
+    DISTINCT_NATIONS: 7,
+    DISTINCT_LEAGUES: 8,
+    DISTINCT_CLUBS: 9,
+    NATION_ID: 10,
+    LEAGUE_ID: 11,
+    CLUB_ID: 12,
+    RARE: 18,
+    TEAM_RATING: 19,
+    RARITY_GROUP: 25,
+    MIN_OVR: 26,
+    EXACT_OVR: 27,
+    MAX_OVR: 28,
+    LEVEL: 17,
+    CHEMISTRY: 35
+  });
+  var qualityBounds = Object.freeze({
+    1: Object.freeze([1, 64]),
+    2: Object.freeze([65, 74]),
+    3: Object.freeze([75, 99])
+  });
+  var integer8 = (value) => Number.isSafeInteger(value);
+  var nonnegative2 = (value) => integer8(value) && value >= 0;
+  var positive2 = (value) => integer8(value) && value > 0;
+  var valuesOf = (pair) => Array.isArray(pair?.values) ? pair.values.filter(integer8) : [];
+  var firstPair = (rule) => Array.isArray(rule?.pairs) && rule.pairs.length === 1 ? rule.pairs[0] : null;
+  function normalizedScope(scope2) {
+    return [0, 1, 2].includes(scope2) ? scope2 : null;
+  }
+  var countMode = (scope2) => scope2 === 0 ? "min" : scope2 === 1 ? "max" : "exact";
+  function relationKind(key2) {
+    return {
+      4: "same-nation",
+      5: "same-league",
+      6: "same-club",
+      7: "distinct-nations",
+      8: "distinct-leagues",
+      9: "distinct-clubs"
+    }[key2] ?? null;
+  }
+  function relationRule(key2, value, scope2, required2) {
+    const kind = relationKind(key2);
+    if (!kind || !positive2(value) || normalizedScope(scope2) === null) return null;
+    const mode = scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact";
+    return { kind, value, mode, count: required2, source: { key: key2, scope: scope2, values: [value], count: -1 } };
+  }
+  function requirementSource(rule, pair, required2) {
+    return Object.freeze({
+      key: pair?.key ?? null,
+      scope: rule?.scope ?? null,
+      values: Array.isArray(pair?.values) ? [...pair.values] : [],
+      pairs: Array.isArray(rule?.pairs) ? rule.pairs.map((value) => ({
+        key: value?.key ?? null,
+        values: Array.isArray(value?.values) ? [...value.values] : []
+      })) : [],
+      count: rule?.count ?? null,
+      required: required2
+    });
+  }
+  function unsupported(rule, pair, required2, reason = "unknown-key") {
+    return {
+      kind: "unsupported",
+      key: pair?.key ?? null,
+      reason,
+      source: requirementSource(rule, pair, required2)
+    };
+  }
+  function parseFc27SbcRequirements(rawRequirements, required2) {
+    if (!Array.isArray(rawRequirements) || !rawRequirements.length || rawRequirements.length > 16 || !positive2(required2) || required2 > 11) {
+      return { status: "blocked", reason: "FC27_REQUIREMENTS_UNVERIFIED", rules: [], unsupported: [] };
+    }
+    const rules = [];
+    const unsupportedRules = [];
+    for (const raw of rawRequirements) {
+      const pair = firstPair(raw);
+      const scope2 = normalizedScope(raw?.scope);
+      const values8 = valuesOf(pair);
+      const source = requirementSource(raw, pair, required2);
+      let parsed = null;
+      if (!pair || !integer8(pair.key) || scope2 === null || values8.length !== (pair.values?.length ?? -1) || !values8.length || values8.length > 32 || new Set(values8).size !== values8.length) {
+        parsed = unsupported(raw, pair, required2, "shape");
+      } else {
+        const key2 = pair.key;
+        const count3 = nonnegative2(raw.count) && raw.count <= required2 ? raw.count : null;
+        const mode = countMode(scope2);
+        const value = values8[0];
+        switch (key2) {
+          case FC27_SBC_KEY.QUALITY: {
+            const bounds = qualityBounds[value];
+            if (!bounds || values8.length !== 1 || raw.count !== -1) parsed = unsupported(raw, pair, required2, "quality-shape");
+            else if (scope2 === FC27_SBC_SCOPE.EXACT) {
+              parsed = { kind: "all-quality", quality: value, minRating: bounds[0], maxRating: bounds[1], count: required2, source };
+            } else if (scope2 === FC27_SBC_SCOPE.GREATER) {
+              parsed = { kind: "min-quality", quality: value, count: required2, minRating: bounds[0], source };
+            } else {
+              parsed = { kind: "max-quality", quality: value, count: required2, maxRating: bounds[1], source };
+            }
+            break;
+          }
+          case FC27_SBC_KEY.LEVEL:
+            parsed = count3 !== null && values8.every((v) => qualityBounds[v]) ? { kind: "quality-count", qualities: [...values8], mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact", count: count3, source } : unsupported(raw, pair, required2, "quality-count-shape");
+            break;
+          case FC27_SBC_KEY.MIN_OVR:
+          case FC27_SBC_KEY.EXACT_OVR:
+          case FC27_SBC_KEY.MAX_OVR:
+            parsed = count3 !== null && values8.length === 1 && value >= 1 && value <= 99 ? { kind: key2 === 26 ? "player-min-overall" : key2 === 27 ? "player-exact-overall" : "player-max-overall", value, count: count3, mode, source } : unsupported(raw, pair, required2, "overall-shape");
+            break;
+          case FC27_SBC_KEY.NATION_ID:
+          case FC27_SBC_KEY.LEAGUE_ID:
+          case FC27_SBC_KEY.CLUB_ID:
+            parsed = count3 !== null && values8.every(positive2) ? {
+              kind: key2 === 10 ? "from-nations" : key2 === 11 ? "from-leagues" : "from-clubs",
+              ids: [...values8],
+              count: count3,
+              mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact",
+              source
+            } : unsupported(raw, pair, required2, "identity-shape");
+            break;
+          case FC27_SBC_KEY.RARE:
+            parsed = count3 !== null && values8.length === 1 && value === 1 ? { kind: "rare", count: count3, mode, source } : count3 === 1 && values8.length === 1 && value === FC27_TOTW_RARITY && scope2 !== FC27_SBC_SCOPE.LOWER ? { kind: "totw", count: count3, mode, source } : unsupported(raw, pair, required2, "rare-shape");
+            break;
+          case FC27_SBC_KEY.RARITY_GROUP:
+            parsed = count3 !== null && values8.length === 1 && positive2(value) ? { kind: "rarity-group", groupId: value, count: count3, mode, source } : unsupported(raw, pair, required2, "group-shape");
+            break;
+          case FC27_SBC_KEY.TEAM_RATING:
+            parsed = raw.count === -1 && values8.length === 1 && value >= 1 && value <= 99 ? { kind: `${mode}-team-rating`, value, source } : unsupported(raw, pair, required2, "team-rating-shape");
+            break;
+          case FC27_SBC_KEY.CHEMISTRY:
+            parsed = raw.count === -1 && values8.length === 1 && value >= 0 && value <= 33 ? { kind: `${mode}-chemistry`, value, source } : unsupported(raw, pair, required2, "chemistry-shape");
+            break;
+          default: {
+            const relation = raw.count === -1 && values8.length === 1 && value <= required2 ? relationRule(key2, value, scope2, required2) : null;
+            parsed = relation ? { ...relation, source } : unsupported(raw, pair, required2);
+          }
+        }
+      }
+      rules.push(parsed);
+      if (parsed.kind === "unsupported") unsupportedRules.push(parsed);
+    }
+    return { status: unsupportedRules.length ? "unsupported" : "observed", reason: unsupportedRules.length ? "FC27_REQUIREMENT_UNSUPPORTED" : "FC27_REQUIREMENTS_PARSED", rules, unsupported: unsupportedRules };
+  }
+  function itemValue(item2, keys2) {
+    for (const key2 of keys2) {
+      const value = item2?.[key2];
+      if (integer8(value)) return value;
+    }
+    return null;
+  }
+  function itemQuality(item2) {
+    if ([1, 2, 3].includes(item2?.quality)) return item2.quality;
+    const rating = itemValue(item2, ["rating", "overall", "ovr"]);
+    if (!integer8(rating) || rating < 1 || rating > 99) return null;
+    return rating <= 64 ? 1 : rating <= 74 ? 2 : 3;
+  }
+  function relationResult(values8, rule) {
+    if (values8.some((value) => value === null)) return null;
+    const count3 = /* @__PURE__ */ new Map();
+    for (const value of values8) if (value !== null) count3.set(value, (count3.get(value) ?? 0) + 1);
+    const observed = rule.kind.startsWith("distinct-") ? count3.size : Math.max(0, ...count3.values());
+    if (rule.mode === "min") return observed >= rule.value;
+    if (rule.mode === "max") return observed <= rule.value;
+    return observed === rule.value;
+  }
+  function compareCount(actual, expected, mode) {
+    return mode === "min" ? actual >= expected : mode === "max" ? actual <= expected : actual === expected;
+  }
+  function createFc27ClubResolver(clubLinks) {
+    if (clubLinks?.schema !== 1 || clubLinks.complete !== true || !Array.isArray(clubLinks.links) || clubLinks.links.length > 2e4 || clubLinks.links.some((pair) => !Array.isArray(pair) || pair.length !== 2 || !pair.every(positive2))) return null;
+    const links = new Map(clubLinks.links);
+    if (links.size !== clubLinks.links.length) return null;
+    return (id16) => positive2(id16) ? links.get(id16) ?? id16 : null;
+  }
+  function matchFc27SbcItemRule(rule, item2, groupMatcher, clubResolver) {
+    if (![
+      "all-quality",
+      "min-quality",
+      "max-quality",
+      "quality-count",
+      "player-min-overall",
+      "player-exact-overall",
+      "player-max-overall",
+      "from-nations",
+      "from-leagues",
+      "from-clubs",
+      "rare",
+      "totw",
+      "rarity-group"
+    ].includes(rule?.kind)) return null;
+    return ruleResult({ ...rule, count: 1, mode: "min" }, [item2], { groupMatcher, clubResolver });
+  }
+  function ruleResult(rule, squad, options) {
+    const players = squad;
+    const ids2 = (keys2) => players.map((item2) => {
+      const value = itemValue(item2, keys2);
+      return positive2(value) ? value : null;
+    });
+    const countMatches = (values8, predicate2) => values8.some((value) => value === null) ? null : compareCount(values8.filter(predicate2).length, rule.count, rule.mode ?? "min");
+    const clubIds = () => typeof options.clubResolver === "function" ? ids2(["teamId", "clubId"]).map(options.clubResolver) : players.map(() => null);
+    switch (rule.kind) {
+      case "all-quality":
+        return countMatches(players.map(itemQuality), (value) => value === rule.quality);
+      case "min-quality":
+        return countMatches(players.map(itemQuality), (value) => value >= rule.quality);
+      case "quality-count": {
+        const qualities = players.map(itemQuality);
+        if (qualities.some((value) => value === null)) return null;
+        const matches2 = qualities.filter((quality3) => {
+          return rule.qualities.includes(quality3);
+        }).length;
+        return compareCount(matches2, rule.count, rule.mode);
+      }
+      case "max-quality":
+        return countMatches(players.map(itemQuality), (value) => value <= rule.quality);
+      case "player-min-overall":
+      case "player-exact-overall":
+      case "player-max-overall":
+        return countMatches(players.map((item2) => {
+          const rating = itemValue(item2, ["rating", "overall", "ovr"]);
+          return integer8(rating) && rating >= 1 && rating <= 99 ? rating : null;
+        }), (value) => rule.kind === "player-min-overall" ? value >= rule.value : rule.kind === "player-max-overall" ? value <= rule.value : value === rule.value);
+      case "from-nations":
+        return countMatches(ids2(["nationId", "nation"]), (value) => rule.ids.includes(value));
+      case "from-leagues":
+        return countMatches(ids2(["leagueId", "league"]), (value) => rule.ids.includes(value));
+      case "from-clubs": {
+        if (typeof options.clubResolver !== "function") return null;
+        const allowed = /* @__PURE__ */ new Set([...rule.ids, ...rule.ids.map(options.clubResolver)]);
+        return countMatches(clubIds(), (value) => allowed.has(value));
+      }
+      case "rare":
+        return countMatches(players.map((item2) => {
+          const rarity = itemValue(item2, ["rarity", "rareflag"]);
+          return nonnegative2(rarity) ? rarity === 1 : null;
+        }), (value) => value === true);
+      case "totw":
+        return countMatches(players.map((item2) => {
+          const rarity = itemValue(item2, ["rarity", "rareflag"]);
+          return nonnegative2(rarity) ? rarity === FC27_TOTW_RARITY : null;
+        }), (value) => value === true);
+      case "rarity-group":
+        return countMatches(players.map((item2) => {
+          if (typeof options.groupMatcher === "function") {
+            try {
+              const result = options.groupMatcher(item2, rule.groupId);
+              return typeof result === "boolean" ? result : null;
+            } catch {
+              return null;
+            }
+          }
+          return Array.isArray(item2?.groups) && item2.groups.every(nonnegative2) ? item2.groups.includes(rule.groupId) : null;
+        }), (value) => value === true);
+      case "min-team-rating":
+      case "max-team-rating":
+      case "exact-team-rating":
+        return integer8(options.teamRating) && options.teamRating >= 0 && options.teamRating <= 99 ? compareCount(options.teamRating, rule.value, rule.kind.split("-")[0]) : null;
+      case "min-chemistry":
+      case "max-chemistry":
+      case "exact-chemistry":
+        return integer8(options.chemistry) && options.chemistry >= 0 && options.chemistry <= 33 ? compareCount(options.chemistry, rule.value, rule.kind.split("-")[0]) : null;
+      case "same-nation":
+        return relationResult(ids2(["nationId", "nation"]), rule);
+      case "same-league":
+        return relationResult(ids2(["leagueId", "league"]), rule);
+      case "same-club":
+        return relationResult(clubIds(), rule);
+      case "distinct-nations":
+        return relationResult(ids2(["nationId", "nation"]), rule);
+      case "distinct-leagues":
+        return relationResult(ids2(["leagueId", "league"]), rule);
+      case "distinct-clubs":
+        return relationResult(clubIds(), rule);
+      default:
+        return null;
+    }
+  }
+  function matchFc27SbcRequirements({ requirements, squad, chemistry, teamRating, groupMatcher, clubLinks } = {}) {
+    if (!Array.isArray(requirements) || !requirements.length || !Array.isArray(squad) || !squad.length || squad.length > 11 || Array.from(squad).some((item2) => !item2 || typeof item2 !== "object") || requirements.some((rule) => !rule || rule.source?.required !== squad.length)) {
+      return { status: "blocked", reason: "FC27_REQUIREMENTS_UNVERIFIED", satisfied: false, failures: [] };
+    }
+    const unsupportedRules = requirements.filter((rule) => rule?.kind === "unsupported");
+    if (unsupportedRules.length) return { status: "unsupported", reason: "FC27_REQUIREMENT_UNSUPPORTED", satisfied: false, failures: unsupportedRules };
+    const options = { chemistry, teamRating, groupMatcher, clubResolver: createFc27ClubResolver(clubLinks) };
+    const failures = requirements.map((rule, index) => ({ rule, index, result: ruleResult(rule, squad, options) })).filter((entry) => entry.result !== true);
+    const unavailable = failures.filter((entry) => entry.result === null);
+    return {
+      status: unavailable.length ? "blocked" : failures.length ? "unsatisfied" : "satisfied",
+      reason: unavailable.length ? "FC27_REQUIREMENT_VALUE_UNAVAILABLE" : failures.length ? "FC27_REQUIREMENTS_NOT_MET" : null,
+      satisfied: !failures.length,
+      failures: failures.map(({ rule, index }) => ({ index, rule }))
+    };
+  }
+
+  // src/fc27/puzzle-material-policy.js
+  var DEFAULT_PUZZLE_MAX_RATING = 82;
+  var totwRequiredFor = (challenge) => {
+    if (challenge?.mechanism !== "traditional-puzzle") return false;
+    const count3 = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
+    const parsed = parseFc27SbcRequirements(challenge.rawRequirements, count3);
+    return parsed.status === "observed" && isFc27TotwRatingOnly(parsed.rules);
+  };
+  var collectSafePuzzleCandidates = (input) => collectPuzzleCandidatePool(input, totwRequiredFor(input?.challenge));
+  function projectFc27PuzzleIntrinsicProtection(challenge) {
+    const totwRequired = totwRequiredFor(challenge);
+    return (item2) => ({ ...item2, protected: item2.special !== false && !(totwRequired && isFc27TotwCard(item2)) || item2.evolution !== false || item2.cosmetic !== false });
+  }
+  function puzzleMaterialRules(rules, required2) {
+    return puzzleMaterialRuleVectors(rules, required2)[0] ?? [];
+  }
+  function puzzleMaterialRuleVectors(rules, required2) {
+    const qualityRules = rules.filter((rule) => ["all-quality", "min-quality", "max-quality", "quality-count"].includes(rule.kind));
+    const overallRules = rules.filter((rule) => ["player-min-overall", "player-max-overall"].includes(rule.kind));
+    const fullOverallRules = overallRules.filter((rule) => rule.count === required2);
+    const minimumTier = Math.max(1, ...fullOverallRules.filter((rule) => rule.kind === "player-min-overall").map((rule) => rule.value >= 75 ? 3 : rule.value >= 65 ? 2 : 1));
+    const maximumTier = Math.min(3, ...fullOverallRules.filter((rule) => rule.kind === "player-max-overall").map((rule) => rule.value < 65 ? 1 : rule.value < 75 ? 2 : 3));
+    if (!qualityRules.length && !fullOverallRules.length) return [];
+    const vectors = [];
+    for (let gold = 0; gold <= required2; gold++) {
+      for (let silver = 0; silver <= required2 - gold; silver++) {
+        const counts = [required2 - silver - gold, silver, gold];
+        if (counts.slice(0, minimumTier - 1).some((count3) => count3 > 0) || counts.slice(maximumTier).some((count3) => count3 > 0)) continue;
+        const representativeRating = [64, 65, 75];
+        const squad = counts.flatMap((count3, index) => Array.from({ length: count3 }, () => ({
+          quality: index + 1,
+          rating: representativeRating[index]
+        })));
+        if (matchFc27SbcRequirements({ requirements: [...qualityRules, ...fullOverallRules], squad }).status !== "satisfied") continue;
+        vectors.push(counts.map((count3, index) => ({
+          kind: "quality-count",
+          qualities: [index + 1],
+          mode: "exact",
+          count: count3,
+          source: { policy: "minimum-quality-fillers", quality: index + 1, required: required2 }
+        })));
+      }
+    }
+    return vectors;
+  }
+  function puzzleHasQualityAlternative(rules, required2, candidates, preferred) {
+    if (!preferred.length) return false;
+    const counts = [1, 2, 3].map((quality3) => new Set(candidates.filter((item2) => (item2.rating < 65 ? 1 : item2.rating < 75 ? 2 : 3) === quality3).map((item2) => item2.definitionId)).size);
+    const native = rules.filter((rule) => [
+      "all-quality",
+      "min-quality",
+      "max-quality",
+      "quality-count",
+      "player-min-overall",
+      "player-max-overall"
+    ].includes(rule.kind));
+    for (let gold = 0; gold <= Math.min(required2, counts[2]); gold++) for (let silver = 0; silver <= Math.min(required2 - gold, counts[1]); silver++) {
+      const vector = [required2 - gold - silver, silver, gold];
+      if (vector[0] > counts[0] || vector.every((count3, index) => count3 === preferred[index].count)) continue;
+      const representativeRating = [64, 65, 75];
+      const squad = vector.flatMap((count3, index) => Array.from({ length: count3 }, () => ({ quality: index + 1, rating: representativeRating[index] })));
+      if (matchFc27SbcRequirements({ requirements: native, squad }).status === "satisfied") return true;
+    }
+    return false;
+  }
+
   // src/adapters/ea/fc27-traditional-provider.js
   var fail12 = (reason) => {
     throw new Error(reason);
@@ -3507,6 +3887,7 @@
   var same7 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   var at5 = (root, path) => path.split(".").reduce((value, key2) => ownData(value, key2), root);
   var protectedItem = (item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false });
+  var protectionFor = (plan) => plan.kind === "puzzle-fill" ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
   var identity4 = (value) => Number.isSafeInteger(value) && value > 0;
   var count = (value) => Number.isSafeInteger(value) && value >= 0;
   var FC27_SBC_EXECUTION_METHODS = Object.freeze([
@@ -3877,7 +4258,7 @@
       },
       async validateItems(plan) {
         const items = await freshRefs(plan.selected, ["puzzle-fill", "puzzle-fill-recovery", "puzzle-concept-draft"].includes(plan.kind));
-        return { context, fresh: true, observedAt: Date.now(), items };
+        return { context, fresh: true, observedAt: Date.now(), items: plan.kind === "puzzle-fill" ? items.map(protectionFor(plan)) : items };
       },
       assertCurrent() {
         assert();
@@ -3960,13 +4341,13 @@
           { setId: plan.challenge.setId, challengeId: plan.challenge.id }
         ));
         if (!Array.isArray(slots) || slots.length < 11 || slots.length > 32 || !same7(ownData(squad, "simpleBrickIndices"), ["puzzle-fill", "puzzle-fill-recovery"].includes(plan.kind) ? plan.challenge.brickIndices : []) || !same7(ownData(squad, "customBrickIndices"), []) || !["puzzle-fill", "puzzle-fill-recovery"].includes(plan.kind) && plan.challenge.brickIndices.length) return fail12("FC27_SAVED_SQUAD_UNVERIFIED");
-        const items = [];
+        const items = [], projectProtection = protectionFor(plan);
         for (let index = 0; index < slots.length; index++) {
           if (ownData(slots[index], "index") !== index) return fail12("FC27_SAVED_SQUAD_UNVERIFIED");
           const item2 = ownData(slots[index], "_item");
           if (index < 11 && !plan.challenge.brickIndices.includes(index)) {
             if (plan.kind !== "puzzle-fill-recovery" || ![0, -1].includes(ownData(item2, "id"))) {
-              items.push({ ...protectedItem(snapshotOwned(item2, plan.kind)), slot: index });
+              items.push({ ...projectProtection(snapshotOwned(item2, plan.kind)), slot: index });
             }
           } else if (![0, -1].includes(ownData(item2, "id"))) return fail12("FC27_SAVED_SQUAD_UNVERIFIED");
         }
@@ -4374,8 +4755,8 @@
 
   // src/fc27/traditional-transaction.js
   var lifetime = 6e4;
-  var positive2 = (value) => Number.isSafeInteger(value) && value > 0;
-  var nonnegative2 = (value) => Number.isSafeInteger(value) && value >= 0;
+  var positive3 = (value) => Number.isSafeInteger(value) && value > 0;
+  var nonnegative3 = (value) => Number.isSafeInteger(value) && value >= 0;
   var fail13 = (reason) => {
     throw new Error(reason);
   };
@@ -4421,12 +4802,12 @@
     }
   }
   function validReward(reward) {
-    return ["set", "challenge"].includes(reward?.scope) && reward.type === "pack" && positive2(reward.value) && positive2(reward.count) && reward.count <= 10 && typeof reward.tradable === "boolean";
+    return ["set", "challenge"].includes(reward?.scope) && reward.type === "pack" && positive3(reward.value) && positive3(reward.count) && reward.count <= 10 && typeof reward.tradable === "boolean";
   }
   function facts(contract, policy, now) {
-    if (!nonnegative2(now)) return fail13("FC27_ATTEMPT_TIME_UNVERIFIED");
+    if (!nonnegative3(now)) return fail13("FC27_ATTEMPT_TIME_UNVERIFIED");
     const context = createSeasonContext(contract?.context);
-    if (context.season !== "27" || contract.schema !== 1 || contract.source !== "fresh-dao" || !nonnegative2(contract.observedAt) || now < contract.observedAt || now - contract.observedAt > lifetime || !scopeMatches(context, contract.challenge?.context) || !scopeMatches(context, policy?.context)) {
+    if (context.season !== "27" || contract.schema !== 1 || contract.source !== "fresh-dao" || !nonnegative3(contract.observedAt) || now < contract.observedAt || now - contract.observedAt > lifetime || !scopeMatches(context, contract.challenge?.context) || !scopeMatches(context, policy?.context)) {
       return fail13("FC27_ATTEMPT_CONTEXT_UNVERIFIED");
     }
     const set = pick(contract.set, [
@@ -4440,11 +4821,11 @@
       "startTime",
       "endTime"
     ]);
-    if (!positive2(set.id) || set.id !== contract.challenge.setId || set.challengesCount !== 1 || set.challengesCompletedCount !== 0 || typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key2) => !nonnegative2(set[key2])) || !["NON_REPEATABLE", "UNLIMITED", "LIMITED"].includes(set.repeatabilityMode) || set.repeatabilityMode === "LIMITED" && set.timesCompleted >= set.repeats || set.repeatabilityMode === "NON_REPEATABLE" && set.timesCompleted !== 0 || set.startTime * 1e3 > now || set.endTime !== 0 && set.endTime * 1e3 <= now) return fail13("FC27_ATTEMPT_SET_UNVERIFIED");
+    if (!positive3(set.id) || set.id !== contract.challenge.setId || set.challengesCount !== 1 || set.challengesCompletedCount !== 0 || typeof set.name !== "string" || set.name.length > 160 || /[\u0000-\u001f]/.test(set.name) || ["timesCompleted", "repeats", "startTime", "endTime"].some((key2) => !nonnegative3(set[key2])) || !["NON_REPEATABLE", "UNLIMITED", "LIMITED"].includes(set.repeatabilityMode) || set.repeatabilityMode === "LIMITED" && set.timesCompleted >= set.repeats || set.repeatabilityMode === "NON_REPEATABLE" && set.timesCompleted !== 0 || set.startTime * 1e3 > now || set.endTime !== 0 && set.endTime * 1e3 <= now) return fail13("FC27_ATTEMPT_SET_UNVERIFIED");
     if (!Array.isArray(contract.rewards) || contract.rewards.length !== 1) return fail13("FC27_ATTEMPT_REWARD_UNVERIFIED");
     const reward = pick(contract.rewards[0], ["scope", "type", "value", "count", "tradable"]);
     if (!validReward(reward)) return fail13("FC27_ATTEMPT_REWARD_UNVERIFIED");
-    if (!positive2(policy.maxRating) || policy.maxRating > 83 || typeof policy.onlyUntradeable !== "boolean" || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || !Array.isArray(contract.challenge.requirements) || contract.challenge.requirements.length > 16 || !Array.isArray(contract.challenge.brickIndices) || contract.challenge.brickIndices.length > 11) return fail13("FC27_ATTEMPT_POLICY_UNVERIFIED");
+    if (!positive3(policy.maxRating) || policy.maxRating > 83 || typeof policy.onlyUntradeable !== "boolean" || !Array.isArray(policy.excludedLeagueIds) || policy.excludedLeagueIds.length > 200 || !Array.isArray(contract.challenge.requirements) || contract.challenge.requirements.length > 16 || !Array.isArray(contract.challenge.brickIndices) || contract.challenge.brickIndices.length > 11) return fail13("FC27_ATTEMPT_POLICY_UNVERIFIED");
     return clone({
       context,
       set,
@@ -4680,7 +5061,7 @@
           preSaveValidators: [currentInputs],
           saveSquad: async () => {
             baseline = await bounded(() => adapter.readRewardBaseline(plan));
-            if (baseline?.fresh !== true || !scopeMatches(baseline.context, plan.context) || baseline.packId !== plan.rewards[0].value || !nonnegative2(baseline.count)) return fail13("FC27_REWARD_BASELINE_UNVERIFIED");
+            if (baseline?.fresh !== true || !scopeMatches(baseline.context, plan.context) || baseline.packId !== plan.rewards[0].value || !nonnegative3(baseline.count)) return fail13("FC27_REWARD_BASELINE_UNVERIFIED");
             record.rewardBaselineCount = baseline.count;
             await persist("save-pending");
             await currentInputs();
@@ -4763,353 +5144,6 @@
       }
     }
     return Object.freeze(api);
-  }
-
-  // src/fc27/sbc-requirements.js
-  var FC27_SBC_SCOPE = Object.freeze({ GREATER: 0, LOWER: 1, EXACT: 2 });
-  var FC27_SBC_KEY = Object.freeze({
-    QUALITY: 3,
-    SAME_NATION: 4,
-    SAME_LEAGUE: 5,
-    SAME_CLUB: 6,
-    DISTINCT_NATIONS: 7,
-    DISTINCT_LEAGUES: 8,
-    DISTINCT_CLUBS: 9,
-    NATION_ID: 10,
-    LEAGUE_ID: 11,
-    CLUB_ID: 12,
-    RARE: 18,
-    TEAM_RATING: 19,
-    RARITY_GROUP: 25,
-    MIN_OVR: 26,
-    EXACT_OVR: 27,
-    MAX_OVR: 28,
-    LEVEL: 17,
-    CHEMISTRY: 35
-  });
-  var qualityBounds = Object.freeze({
-    1: Object.freeze([1, 64]),
-    2: Object.freeze([65, 74]),
-    3: Object.freeze([75, 99])
-  });
-  var integer8 = (value) => Number.isSafeInteger(value);
-  var nonnegative3 = (value) => integer8(value) && value >= 0;
-  var positive3 = (value) => integer8(value) && value > 0;
-  var valuesOf = (pair) => Array.isArray(pair?.values) ? pair.values.filter(integer8) : [];
-  var firstPair = (rule) => Array.isArray(rule?.pairs) && rule.pairs.length === 1 ? rule.pairs[0] : null;
-  function normalizedScope(scope2) {
-    return [0, 1, 2].includes(scope2) ? scope2 : null;
-  }
-  var countMode = (scope2) => scope2 === 0 ? "min" : scope2 === 1 ? "max" : "exact";
-  function relationKind(key2) {
-    return {
-      4: "same-nation",
-      5: "same-league",
-      6: "same-club",
-      7: "distinct-nations",
-      8: "distinct-leagues",
-      9: "distinct-clubs"
-    }[key2] ?? null;
-  }
-  function relationRule(key2, value, scope2, required2) {
-    const kind = relationKind(key2);
-    if (!kind || !positive3(value) || normalizedScope(scope2) === null) return null;
-    const mode = scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact";
-    return { kind, value, mode, count: required2, source: { key: key2, scope: scope2, values: [value], count: -1 } };
-  }
-  function requirementSource(rule, pair, required2) {
-    return Object.freeze({
-      key: pair?.key ?? null,
-      scope: rule?.scope ?? null,
-      values: Array.isArray(pair?.values) ? [...pair.values] : [],
-      pairs: Array.isArray(rule?.pairs) ? rule.pairs.map((value) => ({
-        key: value?.key ?? null,
-        values: Array.isArray(value?.values) ? [...value.values] : []
-      })) : [],
-      count: rule?.count ?? null,
-      required: required2
-    });
-  }
-  function unsupported(rule, pair, required2, reason = "unknown-key") {
-    return {
-      kind: "unsupported",
-      key: pair?.key ?? null,
-      reason,
-      source: requirementSource(rule, pair, required2)
-    };
-  }
-  function parseFc27SbcRequirements(rawRequirements, required2) {
-    if (!Array.isArray(rawRequirements) || !rawRequirements.length || rawRequirements.length > 16 || !positive3(required2) || required2 > 11) {
-      return { status: "blocked", reason: "FC27_REQUIREMENTS_UNVERIFIED", rules: [], unsupported: [] };
-    }
-    const rules = [];
-    const unsupportedRules = [];
-    for (const raw of rawRequirements) {
-      const pair = firstPair(raw);
-      const scope2 = normalizedScope(raw?.scope);
-      const values8 = valuesOf(pair);
-      const source = requirementSource(raw, pair, required2);
-      let parsed = null;
-      if (!pair || !integer8(pair.key) || scope2 === null || values8.length !== (pair.values?.length ?? -1) || !values8.length || values8.length > 32 || new Set(values8).size !== values8.length) {
-        parsed = unsupported(raw, pair, required2, "shape");
-      } else {
-        const key2 = pair.key;
-        const count3 = nonnegative3(raw.count) && raw.count <= required2 ? raw.count : null;
-        const mode = countMode(scope2);
-        const value = values8[0];
-        switch (key2) {
-          case FC27_SBC_KEY.QUALITY: {
-            const bounds = qualityBounds[value];
-            if (!bounds || values8.length !== 1 || raw.count !== -1) parsed = unsupported(raw, pair, required2, "quality-shape");
-            else if (scope2 === FC27_SBC_SCOPE.EXACT) {
-              parsed = { kind: "all-quality", quality: value, minRating: bounds[0], maxRating: bounds[1], count: required2, source };
-            } else if (scope2 === FC27_SBC_SCOPE.GREATER) {
-              parsed = { kind: "min-quality", quality: value, count: required2, minRating: bounds[0], source };
-            } else {
-              parsed = { kind: "max-quality", quality: value, count: required2, maxRating: bounds[1], source };
-            }
-            break;
-          }
-          case FC27_SBC_KEY.LEVEL:
-            parsed = count3 !== null && values8.every((v) => qualityBounds[v]) ? { kind: "quality-count", qualities: [...values8], mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact", count: count3, source } : unsupported(raw, pair, required2, "quality-count-shape");
-            break;
-          case FC27_SBC_KEY.MIN_OVR:
-          case FC27_SBC_KEY.EXACT_OVR:
-          case FC27_SBC_KEY.MAX_OVR:
-            parsed = count3 !== null && values8.length === 1 && value >= 1 && value <= 99 ? { kind: key2 === 26 ? "player-min-overall" : key2 === 27 ? "player-exact-overall" : "player-max-overall", value, count: count3, mode, source } : unsupported(raw, pair, required2, "overall-shape");
-            break;
-          case FC27_SBC_KEY.NATION_ID:
-          case FC27_SBC_KEY.LEAGUE_ID:
-          case FC27_SBC_KEY.CLUB_ID:
-            parsed = count3 !== null && values8.every(positive3) ? {
-              kind: key2 === 10 ? "from-nations" : key2 === 11 ? "from-leagues" : "from-clubs",
-              ids: [...values8],
-              count: count3,
-              mode: scope2 === FC27_SBC_SCOPE.GREATER ? "min" : scope2 === FC27_SBC_SCOPE.LOWER ? "max" : "exact",
-              source
-            } : unsupported(raw, pair, required2, "identity-shape");
-            break;
-          case FC27_SBC_KEY.RARE:
-            parsed = count3 !== null && values8.length === 1 && value === 1 ? { kind: "rare", count: count3, mode, source } : unsupported(raw, pair, required2, "rare-shape");
-            break;
-          case FC27_SBC_KEY.RARITY_GROUP:
-            parsed = count3 !== null && values8.length === 1 && positive3(value) ? { kind: "rarity-group", groupId: value, count: count3, mode, source } : unsupported(raw, pair, required2, "group-shape");
-            break;
-          case FC27_SBC_KEY.TEAM_RATING:
-            parsed = raw.count === -1 && values8.length === 1 && value >= 1 && value <= 99 ? { kind: `${mode}-team-rating`, value, source } : unsupported(raw, pair, required2, "team-rating-shape");
-            break;
-          case FC27_SBC_KEY.CHEMISTRY:
-            parsed = raw.count === -1 && values8.length === 1 && value >= 0 && value <= 33 ? { kind: `${mode}-chemistry`, value, source } : unsupported(raw, pair, required2, "chemistry-shape");
-            break;
-          default: {
-            const relation = raw.count === -1 && values8.length === 1 && value <= required2 ? relationRule(key2, value, scope2, required2) : null;
-            parsed = relation ? { ...relation, source } : unsupported(raw, pair, required2);
-          }
-        }
-      }
-      rules.push(parsed);
-      if (parsed.kind === "unsupported") unsupportedRules.push(parsed);
-    }
-    return { status: unsupportedRules.length ? "unsupported" : "observed", reason: unsupportedRules.length ? "FC27_REQUIREMENT_UNSUPPORTED" : "FC27_REQUIREMENTS_PARSED", rules, unsupported: unsupportedRules };
-  }
-  function itemValue(item2, keys2) {
-    for (const key2 of keys2) {
-      const value = item2?.[key2];
-      if (integer8(value)) return value;
-    }
-    return null;
-  }
-  function itemQuality(item2) {
-    if ([1, 2, 3].includes(item2?.quality)) return item2.quality;
-    const rating = itemValue(item2, ["rating", "overall", "ovr"]);
-    if (!integer8(rating) || rating < 1 || rating > 99) return null;
-    return rating <= 64 ? 1 : rating <= 74 ? 2 : 3;
-  }
-  function relationResult(values8, rule) {
-    if (values8.some((value) => value === null)) return null;
-    const count3 = /* @__PURE__ */ new Map();
-    for (const value of values8) if (value !== null) count3.set(value, (count3.get(value) ?? 0) + 1);
-    const observed = rule.kind.startsWith("distinct-") ? count3.size : Math.max(0, ...count3.values());
-    if (rule.mode === "min") return observed >= rule.value;
-    if (rule.mode === "max") return observed <= rule.value;
-    return observed === rule.value;
-  }
-  function compareCount(actual, expected, mode) {
-    return mode === "min" ? actual >= expected : mode === "max" ? actual <= expected : actual === expected;
-  }
-  function createFc27ClubResolver(clubLinks) {
-    if (clubLinks?.schema !== 1 || clubLinks.complete !== true || !Array.isArray(clubLinks.links) || clubLinks.links.length > 2e4 || clubLinks.links.some((pair) => !Array.isArray(pair) || pair.length !== 2 || !pair.every(positive3))) return null;
-    const links = new Map(clubLinks.links);
-    if (links.size !== clubLinks.links.length) return null;
-    return (id16) => positive3(id16) ? links.get(id16) ?? id16 : null;
-  }
-  function matchFc27SbcItemRule(rule, item2, groupMatcher, clubResolver) {
-    if (![
-      "all-quality",
-      "min-quality",
-      "max-quality",
-      "quality-count",
-      "player-min-overall",
-      "player-exact-overall",
-      "player-max-overall",
-      "from-nations",
-      "from-leagues",
-      "from-clubs",
-      "rare",
-      "rarity-group"
-    ].includes(rule?.kind)) return null;
-    return ruleResult({ ...rule, count: 1, mode: "min" }, [item2], { groupMatcher, clubResolver });
-  }
-  function ruleResult(rule, squad, options) {
-    const players = squad;
-    const ids2 = (keys2) => players.map((item2) => {
-      const value = itemValue(item2, keys2);
-      return positive3(value) ? value : null;
-    });
-    const countMatches = (values8, predicate2) => values8.some((value) => value === null) ? null : compareCount(values8.filter(predicate2).length, rule.count, rule.mode ?? "min");
-    const clubIds = () => typeof options.clubResolver === "function" ? ids2(["teamId", "clubId"]).map(options.clubResolver) : players.map(() => null);
-    switch (rule.kind) {
-      case "all-quality":
-        return countMatches(players.map(itemQuality), (value) => value === rule.quality);
-      case "min-quality":
-        return countMatches(players.map(itemQuality), (value) => value >= rule.quality);
-      case "quality-count": {
-        const qualities = players.map(itemQuality);
-        if (qualities.some((value) => value === null)) return null;
-        const matches2 = qualities.filter((quality3) => {
-          return rule.qualities.includes(quality3);
-        }).length;
-        return compareCount(matches2, rule.count, rule.mode);
-      }
-      case "max-quality":
-        return countMatches(players.map(itemQuality), (value) => value <= rule.quality);
-      case "player-min-overall":
-      case "player-exact-overall":
-      case "player-max-overall":
-        return countMatches(players.map((item2) => {
-          const rating = itemValue(item2, ["rating", "overall", "ovr"]);
-          return integer8(rating) && rating >= 1 && rating <= 99 ? rating : null;
-        }), (value) => rule.kind === "player-min-overall" ? value >= rule.value : rule.kind === "player-max-overall" ? value <= rule.value : value === rule.value);
-      case "from-nations":
-        return countMatches(ids2(["nationId", "nation"]), (value) => rule.ids.includes(value));
-      case "from-leagues":
-        return countMatches(ids2(["leagueId", "league"]), (value) => rule.ids.includes(value));
-      case "from-clubs": {
-        if (typeof options.clubResolver !== "function") return null;
-        const allowed = /* @__PURE__ */ new Set([...rule.ids, ...rule.ids.map(options.clubResolver)]);
-        return countMatches(clubIds(), (value) => allowed.has(value));
-      }
-      case "rare":
-        return countMatches(players.map((item2) => {
-          const rarity = itemValue(item2, ["rarity", "rareflag"]);
-          return nonnegative3(rarity) ? rarity === 1 : null;
-        }), (value) => value === true);
-      case "rarity-group":
-        return countMatches(players.map((item2) => {
-          if (typeof options.groupMatcher === "function") {
-            try {
-              const result = options.groupMatcher(item2, rule.groupId);
-              return typeof result === "boolean" ? result : null;
-            } catch {
-              return null;
-            }
-          }
-          return Array.isArray(item2?.groups) && item2.groups.every(nonnegative3) ? item2.groups.includes(rule.groupId) : null;
-        }), (value) => value === true);
-      case "min-team-rating":
-      case "max-team-rating":
-      case "exact-team-rating":
-        return integer8(options.teamRating) && options.teamRating >= 0 && options.teamRating <= 99 ? compareCount(options.teamRating, rule.value, rule.kind.split("-")[0]) : null;
-      case "min-chemistry":
-      case "max-chemistry":
-      case "exact-chemistry":
-        return integer8(options.chemistry) && options.chemistry >= 0 && options.chemistry <= 33 ? compareCount(options.chemistry, rule.value, rule.kind.split("-")[0]) : null;
-      case "same-nation":
-        return relationResult(ids2(["nationId", "nation"]), rule);
-      case "same-league":
-        return relationResult(ids2(["leagueId", "league"]), rule);
-      case "same-club":
-        return relationResult(clubIds(), rule);
-      case "distinct-nations":
-        return relationResult(ids2(["nationId", "nation"]), rule);
-      case "distinct-leagues":
-        return relationResult(ids2(["leagueId", "league"]), rule);
-      case "distinct-clubs":
-        return relationResult(clubIds(), rule);
-      default:
-        return null;
-    }
-  }
-  function matchFc27SbcRequirements({ requirements, squad, chemistry, teamRating, groupMatcher, clubLinks } = {}) {
-    if (!Array.isArray(requirements) || !requirements.length || !Array.isArray(squad) || !squad.length || squad.length > 11 || Array.from(squad).some((item2) => !item2 || typeof item2 !== "object") || requirements.some((rule) => !rule || rule.source?.required !== squad.length)) {
-      return { status: "blocked", reason: "FC27_REQUIREMENTS_UNVERIFIED", satisfied: false, failures: [] };
-    }
-    const unsupportedRules = requirements.filter((rule) => rule?.kind === "unsupported");
-    if (unsupportedRules.length) return { status: "unsupported", reason: "FC27_REQUIREMENT_UNSUPPORTED", satisfied: false, failures: unsupportedRules };
-    const options = { chemistry, teamRating, groupMatcher, clubResolver: createFc27ClubResolver(clubLinks) };
-    const failures = requirements.map((rule, index) => ({ rule, index, result: ruleResult(rule, squad, options) })).filter((entry) => entry.result !== true);
-    const unavailable = failures.filter((entry) => entry.result === null);
-    return {
-      status: unavailable.length ? "blocked" : failures.length ? "unsatisfied" : "satisfied",
-      reason: unavailable.length ? "FC27_REQUIREMENT_VALUE_UNAVAILABLE" : failures.length ? "FC27_REQUIREMENTS_NOT_MET" : null,
-      satisfied: !failures.length,
-      failures: failures.map(({ rule, index }) => ({ index, rule }))
-    };
-  }
-
-  // src/fc27/puzzle-material-policy.js
-  var DEFAULT_PUZZLE_MAX_RATING = 82;
-  function puzzleMaterialRules(rules, required2) {
-    return puzzleMaterialRuleVectors(rules, required2)[0] ?? [];
-  }
-  function puzzleMaterialRuleVectors(rules, required2) {
-    const qualityRules = rules.filter((rule) => ["all-quality", "min-quality", "max-quality", "quality-count"].includes(rule.kind));
-    const overallRules = rules.filter((rule) => ["player-min-overall", "player-max-overall"].includes(rule.kind));
-    const fullOverallRules = overallRules.filter((rule) => rule.count === required2);
-    const minimumTier = Math.max(1, ...fullOverallRules.filter((rule) => rule.kind === "player-min-overall").map((rule) => rule.value >= 75 ? 3 : rule.value >= 65 ? 2 : 1));
-    const maximumTier = Math.min(3, ...fullOverallRules.filter((rule) => rule.kind === "player-max-overall").map((rule) => rule.value < 65 ? 1 : rule.value < 75 ? 2 : 3));
-    if (!qualityRules.length && !fullOverallRules.length) return [];
-    const vectors = [];
-    for (let gold = 0; gold <= required2; gold++) {
-      for (let silver = 0; silver <= required2 - gold; silver++) {
-        const counts = [required2 - silver - gold, silver, gold];
-        if (counts.slice(0, minimumTier - 1).some((count3) => count3 > 0) || counts.slice(maximumTier).some((count3) => count3 > 0)) continue;
-        const representativeRating = [64, 65, 75];
-        const squad = counts.flatMap((count3, index) => Array.from({ length: count3 }, () => ({
-          quality: index + 1,
-          rating: representativeRating[index]
-        })));
-        if (matchFc27SbcRequirements({ requirements: [...qualityRules, ...fullOverallRules], squad }).status !== "satisfied") continue;
-        vectors.push(counts.map((count3, index) => ({
-          kind: "quality-count",
-          qualities: [index + 1],
-          mode: "exact",
-          count: count3,
-          source: { policy: "minimum-quality-fillers", quality: index + 1, required: required2 }
-        })));
-      }
-    }
-    return vectors;
-  }
-  function puzzleHasQualityAlternative(rules, required2, candidates, preferred) {
-    if (!preferred.length) return false;
-    const counts = [1, 2, 3].map((quality3) => new Set(candidates.filter((item2) => (item2.rating < 65 ? 1 : item2.rating < 75 ? 2 : 3) === quality3).map((item2) => item2.definitionId)).size);
-    const native = rules.filter((rule) => [
-      "all-quality",
-      "min-quality",
-      "max-quality",
-      "quality-count",
-      "player-min-overall",
-      "player-max-overall"
-    ].includes(rule.kind));
-    for (let gold = 0; gold <= Math.min(required2, counts[2]); gold++) for (let silver = 0; silver <= Math.min(required2 - gold, counts[1]); silver++) {
-      const vector = [required2 - gold - silver, silver, gold];
-      if (vector[0] > counts[0] || vector.every((count3, index) => count3 === preferred[index].count)) continue;
-      const representativeRating = [64, 65, 75];
-      const squad = vector.flatMap((count3, index) => Array.from({ length: count3 }, () => ({ quality: index + 1, rating: representativeRating[index] })));
-      if (matchFc27SbcRequirements({ requirements: native, squad }).status === "satisfied") return true;
-    }
-    return false;
   }
 
   // src/fc27/puzzle-evaluator.js
@@ -5823,6 +5857,7 @@
     "from-leagues",
     "from-clubs",
     "rare",
+    "totw",
     "rarity-group"
   ]);
   var relationField = (rule) => rule.kind.endsWith("nation") || rule.kind.endsWith("nations") ? "nationId" : rule.kind.endsWith("league") || rule.kind.endsWith("leagues") ? "leagueId" : "teamId";
@@ -5891,13 +5926,17 @@
   } = {}) {
     if (!integer10(maxNodes, 1, 25e4) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked2("FC27_PUZZLE_BUDGET_INVALID");
     if (challenge?.mechanism !== "traditional-puzzle") return blocked2("CHALLENGE_UNVERIFIED");
-    const required2 = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
-    const pool = collectSafeTraditionalCandidates({ context, inventory, policy, challenge: {
-      ...challenge,
-      mechanism: "traditional",
-      requirements: [{ kind: "player-count", count: required2 }]
-    } });
+    const pool = collectSafePuzzleCandidates({ context, inventory, policy, challenge });
     if (pool.status !== "candidates") return pool;
+    const parsed = parseFc27SbcRequirements(challenge.rawRequirements, pool.required);
+    if (parsed.status === "observed" && requiresFc27SingleTotw(parsed.rules)) {
+      if (!isFc27TotwRatingOnly(parsed.rules)) return blocked2("FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED");
+      if (!pool.candidates.some(isFc27TotwCard)) return blocked2("FC27_PUZZLE_TOTW_REQUIRED", {
+        safeCandidates: pool.candidates.length,
+        excluded: pool.excluded,
+        excludedByReason: pool.excludedByReason
+      });
+    }
     const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
     return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress, searchBudget });
   }
@@ -6189,7 +6228,7 @@
     if (parsed.rules.some((rule) => ["from-clubs", "same-club", "distinct-clubs"].includes(rule.kind)) && !resolveClub) {
       return blocked2("FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE");
     }
-    const itemRules = [...parsed.rules, ...materialRules].filter((rule) => itemKinds.has(rule.kind));
+    const itemRules = [...parsed.rules, ...materialRules].filter((rule) => itemKinds.has(rule.kind)).map((rule) => rule.kind === "totw" ? { ...rule, mode: "exact" } : rule);
     if (!isFc27PuzzleSearchHintValid(searchHint, pool.candidates, clubLinks)) {
       return blocked2("FC27_PUZZLE_STRATEGY_INVALID");
     }
@@ -6271,6 +6310,10 @@
     }
     if ((forced.size || mixedClubRequirements) && parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"))) {
       candidates = candidates.slice().sort((a, b) => Number(forced.has(b)) - Number(forced.has(a)) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0) || (groupFirst ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || compulsoryScores.get(b) - compulsoryScores.get(a) || (groupFirst ? spineAffinity(b) - spineAffinity(a) : 0) || (["nation", "league", "club"].includes(searchHint?.strategy) ? Number(hintGroup(searchHint, b, resolveClub) === searchHint.groupId) - Number(hintGroup(searchHint, a, resolveClub) === searchHint.groupId) : 0) || Number(positionFit(b)) - Number(positionFit(a)) || (positionScarcity ? positionScarcity.get(b) - positionScarcity.get(a) : 0) || (traversalScores ? traversalScores.get(b) - traversalScores.get(a) : 0) || a.rating - b.rating || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
+    }
+    if (!procurement && searchHint === null && isFc27TotwRatingOnly(parsed.rules) && parsed.rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind))) {
+      const target = Math.max(...parsed.rules.filter((rule) => rule.kind === "min-team-rating").map((rule) => rule.value));
+      candidates = candidates.slice().sort((a, b) => Number(isFc27TotwCard(b)) - Number(isFc27TotwCard(a)) || Number(a.rating < target) - Number(b.rating < target) || Math.abs(a.rating - target) - Math.abs(b.rating - target) || (policy.storageFirst ? Number(b.pile === "storage") - Number(a.pile === "storage") : 0));
     }
     const metrics = {
       safeCandidates: candidates.length,
@@ -6406,6 +6449,7 @@
     const needsFacts = ruleNeedsTeamFacts(parsed.rules);
     const ratingRules = parsed.rules.filter((rule) => ["min-team-rating", "max-team-rating", "exact-team-rating"].includes(rule.kind));
     const searchPositions = parsed.rules.some((rule) => rule.kind.endsWith("-chemistry"));
+    const exactEvaluator = isFc27TotwRatingOnly(parsed.rules) ? (squad) => evaluateFc27PuzzleRating({ squad: squad.filter(Boolean), rating: chemistry?.rating }) : evaluateSquad;
     const minimumChemistry = Math.max(0, ...parsed.rules.filter((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind)).map((rule) => rule.value));
     const partialChemistry = minimumChemistry > 0 ? createFc27PuzzlePartialChemistryBound({
       candidates,
@@ -6504,7 +6548,7 @@
             chosen,
             slots,
             formation: { ...challenge.formation, slotCount: challenge.slotCount },
-            evaluateSquad,
+            evaluateSquad: exactEvaluator,
             takeNode: placementNode,
             validate: validate3,
             searchPositions
@@ -6630,7 +6674,7 @@
     28: "PLAYER_MAX_OVR",
     35: "CHEMISTRY_POINTS"
   };
-  function validateFc27PuzzleSelection(selected, freshItems, plannedItems) {
+  function validateFc27PuzzleSelection(selected, freshItems, plannedItems, challenge = null) {
     const failed2 = (mismatch2 = "shape") => ({
       status: "blocked",
       reason: "FC27_EXACT_ITEMS_CHANGED",
@@ -6666,17 +6710,22 @@
     const expected = new Map(plannedItems.map((item2) => [item2?.id, item2]));
     const byId = new Map(freshItems.map((item2) => [item2?.id, item2]));
     if (byId.size !== freshItems.length || expected.size !== selected.length || freshItems.some((item2) => !validId14(item2?.id) || !validId14(item2?.definitionId) || !selected.some((ref) => ref.definitionId === item2.definitionId))) return failed2();
+    const parsed = parseFc27SbcRequirements(challenge?.rawRequirements, selected.length);
+    const totwRequired = challenge?.mechanism === "traditional-puzzle" && parsed.status === "observed" && isFc27TotwRatingOnly(parsed.rules);
     const seenIds = /* @__PURE__ */ new Set();
     const seenDefinitions = /* @__PURE__ */ new Set();
+    let totwCount = 0;
     for (const plan of selected) {
       const current2 = byId.get(plan?.id);
       const before = expected.get(plan?.id);
-      if (!validId14(plan?.id) || !validId14(plan?.definitionId) || !["club", "storage"].includes(plan.pile) || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields5.some((key2) => !Object.hasOwn(current2, key2) || !Object.hasOwn(before, key2) || JSON.stringify(current2[key2]) !== JSON.stringify(before[key2])) || current2.type !== "player" || current2.pile !== plan.pile || current2.rating !== plan.rating || current2.special !== false || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || typeof current2.tradeable !== "boolean") {
+      if (!validId14(plan?.id) || !validId14(plan?.definitionId) || !["club", "storage"].includes(plan.pile) || seenIds.has(plan.id) || seenDefinitions.has(plan.definitionId) || !current2 || !before || current2.id !== plan.id || current2.definitionId !== plan.definitionId || fields5.some((key2) => !Object.hasOwn(current2, key2) || !Object.hasOwn(before, key2) || JSON.stringify(current2[key2]) !== JSON.stringify(before[key2])) || current2.type !== "player" || current2.pile !== plan.pile || current2.rating !== plan.rating || current2.special !== false && !(totwRequired && isFc27TotwCard(current2)) || current2.evolution !== false || current2.cosmetic !== false || current2.concept !== false || current2.academyEnrolled !== false || current2.activeTrade !== false || current2.limitedUse !== false || current2.loans !== -1 || typeof current2.tradeable !== "boolean") {
         return failed2("identity");
       }
       seenIds.add(plan.id);
       seenDefinitions.add(plan.definitionId);
+      if (isFc27TotwCard(current2)) totwCount++;
     }
+    if (totwRequired && totwCount !== 1) return failed2("material");
     return {
       status: "verified",
       selectedCount: selected.length,
@@ -6825,15 +6874,6 @@
       const storage = readFc27CachedPile(root, "storage");
       const merged = [...cached.items, ...storage.items].filter((item2) => !excludedItems.has(item2.id) && !excludedDefinitions.has(item2.definitionId));
       if (new Set(merged.map((item2) => item2.id)).size !== merged.length) return blocked3("FC27_INVENTORY_IDENTITY_CONFLICT");
-      const inventory = {
-        schema: 1,
-        context,
-        kind: "normalized-inventory",
-        status: "provisional",
-        scope: storage.status === "unavailable" ? "club-only" : "club-and-storage",
-        complete: false,
-        items: merged.map((item2) => ({ ...item2, protected: item2.special !== false || item2.evolution !== false || item2.cosmetic !== false }))
-      };
       const challenge = {
         schema: 1,
         context,
@@ -6850,6 +6890,15 @@
       const parsed = parseFc27SbcRequirements(observed.requirements, layout.requiredPlayerCount);
       if (parsed.status === "unsupported") return blocked3("FC27_REQUIREMENT_UNSUPPORTED", { unsupported: parsed.unsupported });
       if (parsed.status !== "observed") return blocked3(parsed.reason);
+      const inventory = {
+        schema: 1,
+        context,
+        kind: "normalized-inventory",
+        status: "provisional",
+        scope: storage.status === "unavailable" ? "club-only" : "club-and-storage",
+        complete: false,
+        items: merged.map(projectFc27PuzzleIntrinsicProtection(challenge))
+      };
       const clubLinks = readFc27PuzzleClubLinks(root);
       const needsTeamFacts = parsed.rules.some((rule) => [
         "min-team-rating",
@@ -7004,15 +7053,18 @@
       }
       squad[ref.slot] = { ...project(item2), slot: ref.slot };
     }
-    const pool = collectSafeTraditionalCandidates({
+    const pool = collectSafePuzzleCandidates({
       context,
       policy,
-      challenge: { ...challenge, mechanism: "traditional", requirements: [{ kind: "player-count", count: required2 }] },
+      challenge,
       inventory: { schema: 1, context, kind: "normalized-inventory", status: "provisional", items: squad.filter(Boolean) }
     });
     if (pool.status !== "candidates" || pool.candidates.length !== required2) return fail15("FC27_PUZZLE_FILL_MATERIAL_PROTECTED");
     const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required2);
     if (parsed.status !== "observed") return fail15(parsed.reason);
+    if (requiresFc27SingleTotw(parsed.rules) && squad.filter(isFc27TotwCard).length !== 1) {
+      return fail15("FC27_PUZZLE_FILL_MATERIAL_PROTECTED");
+    }
     const needsFacts = parsed.rules.some((rule) => [
       "min-team-rating",
       "max-team-rating",
@@ -7021,8 +7073,9 @@
       "max-chemistry",
       "exact-chemistry"
     ].includes(rule.kind));
-    const facts2 = needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation, chemistry, rating: chemistry?.rating }) : { status: "observed", teamRating: null, chemistry: null };
-    if (needsFacts && (facts2.status !== "observed" || !Number.isInteger(facts2.teamRating) || facts2.teamRating < 0 || !Number.isInteger(facts2.chemistry) || facts2.chemistry < 0 || facts2.chemistry > 33)) {
+    const ratingOnly = isFc27TotwRatingOnly(parsed.rules);
+    const facts2 = ratingOnly ? { ...evaluateFc27PuzzleRating({ squad: squad.filter(Boolean), rating: chemistry?.rating }), chemistry: null } : needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation, chemistry, rating: chemistry?.rating }) : { status: "observed", teamRating: null, chemistry: null };
+    if (needsFacts && (facts2.status !== "observed" || !Number.isInteger(facts2.teamRating) || facts2.teamRating < 0 || !ratingOnly && (!Number.isInteger(facts2.chemistry) || facts2.chemistry < 0 || facts2.chemistry > 33))) {
       return fail15("FC27_PUZZLE_FILL_FACTS_UNAVAILABLE");
     }
     const validation = matchFc27SbcRequirements({
@@ -7142,7 +7195,7 @@
           fresh.push(...rows.filter((item2) => storageSelected.some((ref) => ref.id === item2.id)));
         }
         if (signature3() !== before) return stop6("FC27_RUNNER_INPUTS_CHANGED");
-        const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems);
+        const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems, inputs.challenge);
         if (exactValidation.status !== "verified") return stop6(exactValidation.reason);
         const fillPlan = prepareFc27PuzzleFillPlan(inputs, plan);
         const fillPreflight = fillPlan.status === "prepared" ? validateFc27PuzzleFillPlan(fillPlan, inputs, fresh) : fillPlan;
@@ -14594,6 +14647,10 @@
           unchanged();
         } });
         privateData = { inputs, preview };
+        if (requiresFc27SingleTotw(parseFc27SbcRequirements(
+          inputs.challenge.rawRequirements,
+          inputs.challenge.slotCount - inputs.challenge.brickIndices.length
+        ).rules)) return preview;
         const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview" && typeof publicPrices2?.load === "function";
         if (inputs.squadEmpty === true && (compareOwnedCost || [
           "SAFE_MATERIAL_SHORTAGE",
@@ -31803,6 +31860,8 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (result?.reason === "FC27_PUZZLE_SERVER_SQUAD_CHANGED") return "\u89E3\u9898\u671F\u95F4\u670D\u52A1\u5668\u9635\u5BB9\u53D1\u751F\u53D8\u5316\uFF0C\u672C\u6B21\u672A\u8986\u76D6\uFF1B\u8BF7\u6838\u5BF9\u5F53\u524D\u9635\u5BB9\u540E\u518D\u8BD5\u3002";
     if (result?.reason === "FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED") return "\u672C\u6B21\u670D\u52A1\u5668\u9635\u5BB9\u6838\u5BF9\u5DF2\u5931\u6548\uFF0C\u672A\u4FDD\u5B58\uFF1B\u8BF7\u91CD\u65B0\u70B9\u51FB\u89E3\u9898\u586B\u5145\u3002";
     if (result?.reason === "FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED") return "\u8BE5\u9635\u5BB9\u672A\u901A\u8FC7\u9009\u6750\u590D\u6838\uFF0C\u8BF7\u91CD\u65B0\u751F\u6210\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u66FF\u6362\u53D7\u4FDD\u62A4\u5361\u3002";
+    if (result?.reason === "FC27_PUZZLE_TOTW_REQUIRED") return "\u672C\u9898\u9700\u8981 1 \u5F20\u5468\u9ED1\uFF08TOTW\uFF09\uFF1B\u4FF1\u4E50\u90E8\u548C SBC \u4ED3\u5E93\u4E2D\u6CA1\u6709\u901A\u8FC7\u5F53\u524D\u4FDD\u62A4\u8BBE\u7F6E\u7684\u5468\u9ED1\u5361\u3002\u672C\u6B21\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
+    if (result?.reason === "FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED") return "\u5F53\u524D\u5468\u9ED1\u89E3\u9898\u53EA\u652F\u6301\u65E0\u5316\u5B66\u8981\u6C42\u7684\u8BC4\u5206\u6311\u6218\u3002\u672C\u6B21\u672A\u4E70\u5361\u6216\u4FEE\u6539\u9635\u5BB9\u3002";
     if (result?.reason === "FC27_BUY_REFERENCE_PRICE_EXPIRED") return "\u8865\u5361\u53C2\u8003\u62A5\u4EF7\u5728\u89C4\u5212\u7ED3\u675F\u524D\u8FC7\u671F\uFF1B\u672C\u6B21\u6CA1\u6709\u53EF\u7528\u8865\u5361\u65B9\u6848\uFF0C\u8BF7\u518D\u6B21\u70B9\u51FB\u89E3\u9898\u4EE5\u5237\u65B0\u62A5\u4EF7\u5E76\u91CD\u65B0\u89C4\u5212\u3002";
     if (shortageReasons.includes(result?.reason)) {
       const composition = result.policy?.materialComposition?.filter((rule) => rule.count > 0).map((rule) => `${rule.count} ${{ 1: "\u94DC", 2: "\u94F6", 3: "\u91D1" }[rule.quality] ?? ""}`).join("\uFF0B");
@@ -53237,7 +53296,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.119" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.120" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -53652,8 +53711,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.119"}`,
-    version: "27.0.119",
+    title: `FC Automation Tool ${"27.0.120"}`,
+    version: "27.0.120",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,
