@@ -879,7 +879,8 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
 // In this challenge shape only the rating multiset matters. Of the normal
 // cards at the same rating, the cheapest N distinct versions dominate every
 // other N-card selection. Keep an owned TOTW and enumerate counts, not IDs.
-function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, walletLimit, maxPurchases, maxNodes, onProgress, priceSource }) {
+function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, walletLimit, maxPurchases, maxNodes, onProgress, priceSource,
+  ownedValues = null }) {
   const rating = input.chemistry?.rating, count = required(input);
   if (!rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))
       || typeof rating?.floatCalculationEnabled !== 'boolean') return stop('FC27_PUZZLE_RATING_CONFIG_UNAVAILABLE');
@@ -897,7 +898,7 @@ function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, wal
   }
   for (const card of market) if (!unique.has(card.definitionId)) unique.set(card.definitionId, card);
   for (const definitionId of specialDefinitions) unique.delete(definitionId);
-  const costOf = card => card.catalogRef ? prices.get(card.definitionId) : 0;
+  const costOf = card => ownedValues ? ownedValues.get(card.definitionId) : card.catalogRef ? prices.get(card.definitionId) : 0;
   const needed = count - 1, grouped = new Map();
   for (const card of unique.values()) {
     const group = grouped.get(card.rating) ?? [];
@@ -941,7 +942,7 @@ function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, wal
       .reduce((bonus, ovr) => bonus + Math.max(0, ovr - lowMean), 0);
     if (highSum + highBonus + Number(rating.floatCalculationEnabled) < target * 11) return;
     if (!left) {
-      if (!purchased || !take('evaluations')) return;
+      if ((!purchased && !ownedValues) || !take('evaluations')) return;
       const facts = evaluateFc27PuzzleRating({ squad: chosen, rating });
       if (facts.status !== 'observed' || facts.teamRating < target) return;
       if (!best || spent < best.spent || spent === best.spent && (facts.teamRating < best.teamRating
@@ -961,7 +962,7 @@ function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, wal
   };
   for (const card of [...totws.values()].sort((a, b) => b.rating - a.rating || preferred(a, b))) {
     chosen[0] = card;
-    yield* visit(0, needed, 0, 0, card.rating);
+    yield* visit(0, needed, ownedValues ? costOf(card) : 0, 0, card.rating);
     if (truncated) break;
   }
   const metrics = { marketCandidates: market.length, nodes, truncated, searchComplete: !truncated,
@@ -975,6 +976,36 @@ function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, wal
   best.cards.forEach((card, index) => { squad[slotIds[index]] = card; });
   return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false, ...metrics,
     plans: [{ ...projectSuggestion(squad, facts, rules.length), estimatedCost: best.spent }] };
+}
+
+// Quote and optimize only the already-eligible inventory. Keeping the same
+// physical TOTW makes its cost constant and never trades a special for fodder.
+export async function refineFc27PuzzleOwnedTotwValue(input, preview, safe, prices, rules, options) {
+  const chosen = preview.selected.map(ref => safe.find(card => sameCandidateRef(card, ref)));
+  if (chosen.length !== required(input) || chosen.some(card => !card || !validValue(prices.get(card.definitionId)))) {
+    return { ...preview, materialValue: null, valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' };
+  }
+  const totws = chosen.filter(isFc27TotwCard);
+  if (totws.length !== 1) return preview;
+  const baseline = chosen.reduce((sum, card) => sum + prices.get(card.definitionId), 0);
+  const allowed = safe.filter(card => validValue(prices.get(card.definitionId)));
+  const cap = Math.max(0, Math.min(4000, preview.maxNodes - preview.nodes));
+  const search = cap > 0 ? await finishPuzzleSearchCooperatively(iterateOwnedTotwRatingCosts(input, rules, allowed, [],
+    { maxPurchases: 0, maxNodes: cap, walletLimit: baseline, ownedValues: prices, onProgress: options.onProgress }), options) : null;
+  const plan = search?.plans?.[0];
+  const baselineSum = chosen.reduce((sum, card) => sum + card.rating, 0);
+  const better = plan && (plan.estimatedCost < baseline || plan.estimatedCost === baseline
+    && (plan.teamFacts.teamRating < preview.teamFacts.teamRating || plan.teamFacts.teamRating === preview.teamFacts.teamRating
+      && plan.selectedOwned.reduce((sum, card) => sum + card.rating, 0) < baselineSum));
+  const materialValue = better ? plan.estimatedCost : baseline;
+  const selected = better ? plan.selectedOwned : preview.selected;
+  const selectedQualityCounts = { bronze: 0, silver: 0, gold: 0, unknown: 0 };
+  for (const card of selected) selectedQualityCounts[['bronze', 'silver', 'gold'][qualityRank(card.rating) - 1]]++;
+  return { ...preview, selected, selectedQualityCounts, teamFacts: better ? plan.teamFacts : preview.teamFacts,
+    initialMaterialValue: baseline, materialValue, inventoryValue: materialValue,
+    nodes: preview.nodes + (search?.nodes ?? 0),
+    search: Object.fromEntries(Object.entries(preview.search ?? {}).map(([key, value]) => [key, value + (search?.search?.[key] ?? 0)])),
+    valueReason: better ? 'FC27_PUZZLE_MATERIAL_VALUE_REFINED' : 'FC27_PUZZLE_VALUE_BASELINE_RETAINED' };
 }
 
 // When one position is empty and the other positions can already satisfy the

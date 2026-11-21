@@ -2,7 +2,7 @@ import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, sug
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
   puzzleOwnedValueCandidates, puzzleMarketValueCandidates, puzzleTotwMarketCandidates,
   refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague, findFc27PuzzlePositionScaffolds,
-  planFc27PuzzleOpenPositionQuery } from './puzzle-procurement.js';
+  planFc27PuzzleOpenPositionQuery, refineFc27PuzzleOwnedTotwValue } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
@@ -133,8 +133,7 @@ const failureDetails = (reason, value) => {
 export function createFc27PuzzleProcurementSession({ createTransport, get, set, list = null, loadRatedFodder = null,
   loadPublicPrices = null, loadCachedPrices = null, now = Date.now } = {}) {
   let busy = false;
-  const ownedValues = async (input, { assertCurrent, onProgress, preferred = [] }) => {
-    const safe = puzzleOwnedValueCandidates(input);
+  const ownedValues = async (input, { assertCurrent, onProgress, preferred = [], safe = puzzleOwnedValueCandidates(input) }) => {
     const byDefinition = new Map();
     for (const item of [...preferred.map(key => safe.find(item => item.id === key)).filter(Boolean), ...safe]) {
       if (!byDefinition.has(item.definitionId)) byDefinition.set(item.definitionId, item);
@@ -178,19 +177,31 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
     busy = true;
     try {
       assertCurrent();
+      const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, preview.required);
+      const ratedTotw = parsed.status === 'observed' && isFc27TotwRatingOnly(parsed.rules)
+        && parsed.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind));
+      const pool = ratedTotw ? collectSafePuzzleCandidates(input).candidates ?? [] : puzzleOwnedValueCandidates(input);
+      const anchor = ratedTotw ? pool.find(card => isFc27TotwCard(card) && preview.selected.some(ref =>
+        ref.id === card.id && ref.definitionId === card.definitionId && ref.rating === card.rating && ref.pile === card.pile)) : null;
+      if (ratedTotw && !anchor) return preview;
+      const safe = ratedTotw ? pool.filter(card => card === anchor
+        || (!isFc27TotwCard(card) && card.definitionId !== anchor.definitionId)) : pool;
       const valued = await ownedValues(input, { assertCurrent,
         onProgress: value => onProgress?.({ phase: 'quote-read', quoteCompleted: value.index, quoteTotal: value.total }),
-        preferred: preview.selected.map(item => item.id) });
-      const result = await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
+        preferred: preview.selected.map(item => item.id), safe });
+      const result = ratedTotw ? await refineFc27PuzzleOwnedTotwValue(input, preview, safe, valued.prices, parsed.rules, { assertCurrent,
+        onProgress: value => onProgress?.({ ...value, phase: 'owned-value-search', nodes: preview.nodes + value.nodes, maxNodes: preview.maxNodes }),
+      }) : await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
       assertCurrent();
       if (valued.approval?.rows.some(row => row.estimate !== null && row.quotes[valued.approval.policy.source].expiresAt <= now())) {
         return { ...preview, materialValue: null, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' };
       }
+      const uniqueOwnedCount = new Set(safe.map(card => card.definitionId)).size;
       return { ...result, priceSource: valued.approval?.policy.source ?? null,
         valueExpiresAt: valued.prices.size ? Math.min(...valued.approval.rows.filter(row => row.estimate !== null)
           .map(row => row.quotes[valued.approval.policy.source].expiresAt)) : null,
-        valueQuotedCount: valued.prices.size,
-        valueCoverageComplete: valued.prices.size === new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size };
+        valueCandidateCount: uniqueOwnedCount, valueQuotedCount: valued.prices.size,
+        unpricedOwnedCount: uniqueOwnedCount - valued.prices.size, valueCoverageComplete: valued.prices.size === uniqueOwnedCount };
     } catch (error) {
       assertCurrent();
       return { ...preview, materialValue: null, valueReason: safeReason(error) };

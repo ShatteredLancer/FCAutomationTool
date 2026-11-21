@@ -16,6 +16,7 @@ import observation from '../fixtures/fc27-puzzle-plan-observation.json';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as procurement from '../../src/fc27/puzzle-procurement.js';
+import { evaluateFc27PuzzleRating } from '../../src/fc27/puzzle-evaluator.js';
 
 const fsuSource = readFileSync(new URL('../../FSU_mod/【FSU】EAFC FUT WEB 增强器-26.09_mod.user.js', import.meta.url), 'utf8');
 const fsuBuyStart = fsuSource.indexOf('events.buyConceptPlayer = async');
@@ -174,6 +175,7 @@ function setRatingTotwChallenge(x, rarity) {
 it.each([true, false])('163/266 supports an explicit rating-81 plus a single owned TOTW (available=%s), with no market or submit', async available => {
   const publicPrices = { load: vi.fn() }, x = fixture({ gold: true, publicPrices });
   setRatingTotwChallenge(x, available ? 3 : 5);
+  await x.session.setPuzzlePolicy({ objective: 'additional-coins' });
   if (available) moveFixtureCardToStorage(x);
   const result = await x.fill();
   if (available) {
@@ -188,6 +190,60 @@ it.each([true, false])('163/266 supports an explicit rating-81 plus a single own
     expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
   }
   expect(publicPrices.load).not.toHaveBeenCalled();
+  expect(x.calls.some(call => /skipUserSquadValidation|transfermarket|\/defid/.test(call.url ?? ''))).toBe(false);
+});
+
+it.each(['integer', 'float', 'equal-value', 'missing-baseline', 'expired', 'cash'])('163/266 values an already-valid owned TOTW lineup (%s)', async mode => {
+  const ratings = [82, 85, 84, 84, 84, 84, 83, 82, 82, 82, 81, 79, 79, 80, 80, 80, 80, 80, 80];
+  const costs = [13750, 2800, 850, 950, 950, 900, 700, 700, 700, 700, 650, 200, 200, 500, 500, 650, 650, 650, 650];
+  const publicPrices = { load: vi.fn(async ids => {
+    const now = Date.now();
+    const result = { policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId, {
+      definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, {
+        schema: 2, source, definitionId, season: '27', platform: 'pc', price: mode === 'missing-baseline' && source === 'futgg'
+          && definitionId === 102 ? null : mode === 'equal-value' && definitionId !== 101 ? 650 : costs[definitionId - 101], fetchedAt: now,
+        sourceUpdatedAt: null, expiresAt: now + 300000, error: null }])) }])) };
+    if (mode === 'expired') vi.setSystemTime(now + 300001);
+    return result;
+  }) };
+  const x = fixture({ gold: true, publicPrices });
+  setRatingTotwChallenge(x, 3);
+  x.state.players = ratings.map((rating, i) => {
+    const id = i + 1;
+    x.state.playerFactsById[id] = { _rating: rating, _rareflag: id === 1 ? 3 : 0 };
+    return { id, resourceId: id + 100 };
+  });
+  x.state.filterClubQueries = true;
+  for (const player of x.state.players) x.root.repositories.Item.club.items._collection[player.id] = x.root.factories.Item.createItem(player);
+  // Cheap cards 112/113 must not be quoted or selected despite being attractive.
+  x.root.info.lock = [12];
+  x.root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item = { id: 13 };
+  if (mode === 'float') x.root.services.Configuration.checkFeatureEnabled = key => key === 'rating';
+  x.root.info.set.goldenrange = 85;
+  await x.session.setPuzzlePolicy({ maxRating: 85, ...(mode === 'cash' ? { objective: 'additional-coins' } : {}) });
+  const result = await x.fill();
+  expect(result).toMatchObject({ status: 'filled', saved: true, submitted: false });
+  const saved = x.state.saved.filter(row => row.itemData?.id > 0).map(row => row.itemData.id);
+  expect(saved).toHaveLength(11);
+  expect(saved.filter(id => id === 1)).toHaveLength(1);
+  expect(saved).not.toContain(12);
+  expect(saved).not.toContain(13);
+  if (['integer', 'float', 'equal-value'].includes(mode)) {
+    expect(publicPrices.load).toHaveBeenCalledTimes(1);
+    expect(result.materialValue).toBe(mode === 'equal-value' ? 20250 : 20100);
+    expect(saved).not.toContain(2);
+    expect(evaluateFc27PuzzleRating({ squad: saved.map(id => ({rating: ratings[id - 1]})),
+      rating: { floatCalculationEnabled: mode === 'float' } }).teamRating).toBe(81);
+  } else {
+    expect(Number.isSafeInteger(result.materialValue)).toBe(false);
+    expect(saved, JSON.stringify(saved)).toContain(2);
+    expect(saved.reduce((sum, id) => sum + costs[id - 1], 0)).toBe(23650);
+    expect(publicPrices.load).toHaveBeenCalledTimes(mode === 'cash' ? 0 : 1);
+  }
+  if (mode !== 'cash') for (const id of [112, 113]) expect(publicPrices.load.mock.calls[0][0]).not.toContain(id);
+  // On a second click the saved squad guard still wins.
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED' });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
   expect(x.calls.some(call => /skipUserSquadValidation|transfermarket|\/defid/.test(call.url ?? ''))).toBe(false);
 });
 

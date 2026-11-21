@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.124
+// @version      27.0.125
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.124", at: Date.now(), status: 'started',
+    state = { version: "27.0.125", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -8993,7 +8993,15 @@
     }
     return { status: "ready", executable: false, queries, complete: false };
   }
-  function* iterateOwnedTotwRatingCosts(input, rules, owned2, market, { prices, walletLimit, maxPurchases, maxNodes, onProgress, priceSource }) {
+  function* iterateOwnedTotwRatingCosts(input, rules, owned2, market, {
+    prices,
+    walletLimit,
+    maxPurchases,
+    maxNodes,
+    onProgress,
+    priceSource,
+    ownedValues = null
+  }) {
     const rating = input.chemistry?.rating, count3 = required(input);
     if (!rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind)) || typeof rating?.floatCalculationEnabled !== "boolean") return stop4("FC27_PUZZLE_RATING_CONFIG_UNAVAILABLE");
     const target = Math.max(...rules.filter((rule) => rule.kind === "min-team-rating").map((rule) => rule.value));
@@ -9009,7 +9017,7 @@
     }
     for (const card of market) if (!unique2.has(card.definitionId)) unique2.set(card.definitionId, card);
     for (const definitionId of specialDefinitions) unique2.delete(definitionId);
-    const costOf2 = (card) => card.catalogRef ? prices.get(card.definitionId) : 0;
+    const costOf2 = (card) => ownedValues ? ownedValues.get(card.definitionId) : card.catalogRef ? prices.get(card.definitionId) : 0;
     const needed = count3 - 1, grouped2 = /* @__PURE__ */ new Map();
     for (const card of unique2.values()) {
       const group = grouped2.get(card.rating) ?? [];
@@ -9060,7 +9068,7 @@
       const highBonus = [...chosen.map((card) => card.rating), ...bounds.high.slice(0, left)].reduce((bonus, ovr) => bonus + Math.max(0, ovr - lowMean), 0);
       if (highSum + highBonus + Number(rating.floatCalculationEnabled) < target * 11) return;
       if (!left) {
-        if (!purchased || !take("evaluations")) return;
+        if (!purchased && !ownedValues || !take("evaluations")) return;
         const facts3 = evaluateFc27PuzzleRating({ squad: chosen, rating });
         if (facts3.status !== "observed" || facts3.teamRating < target) return;
         if (!best || spent < best.spent || spent === best.spent && (facts3.teamRating < best.teamRating || facts3.teamRating === best.teamRating && (sum2 < best.sum || sum2 === best.sum && purchased < best.purchased))) {
@@ -9079,7 +9087,7 @@
     };
     for (const card of [...totws.values()].sort((a, b) => b.rating - a.rating || preferred(a, b))) {
       chosen[0] = card;
-      yield* visit(0, needed, 0, 0, card.rating);
+      yield* visit(0, needed, ownedValues ? costOf2(card) : 0, 0, card.rating);
       if (truncated) break;
     }
     const metrics = {
@@ -9107,6 +9115,43 @@
       executable: false,
       ...metrics,
       plans: [{ ...projectSuggestion(squad, facts2, rules.length), estimatedCost: best.spent }]
+    };
+  }
+  async function refineFc27PuzzleOwnedTotwValue(input, preview, safe3, prices, rules, options) {
+    const chosen = preview.selected.map((ref) => safe3.find((card) => sameCandidateRef(card, ref)));
+    if (chosen.length !== required(input) || chosen.some((card) => !card || !validValue(prices.get(card.definitionId)))) {
+      return { ...preview, materialValue: null, valueReason: "FC27_PUZZLE_VALUE_INCOMPLETE" };
+    }
+    const totws = chosen.filter(isFc27TotwCard);
+    if (totws.length !== 1) return preview;
+    const baseline = chosen.reduce((sum2, card) => sum2 + prices.get(card.definitionId), 0);
+    const allowed = safe3.filter((card) => validValue(prices.get(card.definitionId)));
+    const cap = Math.max(0, Math.min(4e3, preview.maxNodes - preview.nodes));
+    const search = cap > 0 ? await finishPuzzleSearchCooperatively(iterateOwnedTotwRatingCosts(
+      input,
+      rules,
+      allowed,
+      [],
+      { maxPurchases: 0, maxNodes: cap, walletLimit: baseline, ownedValues: prices, onProgress: options.onProgress }
+    ), options) : null;
+    const plan = search?.plans?.[0];
+    const baselineSum = chosen.reduce((sum2, card) => sum2 + card.rating, 0);
+    const better = plan && (plan.estimatedCost < baseline || plan.estimatedCost === baseline && (plan.teamFacts.teamRating < preview.teamFacts.teamRating || plan.teamFacts.teamRating === preview.teamFacts.teamRating && plan.selectedOwned.reduce((sum2, card) => sum2 + card.rating, 0) < baselineSum));
+    const materialValue = better ? plan.estimatedCost : baseline;
+    const selected = better ? plan.selectedOwned : preview.selected;
+    const selectedQualityCounts2 = { bronze: 0, silver: 0, gold: 0, unknown: 0 };
+    for (const card of selected) selectedQualityCounts2[["bronze", "silver", "gold"][qualityRank(card.rating) - 1]]++;
+    return {
+      ...preview,
+      selected,
+      selectedQualityCounts: selectedQualityCounts2,
+      teamFacts: better ? plan.teamFacts : preview.teamFacts,
+      initialMaterialValue: baseline,
+      materialValue,
+      inventoryValue: materialValue,
+      nodes: preview.nodes + (search?.nodes ?? 0),
+      search: Object.fromEntries(Object.entries(preview.search ?? {}).map(([key2, value]) => [key2, value + (search?.search?.[key2] ?? 0)])),
+      valueReason: better ? "FC27_PUZZLE_MATERIAL_VALUE_REFINED" : "FC27_PUZZLE_VALUE_BASELINE_RETAINED"
     };
   }
   function planFc27PuzzleOpenPositionQuery(input, cards, rules, usedQueries) {
@@ -9870,8 +9915,7 @@
     now = Date.now
   } = {}) {
     let busy = false;
-    const ownedValues = async (input, { assertCurrent, onProgress, preferred = [] }) => {
-      const safe3 = puzzleOwnedValueCandidates(input);
+    const ownedValues = async (input, { assertCurrent, onProgress, preferred = [], safe: safe3 = puzzleOwnedValueCandidates(input) }) => {
       const byDefinition = /* @__PURE__ */ new Map();
       for (const item2 of [...preferred.map((key2) => safe3.find((item3) => item3.id === key2)).filter(Boolean), ...safe3]) {
         if (!byDefinition.has(item2.definitionId)) byDefinition.set(item2.definitionId, item2);
@@ -9919,22 +9963,35 @@
         busy = true;
         try {
           assertCurrent();
+          const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, preview.required);
+          const ratedTotw = parsed.status === "observed" && isFc27TotwRatingOnly(parsed.rules) && parsed.rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind));
+          const pool = ratedTotw ? collectSafePuzzleCandidates(input).candidates ?? [] : puzzleOwnedValueCandidates(input);
+          const anchor = ratedTotw ? pool.find((card) => isFc27TotwCard(card) && preview.selected.some((ref) => ref.id === card.id && ref.definitionId === card.definitionId && ref.rating === card.rating && ref.pile === card.pile)) : null;
+          if (ratedTotw && !anchor) return preview;
+          const safe3 = ratedTotw ? pool.filter((card) => card === anchor || !isFc27TotwCard(card) && card.definitionId !== anchor.definitionId) : pool;
           const valued = await ownedValues(input, {
             assertCurrent,
             onProgress: (value) => onProgress?.({ phase: "quote-read", quoteCompleted: value.index, quoteTotal: value.total }),
-            preferred: preview.selected.map((item2) => item2.id)
+            preferred: preview.selected.map((item2) => item2.id),
+            safe: safe3
           });
-          const result = await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
+          const result = ratedTotw ? await refineFc27PuzzleOwnedTotwValue(input, preview, safe3, valued.prices, parsed.rules, {
+            assertCurrent,
+            onProgress: (value) => onProgress?.({ ...value, phase: "owned-value-search", nodes: preview.nodes + value.nodes, maxNodes: preview.maxNodes })
+          }) : await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
           assertCurrent();
           if (valued.approval?.rows.some((row) => row.estimate !== null && row.quotes[valued.approval.policy.source].expiresAt <= now())) {
             return { ...preview, materialValue: null, valueReason: "FC27_BUY_REFERENCE_PRICE_EXPIRED" };
           }
+          const uniqueOwnedCount = new Set(safe3.map((card) => card.definitionId)).size;
           return {
             ...result,
             priceSource: valued.approval?.policy.source ?? null,
             valueExpiresAt: valued.prices.size ? Math.min(...valued.approval.rows.filter((row) => row.estimate !== null).map((row) => row.quotes[valued.approval.policy.source].expiresAt)) : null,
+            valueCandidateCount: uniqueOwnedCount,
             valueQuotedCount: valued.prices.size,
-            valueCoverageComplete: valued.prices.size === new Set(puzzleOwnedValueCandidates(input).map((item2) => item2.definitionId)).size
+            unpricedOwnedCount: uniqueOwnedCount - valued.prices.size,
+            valueCoverageComplete: valued.prices.size === uniqueOwnedCount
           };
         } catch (error2) {
           assertCurrent();
@@ -15365,11 +15422,29 @@
           unchanged();
         } });
         privateData = { inputs, preview };
-        const totw = requiresFc27SingleTotw(parseFc27SbcRequirements(
+        const rules = parseFc27SbcRequirements(
           inputs.challenge.rawRequirements,
           inputs.challenge.slotCount - inputs.challenge.brickIndices.length
-        ).rules);
+        ).rules;
+        const totw = requiresFc27SingleTotw(rules);
         const keepOwnedTotw = totw && ["SAFE_MATERIAL_SHORTAGE", "FC27_PUZZLE_NO_PLAN_FOUND", "FC27_PUZZLE_CONSTRAINT_SHORTAGE"].includes(preview.reason);
+        const assertPlanningCurrent = () => {
+          assertTarget();
+          unchanged();
+          const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
+          if (!latest?.layout?.squadEmpty || JSON.stringify(latest.challenge.requirements) !== JSON.stringify(inputs.challenge.rawRequirements) || JSON.stringify(readFc27PuzzlePolicy(root, requestedMaxRating)) !== JSON.stringify(inputs.policy)) {
+            throw new Error("FC27_PUZZLE_FILL_INPUTS_CHANGED");
+          }
+        };
+        if (totw && preview.status === "preview" && inputs.squadEmpty === true && purchaseSettings.objective === "material-value" && typeof publicPrices2?.load === "function" && isFc27TotwRatingOnly(rules) && rules.every((rule) => ["totw", "min-team-rating"].includes(rule.kind))) {
+          progress("procurement");
+          const optimized = await persistence.exclusive(scope2, () => procurement.optimizeOwned(inputs, preview, {
+            assertCurrent: assertPlanningCurrent,
+            onProgress: (value) => progress({ ...value, stage: "procurement" })
+          }));
+          privateData.preview = optimized ?? { ...preview, valueReason: "FC27_EXCLUSIVE_ACCESS_UNAVAILABLE" };
+          return privateData.preview;
+        }
         if (totw && !keepOwnedTotw && preview.reason !== "FC27_PUZZLE_TOTW_REQUIRED") return preview;
         const compareOwnedCost = purchaseSettings.objective === "material-value" && preview.status === "preview" && typeof publicPrices2?.load === "function";
         if (inputs.squadEmpty === true && (totw || compareOwnedCost || [
@@ -15391,14 +15466,7 @@
             materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
             ownedIncumbent: compareOwnedCost ? preview : null,
             onProgress: (value) => progress({ ...value, stage: "procurement" }),
-            assertCurrent: () => {
-              assertTarget();
-              unchanged();
-              const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
-              if (!latest?.layout?.squadEmpty || JSON.stringify(latest.challenge.requirements) !== JSON.stringify(inputs.challenge.rawRequirements) || JSON.stringify(readFc27PuzzlePolicy(root, requestedMaxRating)) !== JSON.stringify(inputs.policy)) {
-                throw new Error("FC27_PUZZLE_FILL_INPUTS_CHANGED");
-              }
-            }
+            assertCurrent: assertPlanningCurrent
           })) ?? blocked9("FC27_EXCLUSIVE_ACCESS_UNAVAILABLE");
           privateData.procurementSummary = {
             status: purchaseSuggestion.status,
@@ -15694,6 +15762,10 @@
         materialValue: privateData?.preview?.materialValue,
         inventoryValue: privateData?.preview?.inventoryValue,
         initialMaterialValue: privateData?.preview?.initialMaterialValue,
+        valueCandidateCount: privateData?.preview?.valueCandidateCount,
+        valueQuotedCount: privateData?.preview?.valueQuotedCount,
+        valueCoverageComplete: privateData?.preview?.valueCoverageComplete,
+        unpricedOwnedCount: privateData?.preview?.unpricedOwnedCount,
         ...privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {},
         valueReason: privateData?.preview?.valueReason,
         valueExpiresAt: privateData?.preview?.valueExpiresAt,
@@ -54167,7 +54239,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.124" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.125" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -54582,8 +54654,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.124"}`,
-    version: "27.0.124",
+    title: `FC Automation Tool ${"27.0.125"}`,
+    version: "27.0.125",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

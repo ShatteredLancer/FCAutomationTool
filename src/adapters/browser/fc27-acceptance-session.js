@@ -11,7 +11,7 @@ import { inspectFc27PuzzlePlan, readFc27PuzzleClubLinks, readFc27PuzzleChemistry
 import { readFc27PuzzlePage, readFc27PuzzlePageSnapshot, readFc27CurrentPuzzleChallenge } from '../ea/fc27-puzzle-page.js';
 import { previewFc27PuzzleSquadCooperatively } from '../../fc27/puzzle-preview.js';
 import { DEFAULT_PUZZLE_MAX_RATING } from '../../fc27/puzzle-material-policy.js';
-import { parseFc27SbcRequirements, requiresFc27SingleTotw } from '../../fc27/sbc-requirements.js';
+import { isFc27TotwRatingOnly, parseFc27SbcRequirements, requiresFc27SingleTotw } from '../../fc27/sbc-requirements.js';
 import { readFc27PuzzlePolicy } from '../ea/fc27-fsu-read.js';
 import { createFc27PuzzleFillPersistence } from '../../fc27/puzzle-fill-journal.js';
 import { createFc27PuzzleFillTransaction } from '../../fc27/puzzle-fill-transaction.js';
@@ -399,9 +399,28 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
         privateData = { inputs, preview };
         // Keep the owned TOTW path first. Only the explicit missing-TOTW
         // result may enter the narrowly scoped one-card market fallback.
-        const totw = requiresFc27SingleTotw(parseFc27SbcRequirements(inputs.challenge.rawRequirements,
-          inputs.challenge.slotCount - inputs.challenge.brickIndices.length).rules);
+        const rules = parseFc27SbcRequirements(inputs.challenge.rawRequirements,
+          inputs.challenge.slotCount - inputs.challenge.brickIndices.length).rules;
+        const totw = requiresFc27SingleTotw(rules);
         const keepOwnedTotw = totw && ['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE'].includes(preview.reason);
+        const assertPlanningCurrent = () => {
+          assertTarget(); unchanged();
+          const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
+          if (!latest?.layout?.squadEmpty || JSON.stringify(latest.challenge.requirements) !== JSON.stringify(inputs.challenge.rawRequirements)
+              || JSON.stringify(readFc27PuzzlePolicy(root, requestedMaxRating)) !== JSON.stringify(inputs.policy)) {
+            throw new Error('FC27_PUZZLE_FILL_INPUTS_CHANGED');
+          }
+        };
+        if (totw && preview.status === 'preview' && inputs.squadEmpty === true && purchaseSettings.objective === 'material-value'
+            && typeof publicPrices?.load === 'function' && isFc27TotwRatingOnly(rules)
+            && rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))) {
+          progress('procurement');
+          const optimized = await persistence.exclusive(scope, () => procurement.optimizeOwned(inputs, preview, {
+            assertCurrent: assertPlanningCurrent, onProgress: value => progress({ ...value, stage: 'procurement' }),
+          }));
+          privateData.preview = optimized ?? { ...preview, valueReason: 'FC27_EXCLUSIVE_ACCESS_UNAVAILABLE' };
+          return privateData.preview;
+        }
         if (totw && !keepOwnedTotw && preview.reason !== 'FC27_PUZZLE_TOTW_REQUIRED') return preview;
         // Without a valuation source, an already legal owned lineup cannot
         // be cost-compared. Do not add catalogue reads just for that attempt.
@@ -417,14 +436,8 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
             optimizeMaterialValue: purchaseSettings.objective === 'material-value',
             materialCeiling: Number.isSafeInteger(preview.materialValue) ? preview.materialValue : null,
             ownedIncumbent: compareOwnedCost ? preview : null,
-            onProgress: value => progress({ ...value, stage: 'procurement' }), assertCurrent: () => {
-            assertTarget(); unchanged();
-            const latest = readFc27PuzzlePageSnapshot(root, { setId, challengeId: candidates[0].id });
-            if (!latest?.layout?.squadEmpty || JSON.stringify(latest.challenge.requirements) !== JSON.stringify(inputs.challenge.rawRequirements)
-                || JSON.stringify(readFc27PuzzlePolicy(root, requestedMaxRating)) !== JSON.stringify(inputs.policy)) {
-              throw new Error('FC27_PUZZLE_FILL_INPUTS_CHANGED');
-            }
-          } })) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
+            onProgress: value => progress({ ...value, stage: 'procurement' }), assertCurrent: assertPlanningCurrent,
+          })) ?? blocked('FC27_EXCLUSIVE_ACCESS_UNAVAILABLE');
           // Keep market-search evidence even when the owned baseline wins.
           // Previously this early return hid all catalog queries and failures.
           privateData.procurementSummary = { status: purchaseSuggestion.status, reason: purchaseSuggestion.reason,
@@ -664,6 +677,10 @@ export function createFc27AcceptanceSession({ root, gmGetValue, gmSetValue, gmLi
       return { ...report, catalogSource: catalogRead.source, objective: purchaseSettings.objective,
         materialValue: privateData?.preview?.materialValue, inventoryValue: privateData?.preview?.inventoryValue,
         initialMaterialValue: privateData?.preview?.initialMaterialValue,
+        valueCandidateCount: privateData?.preview?.valueCandidateCount,
+        valueQuotedCount: privateData?.preview?.valueQuotedCount,
+        valueCoverageComplete: privateData?.preview?.valueCoverageComplete,
+        unpricedOwnedCount: privateData?.preview?.unpricedOwnedCount,
         ...(privateData?.procurementSummary ? { procurementSummary: privateData.procurementSummary } : {}),
         valueReason: privateData?.preview?.valueReason,
         valueExpiresAt: privateData?.preview?.valueExpiresAt,
