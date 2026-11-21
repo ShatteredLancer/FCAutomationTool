@@ -149,7 +149,11 @@ export function formatFc27PuzzleNativeResult(result) {
   if (Object.hasOwn(purchase, 'quoteCeiling')) lines.push(purchase.quoteCeiling === null
     ? '单卡报价：不限。' : `单卡报价上限：${countText(purchase.quoteCeiling)} 金币。`);
   const inventory = result.plan;
-  if (inventory) lines.push(`库存初筛 ${countText(inventory.safeCandidates)} 人；搜索节点 ${countText(inventory.nodes)}。`);
+  if (inventory) {
+    const marketNodes = purchase.diagnostics?.nodes;
+    const market = Number.isSafeInteger(marketNodes) ? `，补卡搜索 ${countText(marketNodes)} 节点` : '';
+    lines.push(`库存初筛 ${countText(inventory.safeCandidates)} 人，库存搜索 ${countText(inventory.nodes)} 节点${market}。`);
+  }
   const reservations = inventory?.reservations;
   if (reservations && Number.isSafeInteger(reservations.excludedCachedItems) && reservations.excludedCachedItems > 0) {
     lines.push(`另有 ${countText(reservations.excludedCachedItems)} 张缓存卡被其它 Puzzle 阵容预留；共 ${countText(reservations.activeTargets)} 个有卡预留目标、${countText(reservations.references)} 条预留引用。`);

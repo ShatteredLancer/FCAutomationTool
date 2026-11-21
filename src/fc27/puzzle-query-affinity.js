@@ -161,7 +161,7 @@ export function planPuzzleCappedLeagueDiscovery({ candidates, rules, slots, leve
 // Chemistry comes from in-position players: a populous nation of midfielders
 // is a weak anchor when those formation slots are bricks. Maximum matching
 // also prevents a flexible card being counted as several covered positions.
-export function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
+export function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [], leagueCap }) {
   if (!Array.isArray(formation?.positions) || formation.positions.length !== 11
       || !Array.isArray(brickIndices)) return null;
   const required = material.filter(rule => rule.count > 0).sort((a, b) => b.count - a.count);
@@ -192,7 +192,13 @@ export function planPuzzleNationalityAffinity({ candidates, material, formation,
       return false;
     };
     items.forEach((_item, index) => augment(index, new Set()));
-    ranked.push({ nation, matched: assigned.filter(index => index !== -1).length, count: items.length });
+    let capacity = items.length;
+    if (leagueCap !== undefined) {
+      const leagues = new Map();
+      for (const card of items) leagues.set(card.leagueId, (leagues.get(card.leagueId) ?? 0) + 1);
+      capacity = [...leagues.values()].reduce((total, count) => total + Math.min(count, leagueCap), 0);
+    }
+    ranked.push({ nation, matched: Math.min(capacity, assigned.filter(index => index !== -1).length), count: capacity });
   }
   ranked.sort((a, b) => b.matched - a.matched || b.count - a.count || a.nation - b.nation);
   return ranked.map(({ nation }) => ({ start: 0, count: 20, level: level(required[0].qualities[0]), nation }))

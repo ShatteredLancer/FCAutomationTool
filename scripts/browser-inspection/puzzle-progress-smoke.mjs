@@ -54,7 +54,9 @@ export async function exercisePuzzleProgress(context) {
           });
           globalThis.progressEvidence.result = { status: result.status, nodes: result.nodes };
           globalThis.progressEvidence.done = true;
-          return { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT' };
+          return { status: 'blocked', reason: 'SAFE_MATERIAL_SHORTAGE', plan: { safeCandidates: 0, nodes: 0 },
+            purchaseSuggestion: { status: 'blocked', reason: 'FC27_PUZZLE_SEARCH_LIMIT',
+              diagnostics: { stage: 'structural-search', nodes: 200000 } } };
         },
       });
     });
@@ -66,6 +68,7 @@ export async function exercisePuzzleProgress(context) {
     assert.ok(evidence.paints.filter(text => /节点 [1-9]/.test(text)).length >= 2,
       'Search counts must be painted on multiple animation frames, not just stored in callbacks');
     assert.equal(evidence.requests, 0);
+    assert.match(await page.locator('#fcat-fc27-puzzle-status').innerText(), /库存搜索 0 节点，补卡搜索 200000 节点/);
     console.log('Puzzle cooperative progress smoke passed: trusted button, painted node updates, same 50000 budget, no EA access.');
     console.log('Puzzle browser scheduling passed: default pure solver avoids simulated hidden-tab zero-timer clamping and retains context checks.');
   } finally { await page.close(); }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.126
+// @version      27.0.127
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.126", at: Date.now(), status: 'started',
+    state = { version: "27.0.127", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -7957,7 +7957,7 @@
     const focus = ranked.find((group) => group.support === slots.length && group.clubCount <= clubLimit && group.nationalities >= nationMin);
     return { query: query ?? null, focus: focus ? new Set(focus.cards.map((card) => card.definitionId)) : null };
   }
-  function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [] }) {
+  function planPuzzleNationalityAffinity({ candidates, material, formation, brickIndices, usedQueries = [], leagueCap }) {
     if (!Array.isArray(formation?.positions) || formation.positions.length !== 11 || !Array.isArray(brickIndices)) return null;
     const required2 = material.filter((rule) => rule.count > 0).sort((a, b) => b.count - a.count);
     if (required2.length < 2) return null;
@@ -7985,7 +7985,13 @@
         return false;
       };
       items.forEach((_item, index) => augment(index, /* @__PURE__ */ new Set()));
-      ranked.push({ nation, matched: assigned.filter((index) => index !== -1).length, count: items.length });
+      let capacity = items.length;
+      if (leagueCap !== void 0) {
+        const leagues = /* @__PURE__ */ new Map();
+        for (const card of items) leagues.set(card.leagueId, (leagues.get(card.leagueId) ?? 0) + 1);
+        capacity = [...leagues.values()].reduce((total, count3) => total + Math.min(count3, leagueCap), 0);
+      }
+      ranked.push({ nation, matched: Math.min(capacity, assigned.filter((index) => index !== -1).length), count: capacity });
     }
     ranked.sort((a, b) => b.matched - a.matched || b.count - a.count || a.nation - b.nation);
     return ranked.map(({ nation }) => ({ start: 0, count: 20, level: level(required2[0].qualities[0]), nation })).find((query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) ?? null;
@@ -8968,6 +8974,19 @@
     const baseQueries = queries.slice();
     if (!pool.candidates.length && chemistryNeeded && tiers2.length > 1) {
       const publicItems = marketCandidates(input, entries2);
+      const leagueCap = Math.min(required(input), ...parsed.rules.filter((rule) => rule.kind === "same-league" && rule.mode !== "min").map((rule) => rule.value));
+      const nationalMinimum = parsed.rules.some((rule) => rule.kind === "same-nation" && rule.mode === "min" && rule.value > 1);
+      if (leagueCap < required(input) && nationalMinimum && !cappedClubs && !parsed.rules.some((rule) => rule.kind.startsWith("from-")) && tiers2.every((level2) => usedQueries.some((q) => q.level === level2 && !q.nation && !q.league && !q.team))) {
+        const affinity = planPuzzleNationalityAffinity({
+          candidates: publicItems,
+          material,
+          leagueCap,
+          formation: input.challenge.formation,
+          brickIndices: input.challenge.brickIndices,
+          usedQueries
+        });
+        if (affinity) add3(affinity);
+      }
       const groups = /* @__PURE__ */ new Map();
       for (const item2 of publicItems) {
         const level2 = levelOf(quality2(item2.rating));
@@ -32790,7 +32809,11 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const lines = [message, `\u8865\u5361\uFF1A${explanation}${reason ? `\uFF08${reason}\uFF09` : ""}\u3002`];
     if (Object.hasOwn(purchase, "quoteCeiling")) lines.push(purchase.quoteCeiling === null ? "\u5355\u5361\u62A5\u4EF7\uFF1A\u4E0D\u9650\u3002" : `\u5355\u5361\u62A5\u4EF7\u4E0A\u9650\uFF1A${countText(purchase.quoteCeiling)} \u91D1\u5E01\u3002`);
     const inventory = result.plan;
-    if (inventory) lines.push(`\u5E93\u5B58\u521D\u7B5B ${countText(inventory.safeCandidates)} \u4EBA\uFF1B\u641C\u7D22\u8282\u70B9 ${countText(inventory.nodes)}\u3002`);
+    if (inventory) {
+      const marketNodes = purchase.diagnostics?.nodes;
+      const market = Number.isSafeInteger(marketNodes) ? `\uFF0C\u8865\u5361\u641C\u7D22 ${countText(marketNodes)} \u8282\u70B9` : "";
+      lines.push(`\u5E93\u5B58\u521D\u7B5B ${countText(inventory.safeCandidates)} \u4EBA\uFF0C\u5E93\u5B58\u641C\u7D22 ${countText(inventory.nodes)} \u8282\u70B9${market}\u3002`);
+    }
     const reservations = inventory?.reservations;
     if (reservations && Number.isSafeInteger(reservations.excludedCachedItems) && reservations.excludedCachedItems > 0) {
       lines.push(`\u53E6\u6709 ${countText(reservations.excludedCachedItems)} \u5F20\u7F13\u5B58\u5361\u88AB\u5176\u5B83 Puzzle \u9635\u5BB9\u9884\u7559\uFF1B\u5171 ${countText(reservations.activeTargets)} \u4E2A\u6709\u5361\u9884\u7559\u76EE\u6807\u3001${countText(reservations.references)} \u6761\u9884\u7559\u5F15\u7528\u3002`);
@@ -54378,7 +54401,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.126" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.127" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -54793,8 +54816,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.126"}`,
-    version: "27.0.126",
+    title: `FC Automation Tool ${"27.0.127"}`,
+    version: "27.0.127",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

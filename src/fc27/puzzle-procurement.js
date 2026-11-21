@@ -847,6 +847,17 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
   // linked to safe public candidates; never promote protected owned cards.
   if (!pool.candidates.length && chemistryNeeded && tiers.length > 1) {
     const publicItems = marketCandidates(input, entries);
+    const leagueCap = Math.min(required(input), ...parsed.rules.filter(rule =>
+      rule.kind === 'same-league' && rule.mode !== 'min').map(rule => rule.value));
+    const nationalMinimum = parsed.rules.some(rule => rule.kind === 'same-nation' && rule.mode === 'min' && rule.value > 1);
+    if (leagueCap < required(input) && nationalMinimum && !cappedClubs && !parsed.rules.some(rule => rule.kind.startsWith('from-'))
+        && tiers.every(level => usedQueries.some(q => q.level === level && !q.nation && !q.league && !q.team))) {
+      // The remaining page can add chemistry across the league cap. Anchor
+      // it on actual in-position cards from both already sampled tiers.
+      const affinity = planPuzzleNationalityAffinity({ candidates: publicItems, material, leagueCap,
+        formation: input.challenge.formation, brickIndices: input.challenge.brickIndices, usedQueries });
+      if (affinity) add(affinity);
+    }
     const groups = new Map();
     for (const item of publicItems) {
       const level = levelOf(quality(item.rating));

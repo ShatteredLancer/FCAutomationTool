@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { nationalMinimumFixture as fixture } from '../helpers/fc27-puzzle-national-minimum-fixture.js';
 import { marketRow } from '../helpers/fc27-market-fixture.js';
+import { puzzleFillFixture } from '../helpers/fc27-puzzle-fill-fixture.js';
 import { planFc27PuzzleShortageQueries } from '../../src/fc27/puzzle-procurement.js';
 import { createFc27PuzzleProcurementSession } from '../../src/fc27/puzzle-procurement-session.js';
 import { planPuzzleNationalMinimumAffinity } from '../../src/fc27/puzzle-query-affinity.js';
@@ -81,4 +82,48 @@ it('keeps compulsory club discovery ahead of the new generic national affinity',
   const f = fixture(); f.input.challenge.rawRequirements.push(marketRow(12, 77, 1));
   const route = planFc27PuzzleShortageQueries(f.input, [...f.bronze,...f.silver], { usedQueries: f.pages });
   expect(route.queries[0].team).toBe(77); expect(route.queries.length).toBeLessThanOrEqual(3);
+});
+// Public 139/203 rules; the export contains query totals, not the individual players.
+it('uses the last Flash 8 catalogue page to complete a cross-league national squad before quoting', async () => {
+  const input = puzzleFillFixture();
+  const positions = [0, 3, 5, 5, 7, 10, 10, 18, 18, 18, 25];
+  Object.assign(input.challenge, { setId: 139, id: 203, formation: { id: 1, positions }, rawRequirements: [
+    marketRow(4, 4), marketRow(5, 5, -1, 1), marketRow(8, 2), marketRow(17, 3, 4), marketRow(3, 2), marketRow(35, 24),
+  ] });
+  input.policy.maxRating = 82;
+  input.inventory.items = [];
+  const template = input.catalog.entries[0];
+  const core = positions.map((position, i) => ({ ...template, definitionId: 300 + i, positions: [position], nationId: 7,
+    leagueId: [53, 13, 16][i % 3], teamId: 20 + i, rating: i < 4 ? 77 : 70 }));
+  const page = (cards, offset, rating) => [...cards, ...Array.from({ length: 20 - cards.length }, (_, i) =>
+    ({ ...template, definitionId: offset + i, rating, nationId: 100 + i, leagueId: 53, teamId: 80 + i, positions: [27] }))];
+  const broadSilver = page(core.slice(4, 5), 500, 70), broadGold = page(core.slice(0, 4), 600, 77);
+  const focused = page(core.slice(5), 700, 70).map(card => ({ ...card, nationId: 7 }));
+  const transport = { readCatalogPage: vi.fn(async query => ({ status: 'observed', source: 'ea-defid', season: '27',
+    query, observedAt: input.now, entries: query.nation === 7 && query.level === 'silver' ? focused :
+      query.league || query.nation ? [] : query.level === 'silver' ? broadSilver : broadGold })) };
+  const memory = new Map(), quoted = [];
+  const session = createFc27PuzzleProcurementSession({ createTransport: async () => transport, now: () => input.now,
+    get: async (key, fallback) => memory.get(key) ?? fallback, set: async (key, value) => memory.set(key, value),
+    loadPublicPrices: async ids => {
+      quoted.push(...ids);
+      return { policy: { source: 'futbin' }, references: Object.fromEntries(ids.map(definitionId => [definitionId,
+        { definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source,
+          { schema: 2, source, definitionId, season: '27', platform: 'pc', price: 350, sourceUpdatedAt: null,
+            fetchedAt: input.now, expiresAt: input.now + 300000, error: null }])) }])) };
+    } });
+  const result = await session.plan(input, { adaptiveSearch: true, optimizeMaterialValue: true });
+  expect(transport.readCatalogPage.mock.calls.map(([q]) => [q.level, q.nation, q.league])).toEqual([
+    ['silver', undefined, undefined], ['gold', undefined, undefined], ['silver', 7, undefined],
+  ]);
+  expect(result.status, JSON.stringify(result.diagnostics)).toBe('suggested');
+  const plan = result.plans[0], squad = Array(11).fill(null);
+  for (const card of plan.purchases) squad[card.slot] = card;
+  const facts = input.evaluateSquad(squad);
+  expect(matchFc27SbcRequirements({ requirements: parseFc27SbcRequirements(input.challenge.rawRequirements, 11).rules,
+    squad, clubLinks: input.clubLinks, chemistry: facts.chemistry, teamRating: facts.teamRating }).status).toBe('satisfied');
+  expect(new Set(quoted)).toEqual(new Set(core.map(card => card.definitionId)));
+  expect(facts.chemistry).toBeGreaterThanOrEqual(24);
+  console.info('Flash 8 synthetic replay', { nodes: result.diagnostics.nodes, chemistry: facts.chemistry, quotes: quoted.length });
+  expect(result.diagnostics.nodes).toBeLessThan(50000);
 });
