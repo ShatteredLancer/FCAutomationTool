@@ -8,6 +8,22 @@ function fixture(){let account={...context},serial=0;const data=new Map([['legac
  const contextFn=()=>({...account});const store=createTradingTaskStore({context:contextFn,get:async(k,f)=>structuredClone(data.get(k)??f),set,locks:{request:async(_k,_o,fn)=>fn()},id:()=>`task-${++serial}`,now:()=>100});
  return {store,data,set,switchAccount:v=>{account={...context,...v}}};}
 describe('market task configuration and isolated persistence',()=>{
+ it('adopts the shorter search interval on old default accounts and honors subsequent explicit settings', async () => {
+   const f = fixture();
+   const snapshot = await f.store.saveTask({ ...await f.store.read(), input: input() });
+   const legacy = structuredClone(snapshot.store);
+   legacy.schema = 1;
+   Object.assign(legacy.settings, { gapMin: 7, gapMax: 15, restMin: 6 });
+   f.data.set(tradingTaskKey(context), legacy);
+   const migrated = await f.store.read();
+   expect(migrated.store.settings).toMatchObject({ gapMin: 1, gapMax: 3, restMin: 6 });
+   expect(migrated.store.tasks).toEqual(legacy.tasks);
+   await f.store.saveSettings({ ...migrated, settings: { ...migrated.store.settings, gapMin: 7, gapMax: 15 } });
+   expect((await f.store.read()).store.settings).toMatchObject({ gapMin: 7, gapMax: 15 });
+   legacy.settings.gapMin = 8;
+   f.data.set(tradingTaskKey(context), legacy);
+   expect((await f.store.read()).store.settings).toMatchObject({ gapMin: 8, gapMax: 15 });
+ });
  it('defaults old tasks to auto list and preserves hold-only rules across save, read and copy',async()=>{
   const f=fixture(),legacy=input();delete legacy.settings.afterBuy;
   let s=await f.store.saveTask({...await f.store.read(),input:legacy});expect(s.store.tasks[0].settings.afterBuy).toBe('list');

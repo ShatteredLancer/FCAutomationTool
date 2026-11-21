@@ -495,7 +495,7 @@ describe('approved task scheduler with simulated providers', () => {
     }
     const result = await f.run();
     expect(result.tasks.map(t => t.state)).toEqual(['completed', 'completed']);
-    expect(f.events.filter(e => e.kind === 'search').map(e => e.at)).toEqual([1000, 8000]);
+    expect(f.events.filter(e => e.kind === 'search').map(e => e.at)).toEqual([1000, 2000]);
     expect(f.events.slice(0, 4).map(e => e.kind)).toEqual(['search', 'buy', 'move', 'list']);
     const ledger = (await f.coordinator.inspect()).ledger;
     expect(ledger.holdings.map(h => [h.phase, h.cost, h.salePrice])).toEqual([['listed', 800, null], ['listed', 800, null]]);

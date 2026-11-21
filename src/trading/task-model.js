@@ -13,7 +13,8 @@ export const defaultTradingTaskSettings=()=>({afterBuy:'list',buyRule:'percent',
  buyMode:'bin',bidRule:'percent',bidValue:85,bidExact:'step',bidRebid:'yes',bidExpires:3600,
  taskCap:null,spendCap:null,runMinutes:null,hardCap:null,relist:'original',relistTimes:null,ratingMin:83,ratingMax:85,
  quality:'all',league:null,position:null,perVersion:null,nation:null,club:null});
-export const defaultTradingPublicSettings=()=>({source:'futbin',reserve:null,totalCap:null,gapMin:7,gapMax:15,cycleMin:10,cycleMax:15,restMin:5,restMax:8,perSearch:1,hourLimit:1000,dayLimit:5000});
+const defaultSearchGap = Object.freeze({ gapMin: 1, gapMax: 3 });
+export const defaultTradingPublicSettings=()=>({source:'futbin',reserve:null,totalCap:null,...defaultSearchGap,cycleMin:10,cycleMax:15,restMin:5,restMax:8,perSearch:1,hourLimit:1000,dayLimit:5000});
 export function tradingTaskContext(value){own(value,['scope','season','platform']);return {scope:text(value.scope,250),season:one(value.season,['27']),platform:one(value.platform,['pc','console'])};}
 export function tradingPublicSettings(input){own(input,Object.keys(defaultTradingPublicSettings()));const s={...defaultTradingPublicSettings(),...input};one(s.source,['futbin','futgg','both']);s.reserve=optional(s.reserve);s.totalCap=optional(s.totalCap,150);
  for(const key of ['gapMin','gapMax','cycleMin','cycleMax','perSearch','hourLimit','dayLimit'])integer(s[key],1);for(const key of ['restMin','restMax'])integer(s[key]);
@@ -36,11 +37,15 @@ export function normalizeTradingTaskInput(value){own(value,['name','mode','setti
  const schedule=normalizeMarketSchedule(value.schedule,mode),ratingPrices=normalizeMarketRatingPrices(value.ratingPrices,mode,s);return {name,mode,settings:s,players,owned,excluded,...(sellSelection?{sellSelection}:{}),...(schedule?{schedule}:{}),...(ratingPrices?{ratingPrices}:{})};
 }
 export const emptyTaskActivity=()=>({receipts:[],unresolved:false});
-export const emptyTradingTasks=context=>({schema:1,context:tradingTaskContext(context),revision:0,settings:defaultTradingPublicSettings(),tasks:[]});
+export const emptyTradingTasks=context=>({schema:2,context:tradingTaskContext(context),revision:0,settings:defaultTradingPublicSettings(),tasks:[]});
 export function readTradingTasks(input,context){if(input===null||input===undefined)return emptyTradingTasks(context);
  if(JSON.stringify(input).length>TASK_STORE_LIMIT)throw Error('TASKS_STORAGE_LIMIT');own(input,['schema','context','revision','settings','tasks']);
- if(input.schema!==1||JSON.stringify(tradingTaskContext(input.context))!==JSON.stringify(tradingTaskContext(context)))throw Error('TASKS_CONTEXT_INVALID');
- const store={schema:1,context:tradingTaskContext(context),revision:integer(input.revision),settings:tradingPublicSettings(input.settings),tasks:list(input.tasks,100).map(t=>{
+ if(![1,2].includes(input.schema)||JSON.stringify(tradingTaskContext(input.context))!==JSON.stringify(tradingTaskContext(context)))throw Error('TASKS_CONTEXT_INVALID');
+ const settings = tradingPublicSettings(input.settings);
+ // v1 stored defaults alongside explicit preferences. Migrate the exact old
+ // pair, then allow the user to explicitly choose it again in v2.
+ if (input.schema === 1 && settings.gapMin === 7 && settings.gapMax === 15) Object.assign(settings, defaultSearchGap);
+ const store={schema:2,context:tradingTaskContext(context),revision:integer(input.revision),settings,tasks:list(input.tasks,100).map(t=>{
   own(t,['id','revision','name','mode','settings','players','owned','excluded','state','createdAt','updatedAt','activity','stopRequested','schedule','ratingPrices','sellSelection']);const {name,mode,settings,players,owned,excluded,schedule,ratingPrices,sellSelection}=t;
   if(t.stopRequested!==undefined&&t.stopRequested!==true)throw Error('TASKS_INVALID');
   own(t.activity,['receipts','unresolved']);if(typeof t.activity.unresolved!=='boolean')throw Error('TASKS_INVALID');

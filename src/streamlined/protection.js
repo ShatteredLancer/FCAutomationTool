@@ -1,7 +1,8 @@
 import { ownData } from '../fc27/prelaunch-contract.js';
 
 const phases = new Set(['protection-lock-list', 'protection-active-id', 'protection-active-state', 'protection-native-id',
-  'protection-layout', 'protection-slot-list', 'protection-slot-id', 'protection-fsu-roster', 'protection-cache']);
+  'protection-layout', 'protection-slot-list', 'protection-slot-id', 'protection-fsu-roster', 'protection-cache',
+  'protection-squad-list', 'protection-squad-detail']);
 const mismatches = new Set(['undefined', 'null', 'boolean', 'number', 'string', 'object', 'function',
   'symbol', 'bigint', 'non-array', 'length', 'binding', 'id-mismatch', 'layout', 'inactive', 'negative', 'non-finite', 'non-integer']);
 

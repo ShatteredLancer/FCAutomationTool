@@ -113,6 +113,8 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
       'protection-lock-list': 'FSU 锁卡名单未读到或格式异常。请确认 FSU Local 已启用并初始化完成，再刷新页面；不要解除锁卡。',
       'protection-active-id': 'EA 当前主阵容标识尚未核验。请在 Squads 打开当前主阵容，再返回生成方案。',
       'protection-active-state': '原生主阵容的启用状态尚未核验。请在 Squads 确认当前主阵容已启用；若仍报错，请导出诊断。',
+      'protection-squad-list': '重新读取 EA 阵容名单后仍无法确认当前启用的阵容。请在 Squads 打开当前阵容，再返回重试。',
+      'protection-squad-detail': 'EA 当前主阵容的球员名单尚未核实。请在 Squads 打开当前阵容并等球员加载完，再返回重试。',
       'protection-native-id': '原生缓存中的主阵容标识与当前主阵容不一致。请导出诊断排查。',
       'protection-layout': '原生主阵容卡位数量定义未通过核验。请导出诊断排查。',
       'protection-slot-list': `原生主阵容卡位未完整核验（${number(evidence?.count)} / ${number(evidence?.requiredSlots)}）。请导出诊断排查。`,
@@ -702,7 +704,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
     const labels = { completed: '目标已达成，奖励状态需另行核对。', partial: '本次贡献已确认，可继续剩余批次。',
       stopped: '已停止；已确认的成交和贡献保留，可核对并恢复。', recovered: '已恢复记录，未重复贡献。', observed: '已读取上次记录。', absent: '没有待恢复的贡献记录。',
       'recovery-required': '结果尚未确认，请核对并恢复；不会重复贡献。', rejected: 'EA 拒绝了本次贡献，请重新规划。' };
-    node('status').textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery)
+    node('status').textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery, result.protectionFailure)
       : result.status === 'absent' ? '当前 SBC 没有待恢复的贡献记录，请点击“生成方案”。' : labels[result.status] ?? result.status);
     if (archiveBlocked && result.reason === 'FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED') {
       const old = result.recovery;

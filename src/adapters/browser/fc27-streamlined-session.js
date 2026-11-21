@@ -13,7 +13,7 @@ import { readStreamlinedExternalRows, planStreamlinedExternalSelection } from '.
 // Execution is optional and only entered through the separate contribution action.
 // Public quotes are read only on Solve,
 // deduplicated by version, using the account's single purchase price source.
-export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCandidates = null, get, set, prices, diagnosticLog = null,
+export function createFc27StreamlinedSession({ inspect, readInputs, refreshSquad = null, readMarketCandidates = null, get, set, prices, diagnosticLog = null,
   now = () => Date.now(), schedule, createExecution = null } = {}) {
   const settings = createStreamlinedSettings({ get, set });
   let busy = false, stopRequested = false, preview = null, activeExecution = null, routePreview = null, planningRun = 0;
@@ -49,6 +49,29 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
   };
   const capture = () => { const value = inspect(); if (!value?.context || !value.challenge) fail('PAGE_UNAVAILABLE'); return value; };
   const unchanged = origin => { const current = capture(); if (!same(current, origin)) fail('CONTEXT_CHANGED'); };
+  const pendingRosterChecks = new Set();
+  const withRosterRefresh = async (origin, read) => {
+    const key = JSON.stringify(origin.context);
+    if (!pendingRosterChecks.has(key)) {
+      try { return read(); } catch (error) {
+        const evidence = error?.evidence;
+        const inactive = evidence?.phase === 'protection-active-state' && evidence.mismatch === 'inactive';
+        const unloaded = evidence?.phase === 'protection-slot-list' && evidence.count === 0 && evidence.mismatch === 'length';
+        if (!refreshSquad || error?.message !== 'FC27_STREAMLINED_PROTECTION_UNVERIFIED' || !(inactive || unloaded)) throw error;
+      }
+    }
+    // EA may update the active flag before the detail read fails. Retry both
+    // reads on the next explicit preview instead of trusting that partial update.
+    pendingRosterChecks.add(key);
+    const check = () => { unchanged(origin); if (stopRequested) fail('CANCELLED'); };
+    check();
+    await refreshSquad(check);
+    check();
+    pendingRosterChecks.delete(key);
+    const result = read();
+    log({ event: 'planning-read', phase: 'protection-squad-detail', status: 'verified' });
+    return result;
+  };
   const foreignContributionHistory = async (execution, origin) => {
     if (typeof execution?.inspectContributionHistory !== 'function') return null;
     const candidate = await execution.inspectContributionHistory(origin.challenge);
@@ -166,15 +189,18 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
         if (!same(current.context, record.context) || current.challenge.id !== record.plan.challenge.id
             || current.challenge.setId !== record.plan.challenge.setId) fail('CONTEXT_CHANGED');
         const completed = record.submittedScore >= record.plan.challenge.targetScore;
-        if (!completed) activeExecution.prepare(record.plan);
         // Manual external plans use the existing inventory-first objective
         // without an economic route. Recover the ordering rule from frozen
         // contents without adding fields to the durable Journal schema.
         const externalSelection = record.plan.objective === 'inventory-first' && !record.plan.route
           && record.plan.items.some(item => ['transfer', 'unassigned'].includes(item.pile));
-        const input = readInputs({ maxRating: record.plan.policy.maxRating,
-          marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
-          ...(externalSelection ? { sources: ['club', 'transfer', 'unassigned'] } : {}) });
+        const input = await withRosterRefresh(current, () => {
+          if (!completed) activeExecution.prepare(record.plan);
+          return readInputs({ maxRating: record.plan.policy.maxRating,
+            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+            ...(externalSelection ? { sources: ['club', 'transfer', 'unassigned'] } : {}) });
+        });
+        unchanged(current);
         preview = completed ? null : { origin: current, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
         return { ...result, preview: { ...record.plan, plan: record.plan, liveExecutionEnabled: !completed,
           quoteSource: record.plan.items.find(item => item.quote)?.quote?.source ?? 'unknown', externalSelection, record } };
@@ -182,8 +208,9 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       return result;
     } catch (error) {
       preview = null;
-      const result = { status: 'recovery-required', reason: safeReason(error) };
-      log({ event: 'recovery', ...result });
+      const protectionFailure = normalizeStreamlinedProtectionFailure(error?.evidence);
+      const result = { status: 'recovery-required', reason: safeReason(error), ...(protectionFailure ? { protectionFailure } : {}) };
+      log({ event: 'recovery', status: result.status, reason: result.reason, ...protectionFailure });
       return result;
     }
     finally { activeExecution = null; }
@@ -211,7 +238,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       const run = ++planningRun;
       try {
         const config = { ...normalizeStreamlinedSettings(value), sources: ['club', 'transfer', 'unassigned'] }, origin = capture();
-        const input = readInputs(config); input.assertCurrent();
+        const input = await withRosterRefresh(origin, () => readInputs(config)); input.assertCurrent();
         const reservedIds = await purchaseJournal.reservedIds(origin.context);
         unchanged(origin); input.assertCurrent();
         if (stopRequested || run !== planningRun) fail('CANCELLED');
@@ -230,7 +257,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
       const run = ++planningRun;
       try {
         unchanged(saved.origin);
-        const input = readInputs(saved.config); input.assertCurrent();
+        const input = await withRosterRefresh(saved.origin, () => readInputs(saved.config)); input.assertCurrent();
         await purchaseJournal.assertAvailable(saved.origin.context, saved.origin.challenge);
         const reservedIds = await purchaseJournal.reservedIds(saved.origin.context);
         const check = () => {
@@ -288,7 +315,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
           if (stopRequested || run !== planningRun) { preview = null; fail('CANCELLED'); }
           return { ...recovered.preview, ...recovered, recoveryAttempted: true, resumedPurchase: !!recovered.preview };
         }
-        const rawInput = readInputs(config); rawInput.assertCurrent();
+        const rawInput = await withRosterRefresh(origin, () => readInputs(config)); rawInput.assertCurrent();
         await purchaseJournal.assertAvailable(origin.context, origin.challenge);
         const reserved = new Set(await purchaseJournal.reservedIds(origin.context));
         const input = { ...rawInput, inventory: rawInput.inventory.filter(item => !reserved.has(item.id)) };
@@ -654,7 +681,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, readMarketCa
     },
     async recover() {
       if (busy) return { status: 'blocked', reason: 'FC27_STREAMLINED_BUSY' };
-      busy = true;
+      busy = true; stopRequested = false;
       try { return await recoverCurrent(); } finally { busy = false; }
     },
     async archiveHistory() {

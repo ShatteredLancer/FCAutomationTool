@@ -69,7 +69,7 @@ it('queued task dispatch cannot outlive its original boundary after its caller t
 });
 it('serializes two callers and shares spacing instead of granting each a separate budget',async()=>{
  const f=await fixture(),calls=[];await Promise.all([f.gate,f.other].map(g=>g.run('search',()=>{},()=>{calls.push(f.now());return {success:true};})));
- expect(calls).toEqual([100000,107000]);expect((await f.gate.inspect()).gate.hour).toBe(2);
+ expect(calls).toEqual([100000,101000]);expect((await f.gate.inspect()).gate.hour).toBe(2);
 });
 it('serializes zero-delay task listings and keeps ordinary buy, move and legacy listing spacing',async()=>{
  const f=await fixture(),calls=[];let active=0;
@@ -90,7 +90,7 @@ it('serializes zero-delay task listings and keeps ordinary buy, move and legacy 
 });
 it('returns a resumable wait without dispatch when a task cannot take the shared slot',async()=>{
  const f=await fixture(),send=vi.fn();await f.gate.run('search',()=>{},()=>({success:true}));
- await expect(f.other.run('search',()=>{},send,{wait:false})).rejects.toMatchObject({message:'MARKET_TRAFFIC_WAIT',retryAt:107000});expect(send).not.toHaveBeenCalled();
+ await expect(f.other.run('search',()=>{},send,{wait:false})).rejects.toMatchObject({message:'MARKET_TRAFFIC_WAIT',retryAt:101000});expect(send).not.toHaveBeenCalled();
 });
 it('does not hold a legacy owner while waiting for a full hour quota',async()=>{
  const f=await fixture();f.settings.hourLimit=1;await f.gate.run('search',()=>{},()=>({success:true}));

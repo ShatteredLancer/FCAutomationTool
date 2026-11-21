@@ -10,7 +10,7 @@ import { normalizeStreamlinedContributionReply } from '../../src/streamlined/con
 
 // Synthetic identities and materials; replay the observed sequence, not the
 // user's inventory: confirmed work -> rejected wave -> recovered purchases -> Solve.
-async function setup({ targetScore = 160, budget = 1000, nativeContribution = false } = {}) {
+async function setup({ targetScore = 160, budget = 1000, nativeContribution = false, refreshSquad } = {}) {
   const memory = new Map();
   let readHook = async () => {};
   const get = async (key, fallback) => { await readHook(key); return structuredClone(memory.get(key) ?? fallback); };
@@ -56,7 +56,7 @@ async function setup({ targetScore = 160, budget = 1000, nativeContribution = fa
     purchase: vi.fn(async (plan, approval) => driver().execute(plan, { ...approval, budget: approval.budget ?? budget,
       attempts: 2, expiresAt: time + 100000 })),
   };
-  const session = () => createFc27StreamlinedSession({ get, set, now: () => time,
+  const session = () => createFc27StreamlinedSession({ get, set, refreshSquad, now: () => time,
     inspect: () => ({ context: target.context, challenge: current() }),
     readInputs: () => ({ context: target.context, challenge: current(), policy, eligibility,
       inventory: [...owned.values()], assertCurrent() {} }), readMarketCandidates,
@@ -221,6 +221,20 @@ it('keeps protection/preparation failure blocking the recovered preview', async 
     reason: 'FC27_STREAMLINED_PROTECTION_UNVERIFIED' });
   expect((await f.session.contribute({ fingerprint: f.before.fingerprint })).status).toBe('blocked');
   expect(f.buyer.buy).not.toHaveBeenCalled(); expect(f.buyer.contribute).not.toHaveBeenCalled();
+});
+
+it('refreshes the inactive squad during explicit recovery and returns the same frozen purchase preview', async () => {
+  const refreshSquad = vi.fn(async check => check());
+  const f = await setup({ refreshSquad });
+  f.execution.prepare.mockImplementationOnce(() => {
+    throw Object.assign(Error('FC27_STREAMLINED_PROTECTION_UNVERIFIED'),
+      { evidence: { phase: 'protection-active-state', mismatch: 'inactive' } });
+  });
+  const result = await f.session.recover();
+  expect(result.preview.plan.fingerprint).toBe(f.before.fingerprint);
+  expect(refreshSquad).toHaveBeenCalledOnce();
+  expect(f.buyer.buy).not.toHaveBeenCalled();
+  expect(f.buyer.contribute).not.toHaveBeenCalled();
 });
 
 it('cancels Solve during read-only recovery without leaving an executable preview', async () => {

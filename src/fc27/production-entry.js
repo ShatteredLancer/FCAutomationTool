@@ -76,6 +76,7 @@ import { downloadFc27Diagnostics } from '../adapters/browser/fc27-diagnostic-dow
 import { createFc27PublicPrices } from '../adapters/browser/fc27-public-prices.js';
 import { mountFc27StreamlinedPanel } from '../adapters/browser/fc27-streamlined-panel.js';
 import { createFc27StreamlinedSession } from '../adapters/browser/fc27-streamlined-session.js';
+import { refreshFc27StreamlinedSquad } from '../adapters/ea/fc27-streamlined-squad-refresh.js';
 import { createFc27StreamlinedCatalog } from '../adapters/browser/fc27-streamlined-catalog.js';
 import { createFc27StreamlinedMarket } from '../adapters/ea/fc27-streamlined-market.js';
 import { createFc27StreamlinedExecution } from '../adapters/browser/fc27-streamlined-execution.js';
@@ -472,6 +473,7 @@ const streamlinedSession = createFc27StreamlinedSession({
   inspect: () => { const page = locateFc27StreamlinedPage(unsafeWindow); if (!page) return null;
     const context = readFc27Context(unsafeWindow); return { context, challenge: projectFc27StreamlinedChallenge(page, context) }; },
   readInputs: settings => readFc27StreamlinedInputs(unsafeWindow, settings),
+  refreshSquad: check => refreshFc27StreamlinedSquad(unsafeWindow, check),
   readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
     catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }), prices: publicPrices, diagnosticLog }),
   get: GM_getValue, set: GM_setValue, prices: publicPrices, diagnosticLog,

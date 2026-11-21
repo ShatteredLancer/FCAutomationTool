@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { executionRuntime } from '../helpers/fc27-execution-runtime.js';
 import { locateFc27StreamlinedPage, readFc27StreamlinedInputs, inspectFc27Streamlined, createFc27StreamlinedMatcher,
   readFc27StreamlinedProtection, assertFc27StreamlinedPolicy } from '../../src/adapters/ea/fc27-streamlined-read.js';
@@ -10,6 +10,7 @@ import expiredTransfer from '../fixtures/fc27-streamlined-expired-transfer-2026-
 import { readStreamlinedExternalRows } from '../../src/streamlined/external-selection.js';
 import { snapshotFc27ClubPlayer } from '../../src/adapters/ea/fc27-local-read.js';
 import { createFc27StreamlinedSession } from '../../src/adapters/browser/fc27-streamlined-session.js';
+import { refreshFc27StreamlinedSquad } from '../../src/adapters/ea/fc27-streamlined-squad-refresh.js';
 import { safeItem } from '../helpers/streamlined.js';
 import rarity11502 from '../fixtures/fc27-item-rarity-11502.json';
 
@@ -134,6 +135,79 @@ function zeroSquadRuntime() {
   f.root.info.lock = [4];
   return { ...f, squad };
 }
+
+function inactiveSquadSession() {
+  const { root, squad } = zeroSquadRuntime();
+  const { context, challenge } = readFc27StreamlinedInputs(root);
+  squad._isActive = false;
+  const reply = value => ({ observe: (owner, callback) => callback(owner, value) });
+  const expire = root.repositories.Squad.setSquadListCacheTimestamp = vi.fn();
+  const list = root.services.Squad.requestSquadList = vi.fn(() => {
+    squad._isActive = true;
+    return reply({ success: true, status: 200, data: { activeSquadId: 0, squads: [squad] } });
+  });
+  const detail = root.services.Squad.requestSquadById = vi.fn(() =>
+    reply({ success: true, status: 200, data: { squad } }));
+  const session = createFc27StreamlinedSession({ inspect: () => ({ context, challenge }),
+    readInputs: settings => readFc27StreamlinedInputs(root, settings),
+    refreshSquad: check => refreshFc27StreamlinedSquad(root, check),
+    get: async () => null, set: async () => { throw Error('Unexpected write'); } });
+  return { root, session, expire, list, detail, squad, reply };
+}
+
+it('repairs an inactive zero squad once on Solve and keeps its exact players and FSU locks out of the plan', async () => {
+  const f = inactiveSquadSession();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await f.session.plan({ objective: 'inventory-first', mode: 'inventory' });
+    expect(result.plan.items.length).toBeGreaterThan(0);
+    expect(result.plan.items.some(item => [1, 2, 3, 4].includes(item.id))).toBe(false);
+  }
+  expect(f.expire.mock.calls).toEqual([[0, 0]]);
+  expect(f.list).toHaveBeenCalledTimes(1);
+  expect(f.detail.mock.calls).toEqual([[0]]);
+});
+
+it.each(['cached list', 'two active squads', 'rejected detail', 'incomplete slots', 'cancelled'])(
+  'keeps the preview unavailable after an inconclusive active squad refresh: %s', async issue => {
+    const f = inactiveSquadSession();
+    if (issue === 'cached list') f.list.mockReturnValue(f.reply({ success: true, status: 304 }));
+    if (issue === 'two active squads') f.list.mockImplementation(() => {
+      f.squad._isActive = true;
+      return f.reply({ success: true, status: 200, data: { activeSquadId: 0, squads: [f.squad, { _id: 2, _isActive: true }] } });
+    });
+    if (issue === 'rejected detail') f.detail.mockReturnValue(f.reply({ success: false, status: 401 }));
+    if (issue === 'incomplete slots') f.squad._players.pop();
+    if (issue === 'cancelled') f.list.mockImplementation(() => {
+      f.session.stop();
+      return f.reply({ success: true, status: 200 });
+    });
+    const result = await f.session.plan({ objective: 'inventory-first', mode: 'inventory' });
+    expect(result.plan).toBeUndefined();
+    expect(result.status).toBe(issue === 'cancelled' ? 'cancelled' : 'blocked');
+    expect(f.detail).toHaveBeenCalledTimes(['rejected detail', 'incomplete slots'].includes(issue) ? 1 : 0);
+    if (issue === 'rejected detail') {
+      expect(f.squad._isActive).toBe(true);
+      expect((await f.session.plan({ objective: 'inventory-first', mode: 'inventory' })).protectionFailure.phase)
+        .toBe('protection-squad-detail');
+      expect(f.detail).toHaveBeenCalledTimes(2);
+    }
+  });
+
+it('uses the active ID from the fresh list when zero was the service default', async () => {
+  const f = inactiveSquadSession();
+  const current = structuredClone(f.squad);
+  current._id = 7; current._isActive = true; current._players[22]._item.id = 7;
+  f.list.mockImplementation(() => {
+    f.root.services.Squad.activeSquad = 7;
+    f.root.repositories.Squad.squads._collection[902]._collection[7] = current;
+    return f.reply({ success: true, status: 200, data: { activeSquadId: 7, squads: [f.squad, current] } });
+  });
+  f.detail.mockReturnValue(f.reply({ success: true, status: 200, data: { squad: current } }));
+  const result = await f.session.plan({ objective: 'inventory-first', mode: 'inventory' });
+  expect(f.detail.mock.calls).toEqual([[7]]);
+  expect(result.plan.policy.activeSquadItemIds).toContain(7);
+  expect(result.plan.items.some(item => item.id === 7)).toBe(false);
+});
 
 it('does not plan 5x80+ when the FSU season, initialization or Club cache is not ready', () => {
   for (const issue of ['season', 'initializing', 'cache']) {

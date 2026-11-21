@@ -746,7 +746,8 @@
     nation: null,
     club: null
   });
-  var defaultTradingPublicSettings = () => ({ source: "futbin", reserve: null, totalCap: null, gapMin: 7, gapMax: 15, cycleMin: 10, cycleMax: 15, restMin: 5, restMax: 8, perSearch: 1, hourLimit: 1e3, dayLimit: 5e3 });
+  var defaultSearchGap = Object.freeze({ gapMin: 1, gapMax: 3 });
+  var defaultTradingPublicSettings = () => ({ source: "futbin", reserve: null, totalCap: null, ...defaultSearchGap, cycleMin: 10, cycleMax: 15, restMin: 5, restMax: 8, perSearch: 1, hourLimit: 1e3, dayLimit: 5e3 });
   function tradingTaskContext(value) {
     own2(value, ["scope", "season", "platform"]);
     return { scope: text(value.scope, 250), season: one(value.season, ["27"]), platform: one(value.platform, ["pc", "console"]) };
@@ -810,15 +811,17 @@
     return { name: name2, mode, settings: s, players, owned: owned2, excluded, ...sellSelection ? { sellSelection } : {}, ...schedule ? { schedule } : {}, ...ratingPrices ? { ratingPrices } : {} };
   }
   var emptyTaskActivity = () => ({ receipts: [], unresolved: false });
-  var emptyTradingTasks = (context) => ({ schema: 1, context: tradingTaskContext(context), revision: 0, settings: defaultTradingPublicSettings(), tasks: [] });
+  var emptyTradingTasks = (context) => ({ schema: 2, context: tradingTaskContext(context), revision: 0, settings: defaultTradingPublicSettings(), tasks: [] });
   function readTradingTasks(input, context) {
     if (input === null || input === void 0) return emptyTradingTasks(context);
     if (JSON.stringify(input).length > TASK_STORE_LIMIT) throw Error("TASKS_STORAGE_LIMIT");
     own2(input, ["schema", "context", "revision", "settings", "tasks"]);
-    if (input.schema !== 1 || JSON.stringify(tradingTaskContext(input.context)) !== JSON.stringify(tradingTaskContext(context))) throw Error("TASKS_CONTEXT_INVALID");
-    const store = { schema: 1, context: tradingTaskContext(context), revision: integer2(input.revision), settings: tradingPublicSettings(input.settings), tasks: list(input.tasks, 100).map((t) => {
+    if (![1, 2].includes(input.schema) || JSON.stringify(tradingTaskContext(input.context)) !== JSON.stringify(tradingTaskContext(context))) throw Error("TASKS_CONTEXT_INVALID");
+    const settings = tradingPublicSettings(input.settings);
+    if (input.schema === 1 && settings.gapMin === 7 && settings.gapMax === 15) Object.assign(settings, defaultSearchGap);
+    const store = { schema: 2, context: tradingTaskContext(context), revision: integer2(input.revision), settings, tasks: list(input.tasks, 100).map((t) => {
       own2(t, ["id", "revision", "name", "mode", "settings", "players", "owned", "excluded", "state", "createdAt", "updatedAt", "activity", "stopRequested", "schedule", "ratingPrices", "sellSelection"]);
-      const { name: name2, mode, settings, players, owned: owned2, excluded, schedule, ratingPrices, sellSelection } = t;
+      const { name: name2, mode, settings: settings2, players, owned: owned2, excluded, schedule, ratingPrices, sellSelection } = t;
       if (t.stopRequested !== void 0 && t.stopRequested !== true) throw Error("TASKS_INVALID");
       own2(t.activity, ["receipts", "unresolved"]);
       if (typeof t.activity.unresolved !== "boolean") throw Error("TASKS_INVALID");
@@ -826,7 +829,7 @@
         own2(r, ["kind", "itemId", "definitionId", "coins", "at"]);
         return { kind: one(r.kind, ["bought", "moved", "listed", "sold"]), itemId: text(r.itemId, 30), definitionId: integer2(r.definitionId, 1), coins: optional(r.coins), at: integer2(r.at) };
       });
-      return { id: text(t.id, 100), revision: integer2(t.revision ?? 0), ...normalizeTradingTaskInput({ name: name2, mode, settings, players, owned: owned2, excluded, schedule, ratingPrices, sellSelection }), state: one(t.state, ["ready", "queued", "running", "paused", "stopped", "archived", "review"]), createdAt: integer2(t.createdAt), updatedAt: integer2(t.updatedAt), activity: { receipts, unresolved: t.activity.unresolved }, ...t.stopRequested ? { stopRequested: true } : {} };
+      return { id: text(t.id, 100), revision: integer2(t.revision ?? 0), ...normalizeTradingTaskInput({ name: name2, mode, settings: settings2, players, owned: owned2, excluded, schedule, ratingPrices, sellSelection }), state: one(t.state, ["ready", "queued", "running", "paused", "stopped", "archived", "review"]), createdAt: integer2(t.createdAt), updatedAt: integer2(t.updatedAt), activity: { receipts, unresolved: t.activity.unresolved }, ...t.stopRequested ? { stopRequested: true } : {} };
     }) };
     if (new Set(store.tasks.map((t) => t.id)).size !== store.tasks.length) throw Error("TASKS_INVALID");
     return store;
@@ -2270,7 +2273,9 @@
     "protection-slot-list",
     "protection-slot-id",
     "protection-fsu-roster",
-    "protection-cache"
+    "protection-cache",
+    "protection-squad-list",
+    "protection-squad-detail"
   ]);
   var mismatches = /* @__PURE__ */ new Set([
     "undefined",
@@ -30169,7 +30174,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
 :host{color-scheme:dark;--bg:#17232d;--panel:#20323d;--line:#354a56;--muted:#a9bbc6;--mint:#a1edda;--yellow:#e5c489}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#edf4f9;font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif}button,input,select{font:inherit;color:inherit;background:#253945;border:1px solid #48606d;border-radius:7px;padding:8px 12px;min-width:0}button{cursor:pointer;white-space:nowrap}button:hover{border-color:var(--mint)}button:disabled{opacity:.4;cursor:default}.primary{background:var(--mint);color:#12372e;border-color:var(--mint);font-weight:700}.danger{color:#ffb7ad}.quiet{border-color:transparent;background:transparent}.muted,small{color:var(--muted)}small{font-size:12px}h1,h2,h3,p{margin:0}h1{font-size:23px}h2{font-size:18px}h3{font-size:14px}.row{display:flex;align-items:center;gap:12px}.between{justify-content:space-between}.wrap{flex-wrap:wrap}.badge{font-size:11px;padding:3px 8px;border:1px solid #52636b;border-radius:5px;white-space:nowrap}.positive{color:var(--mint)}.warning{color:var(--yellow)}.hidden{display:none!important}.layout{display:grid;grid-template-columns:72px minmax(0,1fr);min-height:100vh}.rail{background:#14202b;border-right:1px solid #283b48;display:flex;flex-direction:column;align-items:center;gap:25px;padding:20px 6px;color:#b7c5cd}.rail span{text-align:center;font-size:11px}.rail b{display:block;font-size:21px}.rail .selected{color:var(--mint)}main{min-width:0}.brand{height:55px;display:flex;align-items:center;justify-content:space-between;padding:0 25px;background:#14202b}.brand strong{font-size:19px}.nav{display:flex;gap:8px;padding:12px 24px;border-bottom:1px solid var(--line);overflow-x:auto}.nav button{min-width:84px;background:#1c2b34;font-size:13px}.nav .active{border-color:var(--mint);color:var(--mint);background:#273b40}.content{padding:27px 30px;max-width:1450px;margin:0 auto}.lead{margin-bottom:20px}.usage{font-size:12px;text-align:right;line-height:1.8}.usage strong{font-size:14px;color:var(--mint)}.summary{display:flex;align-items:center;gap:30px;padding:14px 18px;border:1px solid var(--line);background:#1c2d38;border-radius:9px;margin-bottom:22px;flex-wrap:wrap}.summary b{margin-left:7px;font-size:18px}.toolbar{margin-bottom:12px}.panel{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#1b2b36}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:12px;color:var(--muted);font-weight:500;padding:12px 16px;background:#1e303b}td{padding:17px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:middle}td small{display:block}.task-name{padding:0;border:0;background:transparent;font-weight:700;font-size:15px;text-align:left;color:#f0f7fa}.task-name:hover{color:var(--mint)}.state{font-size:12px;padding:4px 9px;border-radius:5px;display:inline-block;background:#30414b}.state.running{background:#254f45;color:#abf3da}.state.queued{color:#afc8ff;background:#293b59}.state.paused{background:#4b402d;color:#efcf9a}.state.stopped,.state.archived{color:#a9bac5}.actions{display:flex;gap:6px;align-items:center;justify-content:flex-end}.actions button{font-size:12px;padding:6px 10px}.menu{position:relative}.menu>summary{cursor:pointer;list-style:none;padding:5px 11px;border:1px solid #48606d;border-radius:6px;min-width:34px}.menu[open]>div{position:absolute;right:0;top:35px;width:145px;background:#233a46;box-shadow:0 8px 24px #0009;border:1px solid #57727d;border-radius:8px;z-index:4;padding:5px}.menu button{display:block;width:100%;text-align:left;background:transparent;border:0}.global{margin-top:22px;border:1px solid var(--line);border-radius:9px;background:#1b2c37}.global>summary{padding:15px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none}.global>summary:after{content:'\u5C55\u5F00 \u25BE';color:var(--mint);font-size:12px}.global[open]>summary:after{content:'\u6536\u8D77 \u25B4'}.global-body{padding:2px 18px 18px}.fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.fields.three{grid-template-columns:repeat(3,minmax(0,1fr))}.fields.two{grid-template-columns:repeat(2,minmax(0,1fr))}label{display:grid;gap:5px;font-size:12px;color:var(--muted);min-width:0}label input,label select{width:100%;color:#edf4f9;font-size:14px}.range{display:flex;align-items:center;gap:6px}.range input{width:100%;min-width:0}.check{display:flex;align-items:center;gap:7px}input[type=checkbox]{accent-color:var(--mint);width:16px;height:16px}.line{height:1px;background:var(--line);margin:17px 0}.hint{font-size:12px;color:var(--muted);margin-top:13px}.note{font-size:12px;color:#b9cbd6;background:#172832;border-left:2px solid #6e9b9b;padding:9px 12px;margin-top:12px}.section-head{margin-bottom:12px}.end-note{margin-top:18px;display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}dialog{border:1px solid #607983;border-radius:12px;padding:0;background:#192a35;color:inherit;width:min(830px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:hidden}dialog::backdrop{background:#07111bc9;backdrop-filter:blur(2px)}.dialog-layout{display:flex;flex-direction:column;max-height:calc(100dvh - 44px)}.dialog-head,.dialog-foot{padding:16px 21px;flex-shrink:0;background:#1f323d}.dialog-head{border-bottom:1px solid var(--line)}.dialog-foot{border-top:1px solid var(--line)}.dialog-body{padding:20px 21px;overflow-y:auto;min-height:0}.dialog-head button{padding:4px 10px}.templates{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:15px 0}.templates button{text-align:left;padding:11px 12px;background:#1e303b}.templates button b{display:block;font-size:13px}.templates button small{font-size:11px}.templates .active{border-color:var(--mint);background:#29413f}.box{background:#1e303a;border:1px solid var(--line);padding:14px;border-radius:8px;margin:14px 0}.compact th,.compact td{padding:9px 8px}.compact input[type=number]{width:85px;padding:6px}.compact button{padding:3px 8px}.player{display:flex;gap:9px;align-items:center;min-width:140px}.card{width:32px;height:42px;background:#544b37;border:1px solid #ae985e;border-radius:4px 4px 10px 10px;color:#f8e7b6;font-size:17px;font-weight:750;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}.card.special{background:#242a35}.card small{font-size:8px;color:inherit}.player b{font-size:12px}.player small{font-size:10px}.advanced>summary{cursor:pointer;color:var(--mint);font-size:12px;margin:12px 0}.picker-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;gap:12px;border-bottom:1px solid var(--line)}#picker{width:min(620px,calc(100vw - 32px))}#confirm{width:min(470px,calc(100vw - 32px))}.search{width:100%;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.stats>div{padding:10px;background:#213641;border-radius:7px}.stats strong{display:block;font-size:20px;margin-top:3px}.log{white-space:pre-wrap;font:12px/1.9 ui-monospace,monospace;color:#b4d5d2;max-height:140px;overflow:auto}.toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;background:#264e44;border:1px solid var(--mint);border-radius:8px;z-index:20;max-width:calc(100vw - 48px)}:focus-visible{outline:2px solid var(--mint);outline-offset:3px}@media(max-width:1000px){.content{padding:22px 18px}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}td,th{padding:12px 10px}.usage{max-width:320px}.summary{gap:18px}}@media(max-width:650px){.layout{grid-template-columns:minmax(0,1fr)}.rail{display:none}.brand{padding:0 12px}.brand strong{font-size:16px}.brand small{display:none}.nav{padding:10px 12px}.content{padding:20px 12px}.lead{flex-wrap:wrap}.usage{text-align:left;width:100%;max-width:none}.summary{gap:12px;font-size:12px}.summary b{font-size:15px}.toolbar{flex-wrap:wrap}.global>summary{align-items:flex-start}.global>summary small{display:none}.fields,.fields.three{grid-template-columns:repeat(2,minmax(0,1fr))}.templates button{padding:9px 7px}.templates small{display:none}dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}.dialog-layout{max-height:calc(100dvh - 20px)}.dialog-head,.dialog-foot,.dialog-body{padding:13px}.dialog-foot{flex-wrap:wrap}.dialog-foot small{width:100%}.end-note{flex-wrap:wrap}.task-table thead{display:none}.task-table,.task-table tbody,.task-table tr,.task-table td{display:block}.task-table tr{padding:14px;border-top:1px solid var(--line)}.task-table td{border:0;padding:3px 0}.task-table td:nth-child(2){display:inline-block;margin:6px 8px 6px 0}.task-table td:nth-child(3){display:inline-block}.task-table td:nth-child(4),.task-table td:nth-child(5){display:inline-block;margin:6px 20px 5px 0}.task-table td:nth-child(4):before{content:'\u6301\u4ED3\u6210\u672C ';color:var(--muted)}.task-table td:nth-child(5):before{content:'\u5DF2\u5B9E\u73B0 ';color:var(--muted)}.actions{margin-top:7px}.task-table .menu[open]>div{top:auto;bottom:35px}.stats{gap:6px}.stats strong{font-size:17px}.dialog-head h2{font-size:16px}}
 .menu[open]>div{position:fixed;top:auto;bottom:auto;max-height:220px;overflow:auto}
 
-:host{display:block;color:#edf4f9;font:14px/1.5 Arial,sans-serif}.content{padding:0}.dialog-body{overflow:auto}#toast{display:block;margin-top:12px;color:#e5c489}.hint{margin:12px 0}.player small{display:block}.task-table td{padding:12px}.actions{flex-wrap:wrap}.search{width:100%}</style><section class="content"><div class="row between wrap"><h2>\u5E02\u573A\u4EA4\u6613</h2><div class="row"><button id="reloadTasks">\u5237\u65B0\u4EFB\u52A1</button><button id="newTask" class="primary">\uFF0B \u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</button></div></div><p class="hint">\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002</p><div class="row between toolbar"><select id="taskFilter" aria-label="\u4EFB\u52A1\u7B5B\u9009"><option value="active">\u5F53\u524D\u4EFB\u52A1</option><option value="archived">\u5DF2\u5F52\u6863</option></select><button id="pauseAll">\u6682\u505C\u5168\u90E8</button></div><div class="panel scroll"><table class="task-table"><thead><tr><th>\u4EFB\u52A1 / \u89C4\u5219</th><th>\u72B6\u6001</th><th>\u4E70 / \u6302 / \u552E</th><th>\u64CD\u4F5C</th></tr></thead><tbody id="tasks"></tbody></table><p id="empty" class="hint">\u5C1A\u65E0\u4EFB\u52A1</p></div><details class="global" id="globalSettings"><summary><span><b>\u516C\u5171\u4EA4\u6613\u8BBE\u7F6E</b>\u3000<small id="settingsBrief">FUTBIN \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 7\u201315 \u79D2</small></span></summary><div class="global-body"><div class="fields"><label>\u516C\u5171\u62A5\u4EF7\u6E90<select id="source"><option value="futbin">FUTBIN</option><option value="futgg">FUT.GG</option><option value="both">Both \xB7 \u8F83\u4F4E\u6709\u6548\u4EF7</option></select></label><label>\u4EA4\u6613\u62A5\u4EF7\u5E73\u53F0<select disabled><option>\u8DDF\u968F\u5F53\u524D EA \u8D26\u53F7</option></select></label><label>\u8D26\u53F7\u6700\u4F4E\u7559\u5B58\u91D1\u5E01<input id="reserve" type="number" placeholder="\u4E0D\u8BBE\u6700\u4F4E\u7559\u5B58" min="0"></label><label>\u6240\u6709\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="totalCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u641C\u7D22\u95F4\u9694 / \u79D2<div class="range"><input id="gapMin" type="number" min="1" value="7">\u2013<input id="gapMax" type="number" min="1" value="15"></div></label><label>\u6BCF\u591A\u5C11\u6B21\u641C\u7D22\u4F11\u606F<div class="range"><input id="cycleMin" type="number" min="1" value="10">\u2013<input id="cycleMax" type="number" min="1" value="15"></div></label><label>\u4F11\u606F / \u79D2<div class="range"><input id="restMin" type="number" min="0" value="5">\u2013<input id="restMax" type="number" min="0" value="8"></div></label><label>\u6BCF\u6B21\u641C\u7D22\u6700\u591A\u4E70\u5165<input id="perSearch" type="number" min="1" value="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 1 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="hourLimit" type="number" value="1000" min="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 24 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="dayLimit" type="number" value="5000" min="1"></label></div><p class="hint">\u641C\u7D22\u8282\u594F\u53C2\u8003 Enhancer\uFF1B\u505C\u6B62\u9608\u503C\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6\u3002\u767B\u5F55\u3001\u9650\u6D41\u53CA\u672A\u77E5\u56DE\u6267\u5904\u7406\u5C06\u5728\u7EDF\u4E00\u8C03\u5EA6\u9636\u6BB5\u63A5\u5165\u3002</p><div class="row between wrap"><small>\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E\u4F1A\u6682\u505C\u8FD0\u884C\u53CA\u6392\u961F\u4EFB\u52A1\uFF1B\u4E0B\u6B21\u542F\u52A8\u4F7F\u7528\u65B0\u8BBE\u7F6E\u3002</small><button id="saveGlobal">\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E</button></div></div></details>
+:host{display:block;color:#edf4f9;font:14px/1.5 Arial,sans-serif}.content{padding:0}.dialog-body{overflow:auto}#toast{display:block;margin-top:12px;color:#e5c489}.hint{margin:12px 0}.player small{display:block}.task-table td{padding:12px}.actions{flex-wrap:wrap}.search{width:100%}</style><section class="content"><div class="row between wrap"><h2>\u5E02\u573A\u4EA4\u6613</h2><div class="row"><button id="reloadTasks">\u5237\u65B0\u4EFB\u52A1</button><button id="newTask" class="primary">\uFF0B \u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</button></div></div><p class="hint">\u4EFB\u52A1\u7BA1\u7406\u5DF2\u63A5\u5165\uFF1B\u81EA\u52A8\u4E70\u5356\u5C1A\u672A\u5F00\u653E\u3002</p><div class="row between toolbar"><select id="taskFilter" aria-label="\u4EFB\u52A1\u7B5B\u9009"><option value="active">\u5F53\u524D\u4EFB\u52A1</option><option value="archived">\u5DF2\u5F52\u6863</option></select><button id="pauseAll">\u6682\u505C\u5168\u90E8</button></div><div class="panel scroll"><table class="task-table"><thead><tr><th>\u4EFB\u52A1 / \u89C4\u5219</th><th>\u72B6\u6001</th><th>\u4E70 / \u6302 / \u552E</th><th>\u64CD\u4F5C</th></tr></thead><tbody id="tasks"></tbody></table><p id="empty" class="hint">\u5C1A\u65E0\u4EFB\u52A1</p></div><details class="global" id="globalSettings"><summary><span><b>\u516C\u5171\u4EA4\u6613\u8BBE\u7F6E</b>\u3000<small id="settingsBrief">FUTBIN \xB7 \u8DDF\u968F\u8D26\u53F7\u5E73\u53F0 \xB7 \u641C\u7D22 1\u20133 \u79D2</small></span></summary><div class="global-body"><div class="fields"><label>\u516C\u5171\u62A5\u4EF7\u6E90<select id="source"><option value="futbin">FUTBIN</option><option value="futgg">FUT.GG</option><option value="both">Both \xB7 \u8F83\u4F4E\u6709\u6548\u4EF7</option></select></label><label>\u4EA4\u6613\u62A5\u4EF7\u5E73\u53F0<select disabled><option>\u8DDF\u968F\u5F53\u524D EA \u8D26\u53F7</option></select></label><label>\u8D26\u53F7\u6700\u4F4E\u7559\u5B58\u91D1\u5E01<input id="reserve" type="number" placeholder="\u4E0D\u8BBE\u6700\u4F4E\u7559\u5B58" min="0"></label><label>\u6240\u6709\u4EFB\u52A1\u6301\u4ED3\u6210\u672C\u4E0A\u9650<input id="totalCap" type="number" placeholder="\u4E0D\u9650" min="150"></label><label>\u641C\u7D22\u95F4\u9694 / \u79D2<div class="range"><input id="gapMin" type="number" min="1" value="1">\u2013<input id="gapMax" type="number" min="1" value="3"></div></label><label>\u6BCF\u591A\u5C11\u6B21\u641C\u7D22\u4F11\u606F<div class="range"><input id="cycleMin" type="number" min="1" value="10">\u2013<input id="cycleMax" type="number" min="1" value="15"></div></label><label>\u4F11\u606F / \u79D2<div class="range"><input id="restMin" type="number" min="0" value="5">\u2013<input id="restMax" type="number" min="0" value="8"></div></label><label>\u6BCF\u6B21\u641C\u7D22\u6700\u591A\u4E70\u5165<input id="perSearch" type="number" min="1" value="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 1 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="hourLimit" type="number" value="1000" min="1"></label><label title="\u53C2\u8003 Enhancer \u7528\u91CF\u9762\u677F\uFF1B\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6">\u6EDA\u52A8 24 \u5C0F\u65F6\u641C\u7D22\u505C\u6B62\u9608\u503C<input id="dayLimit" type="number" value="5000" min="1"></label></div><p class="hint">\u641C\u7D22\u8282\u594F\u53C2\u8003 Enhancer\uFF1B\u505C\u6B62\u9608\u503C\u4E0D\u662F EA \u5B98\u65B9\u989D\u5EA6\u3002\u767B\u5F55\u3001\u9650\u6D41\u53CA\u672A\u77E5\u56DE\u6267\u5904\u7406\u5C06\u5728\u7EDF\u4E00\u8C03\u5EA6\u9636\u6BB5\u63A5\u5165\u3002</p><div class="row between wrap"><small>\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E\u4F1A\u6682\u505C\u8FD0\u884C\u53CA\u6392\u961F\u4EFB\u52A1\uFF1B\u4E0B\u6B21\u542F\u52A8\u4F7F\u7528\u65B0\u8BBE\u7F6E\u3002</small><button id="saveGlobal">\u4FDD\u5B58\u516C\u5171\u8BBE\u7F6E</button></div></div></details>
 </section><dialog id="editor"><form class="dialog-layout" id="taskForm"><header class="dialog-head row between"><h2 id="editTitle">\u65B0\u5EFA\u4EA4\u6613\u4EFB\u52A1</h2><button type="button" data-close="editor" aria-label="\u5173\u95ED\u4EFB\u52A1\u7F16\u8F91">\u2715</button></header><div class="dialog-body"><label>\u4EFB\u52A1\u540D\u79F0<input id="taskName" maxlength="60" required placeholder="\u4F8B\u5982\uFF1A84 \u5206\u666E\u901A\u91D1\u4F4E\u4E70\u9AD8\u5356"></label><div class="templates" aria-label="\u4EFB\u52A1\u6A21\u677F"><button type="button" data-mode="fixed" class="active"><b>\u56FA\u5B9A\u540D\u5355</b><small>\u9009\u5B9A\u7403\u5458\u7248\u672C</small></button><button type="button" data-mode="filter"><b>\u6761\u4EF6\u9009\u5361</b><small>\u6309\u6761\u4EF6\u751F\u6210\u540D\u5355</small></button><button type="button" data-mode="sell"><b>\u6301\u4ED3\u51FA\u552E</b><small>\u53EA\u5356\u9009\u4E2D\u7684\u5361</small></button></div>
 <section id="fixedBox" class="box"><div class="row between section-head"><h3>\u76EE\u6807\u5361\u7247</h3><button type="button" id="addPlayer">\uFF0B \u6DFB\u52A0\u7403\u5458</button></div><div class="scroll"><table class="compact"><thead><tr><th>\u7CBE\u786E\u7248\u672C</th><th>\u4E70\u5165\u4E0A\u9650</th><th>\u6700\u591A\u6301\u6709</th><th></th></tr></thead><tbody id="selectedRows"></tbody></table></div><small>\u7CBE\u786E\u7248\u672C\u5206\u522B\u9009\u62E9\uFF1B\u6570\u91CF\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002</small></section>
 <section id="filterBox" class="box hidden"><div class="fields three"><label>\u6700\u4F4E\u8BC4\u5206<input id="ratingMin" type="number" value="83" min="1" max="99"></label><label>\u6700\u9AD8\u8BC4\u5206<input id="ratingMax" type="number" value="85" min="1" max="99"></label><label title="\u540C\u4E00\u5177\u4F53\u7248\u672C\u7684\u540C\u65F6\u6301\u4ED3\u4E0A\u9650\uFF1B\u552E\u51FA\u540E\u53EF\u8865\u4ED3\u3002\u7559\u7A7A\u8868\u793A\u4E0D\u9650\u3002">\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650<input id="perVersion" type="number" min="1" step="1" placeholder="\u4E0D\u9650" aria-label="\u6BCF\u79CD\u5361\u6301\u4ED3\u4E0A\u9650"></label></div><details class="advanced" id="extraFilters"><summary id="extraFiltersLabel">\u66F4\u591A\u7B5B\u9009</summary><div class="fields three"><label>\u54C1\u8D28<select id="quality"><option value="all">\u5168\u90E8\u53EF\u4EA4\u6613\u7248\u672C</option><option value="gold">\u666E\u901A\u91D1</option><option value="silver">\u666E\u901A\u94F6</option><option value="bronze">\u666E\u901A\u94DC</option><option value="special">\u7279\u6B8A\u7248\u672C</option></select></label><label>\u8054\u8D5B<select id="league"><option value="">\u5168\u90E8</option></select></label><label>\u4F4D\u7F6E<select id="position"><option value="">\u5168\u90E8</option></select></label><label>\u56FD\u7C4D<select id="nation"><option value="">\u5168\u90E8</option></select></label><label>\u4FF1\u4E50\u90E8<select id="club"><option value="">\u5168\u90E8</option></select></label><div><small>\u6392\u9664\u7403\u5458</small><button type="button" id="editExclusions" style="display:block;margin-top:6px">\u641C\u7D22\u6DFB\u52A0\u6392\u9664</button></div></div><div id="exclusionList" class="row wrap" style="margin-top:10px"></div></details><div class="row between"><small id="filterCount">\u6309\u6761\u4EF6\u5339\u914D \xB7 \u5C55\u5F00\u9884\u89C8\u540E\u8BFB\u53D6</small><button type="button" id="previewPool">\u9884\u89C8\u5339\u914D\u7403\u5458</button></div><div id="poolPreview" class="hidden"><input id="poolSearch" class="search" placeholder="\u641C\u7D22\u5339\u914D\u7403\u5458" aria-label="\u641C\u7D22\u5339\u914D\u7403\u5458"><div id="pool"></div><div class="row between"><button type="button" id="poolPrev">\u4E0A\u4E00\u9875</button><small id="poolPage"></small><button type="button" id="poolNext">\u4E0B\u4E00\u9875</button></div></div></section>
@@ -47318,6 +47323,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
         "protection-lock-list": "FSU \u9501\u5361\u540D\u5355\u672A\u8BFB\u5230\u6216\u683C\u5F0F\u5F02\u5E38\u3002\u8BF7\u786E\u8BA4 FSU Local \u5DF2\u542F\u7528\u5E76\u521D\u59CB\u5316\u5B8C\u6210\uFF0C\u518D\u5237\u65B0\u9875\u9762\uFF1B\u4E0D\u8981\u89E3\u9664\u9501\u5361\u3002",
         "protection-active-id": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u6807\u8BC6\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u4E3B\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u751F\u6210\u65B9\u6848\u3002",
         "protection-active-state": "\u539F\u751F\u4E3B\u9635\u5BB9\u7684\u542F\u7528\u72B6\u6001\u5C1A\u672A\u6838\u9A8C\u3002\u8BF7\u5728 Squads \u786E\u8BA4\u5F53\u524D\u4E3B\u9635\u5BB9\u5DF2\u542F\u7528\uFF1B\u82E5\u4ECD\u62A5\u9519\uFF0C\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u3002",
+        "protection-squad-list": "\u91CD\u65B0\u8BFB\u53D6 EA \u9635\u5BB9\u540D\u5355\u540E\u4ECD\u65E0\u6CD5\u786E\u8BA4\u5F53\u524D\u542F\u7528\u7684\u9635\u5BB9\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u9635\u5BB9\uFF0C\u518D\u8FD4\u56DE\u91CD\u8BD5\u3002",
+        "protection-squad-detail": "EA \u5F53\u524D\u4E3B\u9635\u5BB9\u7684\u7403\u5458\u540D\u5355\u5C1A\u672A\u6838\u5B9E\u3002\u8BF7\u5728 Squads \u6253\u5F00\u5F53\u524D\u9635\u5BB9\u5E76\u7B49\u7403\u5458\u52A0\u8F7D\u5B8C\uFF0C\u518D\u8FD4\u56DE\u91CD\u8BD5\u3002",
         "protection-native-id": "\u539F\u751F\u7F13\u5B58\u4E2D\u7684\u4E3B\u9635\u5BB9\u6807\u8BC6\u4E0E\u5F53\u524D\u4E3B\u9635\u5BB9\u4E0D\u4E00\u81F4\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
         "protection-layout": "\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u6570\u91CF\u5B9A\u4E49\u672A\u901A\u8FC7\u6838\u9A8C\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002",
         "protection-slot-list": `\u539F\u751F\u4E3B\u9635\u5BB9\u5361\u4F4D\u672A\u5B8C\u6574\u6838\u9A8C\uFF08${number4(evidence?.count)} / ${number4(evidence?.requiredSlots)}\uFF09\u3002\u8BF7\u5BFC\u51FA\u8BCA\u65AD\u6392\u67E5\u3002`,
@@ -48138,7 +48145,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
         "recovery-required": "\u7ED3\u679C\u5C1A\u672A\u786E\u8BA4\uFF0C\u8BF7\u6838\u5BF9\u5E76\u6062\u590D\uFF1B\u4E0D\u4F1A\u91CD\u590D\u8D21\u732E\u3002",
         rejected: "EA \u62D2\u7EDD\u4E86\u672C\u6B21\u8D21\u732E\uFF0C\u8BF7\u91CD\u65B0\u89C4\u5212\u3002"
       };
-      node("status").textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status);
+      node("status").textContent = confirmed ? confirmed.message : streamlinedPurchaseResumeMessage(result) ?? (result.reason ? streamlinedExecutionMessage(result.reason, result.recovery, result.protectionFailure) : result.status === "absent" ? "\u5F53\u524D SBC \u6CA1\u6709\u5F85\u6062\u590D\u7684\u8D21\u732E\u8BB0\u5F55\uFF0C\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u3002" : labels2[result.status] ?? result.status);
       if (archiveBlocked && result.reason === "FC27_STREAMLINED_OTHER_TARGET_RECOVERY_REQUIRED") {
         const old = result.recovery;
         node("status").textContent = `\u65E7 SBC\uFF08Set ${old?.setId ?? "?"} / Challenge ${old?.challengeId ?? "?"}\uFF09\u5C1A\u672A\u7ED3\u675F\uFF1A\u5DF2\u786E\u8BA4 ${number4(old?.confirmedBatches)} \u6279\u3001\u672A\u53D1\u9001 ${number4(old?.waitingBatches)} \u6279\u3001\u7ED3\u679C\u672A\u77E5 ${number4(old?.pendingWriteCount)} \u6279\u3002\u963B\u65AD\u539F\u56E0\u89C1\u4E0B\u65B9\u3002`;
@@ -48594,6 +48601,7 @@ ${detail.join(" \xB7 ")}`;
   function createFc27StreamlinedSession({
     inspect,
     readInputs,
+    refreshSquad = null,
     readMarketCandidates = null,
     get,
     set,
@@ -48665,6 +48673,32 @@ ${detail.join(" \xB7 ")}`;
     const unchanged = (origin) => {
       const current2 = capture();
       if (!same6(current2, origin)) fail11("CONTEXT_CHANGED");
+    };
+    const pendingRosterChecks = /* @__PURE__ */ new Set();
+    const withRosterRefresh = async (origin, read) => {
+      const key2 = JSON.stringify(origin.context);
+      if (!pendingRosterChecks.has(key2)) {
+        try {
+          return read();
+        } catch (error2) {
+          const evidence = error2?.evidence;
+          const inactive = evidence?.phase === "protection-active-state" && evidence.mismatch === "inactive";
+          const unloaded = evidence?.phase === "protection-slot-list" && evidence.count === 0 && evidence.mismatch === "length";
+          if (!refreshSquad || error2?.message !== "FC27_STREAMLINED_PROTECTION_UNVERIFIED" || !(inactive || unloaded)) throw error2;
+        }
+      }
+      pendingRosterChecks.add(key2);
+      const check = () => {
+        unchanged(origin);
+        if (stopRequested) fail11("CANCELLED");
+      };
+      check();
+      await refreshSquad(check);
+      check();
+      pendingRosterChecks.delete(key2);
+      const result = read();
+      log({ event: "planning-read", phase: "protection-squad-detail", status: "verified" });
+      return result;
     };
     const foreignContributionHistory = async (execution, origin) => {
       if (typeof execution?.inspectContributionHistory !== "function") return null;
@@ -48804,13 +48838,16 @@ ${detail.join(" \xB7 ")}`;
         if (record && !["recovery-required", "replan-required", "blocked"].includes(result.status)) {
           if (!same6(current2.context, record.context) || current2.challenge.id !== record.plan.challenge.id || current2.challenge.setId !== record.plan.challenge.setId) fail11("CONTEXT_CHANGED");
           const completed = record.submittedScore >= record.plan.challenge.targetScore;
-          if (!completed) activeExecution.prepare(record.plan);
           const externalSelection = record.plan.objective === "inventory-first" && !record.plan.route && record.plan.items.some((item2) => ["transfer", "unassigned"].includes(item2.pile));
-          const input = readInputs({
-            maxRating: record.plan.policy.maxRating,
-            marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
-            ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
+          const input = await withRosterRefresh(current2, () => {
+            if (!completed) activeExecution.prepare(record.plan);
+            return readInputs({
+              maxRating: record.plan.policy.maxRating,
+              marketMaxRating: record.plan.policy.marketMaxRating ?? record.plan.policy.maxRating,
+              ...externalSelection ? { sources: ["club", "transfer", "unassigned"] } : {}
+            });
           });
+          unchanged(current2);
           preview = completed ? null : { origin: current2, input, items: record.plan.items, plan: record.plan, execution: activeExecution, externalSelection };
           return { ...result, preview: {
             ...record.plan,
@@ -48824,8 +48861,9 @@ ${detail.join(" \xB7 ")}`;
         return result;
       } catch (error2) {
         preview = null;
-        const result = { status: "recovery-required", reason: safeReason11(error2) };
-        log({ event: "recovery", ...result });
+        const protectionFailure = normalizeStreamlinedProtectionFailure(error2?.evidence);
+        const result = { status: "recovery-required", reason: safeReason11(error2), ...protectionFailure ? { protectionFailure } : {} };
+        log({ event: "recovery", status: result.status, reason: result.reason, ...protectionFailure });
         return result;
       } finally {
         activeExecution = null;
@@ -48877,7 +48915,7 @@ ${detail.join(" \xB7 ")}`;
         const run = ++planningRun;
         try {
           const config2 = { ...normalizeStreamlinedSettings(value), sources: ["club", "transfer", "unassigned"] }, origin = capture();
-          const input = readInputs(config2);
+          const input = await withRosterRefresh(origin, () => readInputs(config2));
           input.assertCurrent();
           const reservedIds = await purchaseJournal.reservedIds(origin.context);
           unchanged(origin);
@@ -48904,7 +48942,7 @@ ${detail.join(" \xB7 ")}`;
         const run = ++planningRun;
         try {
           unchanged(saved.origin);
-          const input = readInputs(saved.config);
+          const input = await withRosterRefresh(saved.origin, () => readInputs(saved.config));
           input.assertCurrent();
           await purchaseJournal.assertAvailable(saved.origin.context, saved.origin.challenge);
           const reservedIds = await purchaseJournal.reservedIds(saved.origin.context);
@@ -49002,7 +49040,7 @@ ${detail.join(" \xB7 ")}`;
             }
             return { ...recovered2.preview, ...recovered2, recoveryAttempted: true, resumedPurchase: !!recovered2.preview };
           }
-          const rawInput = readInputs(config2);
+          const rawInput = await withRosterRefresh(origin, () => readInputs(config2));
           rawInput.assertCurrent();
           await purchaseJournal.assertAvailable(origin.context, origin.challenge);
           const reserved = new Set(await purchaseJournal.reservedIds(origin.context));
@@ -49590,6 +49628,7 @@ ${detail.join(" \xB7 ")}`;
       async recover() {
         if (busy) return { status: "blocked", reason: "FC27_STREAMLINED_BUSY" };
         busy = true;
+        stopRequested = false;
         try {
           return await recoverCurrent();
         } finally {
@@ -49617,6 +49656,36 @@ ${detail.join(" \xB7 ")}`;
         }
       }
     });
+  }
+
+  // src/adapters/ea/fc27-streamlined-squad-refresh.js
+  async function refreshFc27StreamlinedSquad(root, check) {
+    const service = root.services.Squad;
+    const repository = root.repositories.Squad;
+    let phase = "protection-squad-list";
+    const unavailable = () => Object.assign(Error("FC27_STREAMLINED_PROTECTION_UNVERIFIED"), { evidence: { phase } });
+    const read = (request) => {
+      const observable = request();
+      if (typeof observable?.observe !== "function") throw unavailable();
+      return observeFc27TrafficResult(observable);
+    };
+    try {
+      check();
+      repository.setSquadListCacheTimestamp(0, 0);
+      const list3 = await read(() => service.requestSquadList());
+      check();
+      const id16 = list3?.data?.activeSquadId;
+      if (list3?.success !== true || list3.status !== 200 || !Number.isSafeInteger(id16) || id16 < 0 || service.activeSquad !== id16 || !Array.isArray(list3.data.squads)) throw unavailable();
+      const active = list3.data.squads.filter((squad) => squad?._isActive === true);
+      if (active.length !== 1 || active[0]._id !== id16) throw unavailable();
+      phase = "protection-squad-detail";
+      const detail = await read(() => service.requestSquadById(id16));
+      check();
+      if (detail?.success !== true || ![200, 304].includes(detail.status) || service.activeSquad !== id16 || detail.data?.squad !== active[0] || active[0]._isActive !== true) throw unavailable();
+    } catch {
+      check();
+      throw unavailable();
+    }
   }
 
   // src/adapters/browser/fc27-streamlined-catalog.js
@@ -53767,6 +53836,7 @@ ${detail.join(" \xB7 ")}`;
       return { context, challenge: projectFc27StreamlinedChallenge(page, context) };
     },
     readInputs: (settings) => readFc27StreamlinedInputs(unsafeWindow, settings),
+    refreshSquad: (check) => refreshFc27StreamlinedSquad(unsafeWindow, check),
     readMarketCandidates: createFc27StreamlinedMarket(unsafeWindow, {
       catalog: createFc27StreamlinedCatalog({ gmRequest: GM_xmlhttpRequest }),
       prices: publicPrices,
