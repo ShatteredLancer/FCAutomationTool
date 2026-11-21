@@ -57,6 +57,7 @@ export function streamlinedPurchaseAudit(record) {
   const unconsumedPurchaseCount = record.entries.filter(entry => entry.source === 'market'
     && ['buy-pending', 'bought', 'move-pending', 'club'].includes(entry.state)).length;
   return { pendingWriteCount, unconsumedPurchaseCount, contributedCount: record.consumedIds.length,
+    ...(Array.isArray(record.supplyMisses) ? { excludedUnavailable: record.supplyMisses.length } : {}),
     confirmedBatches: record.confirmedBatches, purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0 };
 }
 
@@ -91,6 +92,15 @@ export function validateStreamlinedPurchase(record, context) {
           || group.source === 'market' && (!integer(item.price, 150, 15000000)
             || !integer(item.purchaseMaxBuy, 150, 15000000) || item.purchaseMaxBuy < item.price)
           || group.source === 'inventory' && !integer(item.id, 1))) fail('PURCHASE_JOURNAL_INVALID');
+  }
+  // Optional on older records. Empty-market observations restrict an
+  // existing scope; they can neither add a version nor alter price authority.
+  if (record.supplyMisses !== undefined) {
+    const scopeIds = new Set(record.route.groups.filter(group => group.source === 'market')
+      .flatMap(group => group.items.map(item => item.definitionId)));
+    if (record.schema !== 2 || !Array.isArray(record.supplyMisses) || record.supplyMisses.length > scopeIds.size
+        || new Set(record.supplyMisses).size !== record.supplyMisses.length
+        || record.supplyMisses.some(id => !scopeIds.has(id))) fail('PURCHASE_JOURNAL_INVALID');
   }
   const keys = new Set(), items = new Set(); let spent = 0;
   for (const entry of record.entries) {

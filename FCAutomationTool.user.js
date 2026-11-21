@@ -44494,6 +44494,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       pendingWriteCount,
       unconsumedPurchaseCount,
       contributedCount: record.consumedIds.length,
+      ...Array.isArray(record.supplyMisses) ? { excludedUnavailable: record.supplyMisses.length } : {},
       confirmedBatches: record.confirmedBatches,
       purchasesSettled: pendingWriteCount === 0 && unconsumedPurchaseCount === 0
     };
@@ -44506,6 +44507,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     if (!record || ![1, 2].includes(record.schema) || record.schema === 2 && !record.plan?.execution?.purchaseScope || !same6(record.context, context) || typeof record.operationId !== "string" || !record.operationId || !integer7(record.revision, 1) || !record.route?.groups?.length || typeof record.fingerprint !== "string" || !record.fingerprint || !integer7(record.budget) || !integer7(record.spent) || record.spent > record.budget || !integer7(record.submittedScore) || !integer7(record.challenge?.id, 1) || !integer7(record.challenge?.setId, 1) || typeof record.completed !== "boolean" || record.confirmedBatches !== void 0 && !integer7(record.confirmedBatches) || !integer7(record.challenge?.targetScore, 1) || !integer7(record.challenge?.selectionLimit, 1, 1e3) || !Array.isArray(record.entries) || record.entries.length > 2e4 || !Array.isArray(record.consumedIds) || !Array.isArray(record.fulfilled) || record.fulfilled.length !== record.route.groups.length || record.fulfilled.some((n, i) => !integer7(n, 0, record.route.groups[i]?.quantity ?? -1)) || record.schema === 2 && (!Array.isArray(record.demand) || record.demand.length !== record.route.groups.length || record.demand.some((n, i) => !integer7(n, record.fulfilled[i], record.route.groups[i].quantity))) || new Set(record.consumedIds).size !== record.consumedIds.length || record.consumedIds.some((id16) => !integer7(id16, 1))) fail11("PURCHASE_JOURNAL_INVALID");
     for (const group of record.route.groups) {
       if (!["inventory", "market"].includes(group.source) || !integer7(group.quantity, 1, 2e4) || !Array.isArray(group.items) || !group.items.length || !integer7(group.item?.points, 1) || group.items.some((item2) => !integer7(item2?.definitionId, 1) || item2?.points !== group.item.points || group.source === "market" && (!integer7(item2.price, 150, 15e6) || !integer7(item2.purchaseMaxBuy, 150, 15e6) || item2.purchaseMaxBuy < item2.price) || group.source === "inventory" && !integer7(item2.id, 1))) fail11("PURCHASE_JOURNAL_INVALID");
+    }
+    if (record.supplyMisses !== void 0) {
+      const scopeIds = new Set(record.route.groups.filter((group) => group.source === "market").flatMap((group) => group.items.map((item2) => item2.definitionId)));
+      if (record.schema !== 2 || !Array.isArray(record.supplyMisses) || record.supplyMisses.length > scopeIds.size || new Set(record.supplyMisses).size !== record.supplyMisses.length || record.supplyMisses.some((id16) => !scopeIds.has(id16))) fail11("PURCHASE_JOURNAL_INVALID");
     }
     const keys2 = /* @__PURE__ */ new Set(), items = /* @__PURE__ */ new Set();
     let spent = 0;
@@ -48298,7 +48303,7 @@ ${version ?? ""}`;
       audit.contributedCount,
       audit.unconsumedPurchaseCount
     ].every(Number.isSafeInteger) || record.submittedScore >= record.challenge.targetScore) return null;
-    return `\u5DF2\u6062\u590D\u539F\u8D2D\u5361\u4EFB\u52A1\uFF1A\u5DF2\u786E\u8BA4 ${number4(audit.contributedCount)} \u5F20\u3001${number4(record.submittedScore)} / ${number4(record.challenge.targetScore)} \u5206\uFF1B\u5DF2\u8D2D\u5F85\u5904\u7406 ${number4(audit.unconsumedPurchaseCount)} \u5F20\u3002\u5DF2\u82B1 ${number4(record.spent)} \u91D1\u5E01\uFF0C\u539F\u9884\u7B97\u5269\u4F59 ${number4(record.budget - record.spent)}\u3002\u8BF7\u70B9\u51FB\u201C\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E\u201D\uFF1B\u539F\u9884\u7B97\u548C\u5355\u5361\u4E0A\u9650\u4E0D\u53D8\uFF0C\u5DF2\u786E\u8BA4\u6750\u6599\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002`;
+    return `\u5DF2\u6062\u590D\u539F\u8D2D\u5361\u4EFB\u52A1\uFF1A\u5DF2\u786E\u8BA4 ${number4(audit.contributedCount)} \u5F20\u3001${number4(record.submittedScore)} / ${number4(record.challenge.targetScore)} \u5206\uFF1B\u5DF2\u8D2D\u5F85\u5904\u7406 ${number4(audit.unconsumedPurchaseCount)} \u5F20\u3002\u5DF2\u82B1 ${number4(record.spent)} \u91D1\u5E01\uFF0C\u539F\u9884\u7B97\u5269\u4F59 ${number4(record.budget - record.spent)}\u3002\u8BF7\u70B9\u51FB\u201C\u7EE7\u7EED\u539F\u65B9\u6848\u8D2D\u4E70\u5E76\u8D21\u732E\u201D\uFF1B\u539F\u9884\u7B97\u548C\u5355\u5361\u4E0A\u9650\u4E0D\u53D8\uFF0C\u5DF2\u786E\u8BA4\u6750\u6599\u4E0D\u4F1A\u91CD\u590D\u6295\u5165\u3002${audit.excludedUnavailable ? `\u7EE7\u7EED\u65F6\u4F1A\u8DF3\u8FC7\u5DF2\u786E\u8BA4\u9650\u4EF7\u5185\u65E0\u8D27\u7684 ${number4(audit.excludedUnavailable)} \u4E2A\u7248\u672C\u3002` : ""}`;
   }
   function streamlinedConfirmedContribution(result) {
     const value = result?.confirmation;
@@ -48363,8 +48368,7 @@ ${version ?? ""}`;
       recovery: "\u6838\u5BF9\u5DF2\u6709\u6267\u884C\u8BB0\u5F55",
       "batch-cooldown": "\u5DF2\u786E\u8BA4\u4E0A\u4E00\u6279\uFF0C\u6279\u6B21\u95F4\u51B7\u5374",
       "progress-backoff": "\u8BFB\u53D6\u8FDB\u5EA6\u6682\u672A\u6210\u529F\uFF0C\u9000\u907F\u540E\u91CD\u8BD5",
-      replanning: "\u9009\u62E9\u6388\u6743\u8303\u56F4\u5185\u7684\u6700\u4F4E\u6210\u672C\u66FF\u4EE3\u65B9\u6848",
-      "waiting-supply": "\u7B49\u5F85\u540E\u91CD\u8BD5\u5E02\u573A\u4F9B\u5E94",
+      replanning: "\u6309\u5DF2\u786E\u8BA4\u79EF\u5206\u5728\u539F\u6388\u6743\u5185\u91CD\u7B97\u5269\u4F59\u65B9\u6848",
       "search-result": "\u672C\u6B21\u641C\u7D22\u5B8C\u6210",
       "checking-holdings": "\u6838\u5BF9 Club \u7248\u672C\u6301\u6709",
       "purchase-rejected": "EA \u62D2\u7EDD\u4E86\u4E70\u5165\u8BF7\u6C42"
@@ -48382,8 +48386,8 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
 \u672C\u6279\u5C31\u7EEA ${number4(p.readyCount)} / ${number4(p.selectionLimit)} \u5F20 \xB7 ${number4(p.readyPoints)} \u5206`;
     if (p.phase === "materialize") text7 += `
 \u5916\u90E8\u5361 ${number4(p.completed)} / ${number4(p.materialTotal)} \u5F20`;
-    if (p.phase === "waiting-supply") text7 += `
-\u4F9B\u5E94\u91CD\u8BD5 ${number4(p.attempt)} / ${number4(p.attemptLimit)}`;
+    if (p.phase === "replanning" && p.excludedUnavailable > 0) text7 += `
+\u5DF2\u8DF3\u8FC7 ${number4(p.excludedUnavailable)} \u4E2A\u9650\u4EF7\u5185\u65E0\u8D27\u7684\u7248\u672C`;
     if (p.phase === "progress-backoff") text7 += `
 \u51C6\u5907\u7B2C ${number4(p.attempt + 1)} / ${number4(p.attemptLimit)} \u6B21\u8BFB\u53D6 \xB7 \u7B49\u5F85 ${number4(Math.ceil(p.waitMs / 1e3))} \u79D2`;
     return text7;
@@ -48394,9 +48398,6 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
     if (active) text7 += ` \xB7 \u5F53\u524D\u6B65\u9AA4\u7B49\u5F85 ${seconds(phaseElapsedMs)} \u79D2`;
     if (active && p?.phase === "partial-ready" && Number.isSafeInteger(p.waitMs)) {
       text7 += ` \xB7 \u9884\u8BA1\u6536\u6279\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
-    }
-    if (active && p?.phase === "waiting-supply" && Number.isSafeInteger(p.waitMs)) {
-      text7 += ` \xB7 \u4F9B\u5E94\u91CD\u8BD5\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
     }
     if (active && ["batch-cooldown", "progress-backoff"].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
       text7 += ` \xB7 \u8BFB\u53D6\u7B49\u5F85\u5269\u4F59 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1e3)} \u79D2`;
@@ -48449,7 +48450,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
       FC27_STREAMLINED_EXTERNAL_BATCH_ORDER: "\u5916\u90E8\u5361\u987B\u6309\u5B8C\u6574\u6279\u6B21\u987A\u5E8F\u6267\u884C\uFF0C\u5148\u786E\u8BA4 Club \u524D\u7F6E\u5361\u6D88\u8017\uFF1B\u5DF2\u786E\u8BA4\u6279\u6B21\u4F1A\u81EA\u52A8\u8DF3\u8FC7\u3002",
       FC27_STREAMLINED_STOPPED: "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u786E\u8BA4\u6210\u4EA4\u4FDD\u7559\u3002\u6709\u672A\u51B3\u56DE\u6267\u65F6\u5148\u6838\u5BF9\uFF0C\u5426\u5219\u53EF\u76F4\u63A5\u7EE7\u7EED\u3002",
       FC27_STREAMLINED_NO_AFFORDABLE_CARDS: "\u5F53\u524D\u65B9\u6848\u6CA1\u6709\u53EF\u6267\u884C\u7684\u9650\u4EF7\u5185\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u786E\u8BA4\u8D2D\u5165\u7684\u6750\u6599\u4FDD\u7559\u3002",
-      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "\u6709\u9650\u91CD\u8BD5\u540E\u4ECD\u65E0\u6388\u6743\u8303\u56F4\u5185\u7684\u9650\u4EF7\u5019\u9009\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u8D2D\u6750\u6599\u4FDD\u7559\uFF0C\u53EF\u7A0D\u540E\u91CD\u8BD5\u6216\u751F\u6210\u65B0\u65B9\u6848\uFF1B\u666E\u901A\u7F3A\u8D27\u4E0D\u9700\u8981\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u3002",
+      FC27_STREAMLINED_PURCHASE_NO_SUPPLY: "\u6309\u5DF2\u786E\u8BA4\u79EF\u5206\u91CD\u7B97\u540E\uFF0C\u539F\u6388\u6743\u5185\u4ECD\u6CA1\u6709\u53EF\u6267\u884C\u7684\u9650\u4EF7\u65B9\u6848\uFF0C\u5DF2\u6682\u505C\u3002\u5DF2\u786E\u8BA4\u7684\u8D2D\u5361\u548C\u8D21\u732E\u4FDD\u7559\uFF1B\u8BF7\u70B9\u51FB\u201C\u751F\u6210\u65B9\u6848\u201D\u5BA1\u6838\u65B0\u7684\u5019\u9009\u3002\u4E0D\u9700\u8981\u6838\u5BF9\u4EA4\u6613\u56DE\u6267\u3002",
       FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: "\u672A\u5206\u914D\u533A\u5DF2\u6EE1\u3002\u8BF7\u624B\u52A8\u817E\u51FA\u7A7A\u95F4\u540E\u91CD\u8BD5\uFF1B\u672A\u641C\u7D22\u5E02\u573A\uFF0C\u4E5F\u672A\u81EA\u52A8\u4E22\u5F03\u5361\u7247\u3002",
       FC27_STREAMLINED_PURCHASE_VERSION_HELD: "\u5269\u4F59\u7248\u672C\u5DF2\u5728 Club \u6301\u6709\uFF0C\u4F46\u672A\u88AB\u9009\u4E3A\u672C\u6B21\u5E93\u5B58\u6750\u6599\u3002\u8BF7\u9009\u62E9\u5176\u4ED6\u8DEF\u7EBF\uFF0C\u6216\u91CD\u65B0\u751F\u6210\u65B9\u6848\u660E\u786E\u9009\u62E9\u8FD9\u4E9B\u5E93\u5B58\u5361\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u6D88\u8017\u3002",
       FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: "\u5269\u4F59\u9884\u7B97\u4E0D\u8DB3\u4EE5\u5B8C\u6210\u672C\u6B21\u8D2D\u4E70\uFF0C\u672A\u63D0\u9AD8\u9650\u4EF7\u3002\u8BF7\u91CD\u65B0\u751F\u6210\u65B9\u6848\u5E76\u660E\u786E\u8C03\u6574\u9884\u7B97\u3002",
@@ -49313,7 +49314,7 @@ ${detail.join(" \xB7 ")}`;
           record: outcome.record,
           confirmation: outcome.confirmation,
           executionReason: outcome.reason ?? (outcome.status === "completed" ? "FC27_STREAMLINED_COMPLETED" : result.executionReason),
-          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status)
+          liveExecutionEnabled: result.liveExecutionEnabled && ["partial", "stopped", "paused"].includes(outcome.status) && outcome.reason !== "FC27_STREAMLINED_PURCHASE_NO_SUPPLY"
         });
         showOutcome(outcome);
       } catch (error2) {
@@ -50443,11 +50444,7 @@ ${detail.join(" \xB7 ")}`;
             execution: {
               purchaseAttempts,
               partialWaitMs: config2.partialWaitMs,
-              ...purchaseScope ? {
-                purchaseScope,
-                scarcityRetries: 2,
-                retryWaitMs: 15e3
-              } : {},
+              ...purchaseScope ? { purchaseScope } : {},
               ...quoteCoverage.limited ? { quoteLimited: true } : {}
             }
           }) : null;
@@ -53496,6 +53493,7 @@ ${detail.join(" \xB7 ")}`;
             remainingQuantity: record && streamlinedDemandRoute(record).groups.reduce((n, g, i) => n + Math.max(0, g.quantity - (record.fulfilled[i] ?? 0) - record.entries.filter((e) => e.groupIndex === i && ["ready", "bought", "move-pending", "club"].includes(e.state)).length), 0),
             batchNumber: (record?.confirmedBatches ?? 0) + (phase === "confirmed" ? 0 : 1),
             contributed: record?.consumedIds.length ?? 0,
+            excludedUnavailable: record?.supplyMisses?.length ?? 0,
             remainingScore: Math.max(0, (record?.challenge.targetScore ?? 0) - (record?.submittedScore ?? 0)),
             ...extra
           });
@@ -53598,8 +53596,6 @@ ${detail.join(" \xB7 ")}`;
         }
         if (reconcileOnly) return { status: record.completed ? "completed" : "recovered", record };
         if (now() >= approval.expiresAt) return { status: "paused", reason: "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED", record };
-        let scarcityRound = 0;
-        const missingVersions = /* @__PURE__ */ new Set();
         const isolated = isolatedStreamlinedQuotes(record.plan.execution?.purchaseScope?.groups ?? []);
         while (!stopped && record.submittedScore < record.challenge.targetScore) {
           await check();
@@ -53626,6 +53622,7 @@ ${detail.join(" \xB7 ")}`;
           const state = await adapter.readState(record, { onProgress: (row) => report(row.phase ?? "checking-state", row), stopped: () => stopped });
           await check();
           if (state.submittedScore !== record.submittedScore) fail11("PROGRESS_CHANGED");
+          const blockedDefinitions = [.../* @__PURE__ */ new Set([...state.blockedDefinitions ?? [], ...record.supplyMisses ?? []])];
           const available = record.entries.filter((e) => ["ready", "club"].includes(e.state));
           const preferredDefinitions = new Set(available.filter((e) => ["club", "storage"].includes(e.pile)).map((e) => e.definitionId));
           const selectedDefinitions = /* @__PURE__ */ new Set();
@@ -53642,8 +53639,18 @@ ${detail.join(" \xB7 ")}`;
             groupIndex: readyEntries[index]?.groupIndex,
             item: row
           }).filter((row) => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
+          if (!ready.length && record.plan.execution?.purchaseScope && record.confirmedBatches > 0 && record.supplyMisses?.length) {
+            const demand = await replanStreamlinedPurchaseDemand(record, { ...state, blockedDefinitions, now, stopped: () => stopped });
+            await check();
+            if (demand && !same6(demand, record.demand)) {
+              report("replanning");
+              record.demand = demand;
+              await save();
+            }
+          }
           const wave = nextStreamlinedWave(streamlinedDemandRoute(record), {
             ...state,
+            blockedDefinitions,
             ready,
             limit: record.challenge.selectionLimit,
             submittedScore: record.submittedScore,
@@ -53651,7 +53658,7 @@ ${detail.join(" \xB7 ")}`;
             consumedIds: record.consumedIds,
             fulfilled: record.fulfilled
           });
-          const material = [...wave.material], attempted = /* @__PURE__ */ new Set([...state.blockedDefinitions ?? [], ...missingVersions]);
+          const material = [...wave.material], attempted = new Set(blockedDefinitions);
           for (const entry of record.entries) {
             if (entry.source === "market" && isolated.has(entry.definitionId) && ["club", "consumed"].includes(entry.state)) attempted.add(entry.definitionId);
           }
@@ -53710,11 +53717,14 @@ ${detail.join(" \xB7 ")}`;
               const offer = await adapter.find(candidate, cap, record);
               await check();
               if (!offer || offer.unavailable) {
-                if (!offer) {
-                  missingVersions.add(candidate.definitionId);
+                const noSupply = offer === null || offer?.unavailable === true && offer.reason === "FC27_STREAMLINED_PURCHASE_NO_SUPPLY";
+                if (offer?.unavailable && !noSupply && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
+                if (record.schema === 2 && noSupply) {
                   replaceMissing = true;
+                  record.supplyMisses = [...record.supplyMisses ?? [], candidate.definitionId];
+                  await save();
+                  await check();
                 }
-                if (offer?.unavailable && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
                 report("search-result", {
                   definitionId: candidate.definitionId,
                   reason: offer?.reason ?? "FC27_STREAMLINED_PURCHASE_NO_SUPPLY",
@@ -53785,20 +53795,8 @@ ${detail.join(" \xB7 ")}`;
             const held = state.heldDefinitions ?? [];
             const remainingGroups = streamlinedDemandRoute(record).groups.filter((group, i) => group.source === "market" && group.quantity > record.fulfilled[i]);
             const pauseReason = state.freeSlots === 0 ? "FC27_STREAMLINED_PURCHASE_CAPACITY_FULL" : budgetBlocked ? "FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT" : remainingGroups.length && remainingGroups.every((group) => group.items.every((item2) => held.includes(item2.definitionId))) ? "FC27_STREAMLINED_PURCHASE_VERSION_HELD" : searchFailure ?? "FC27_STREAMLINED_PURCHASE_NO_SUPPLY";
-            const retries = record.plan.execution?.scarcityRetries ?? 0;
-            if (pauseReason === "FC27_STREAMLINED_PURCHASE_NO_SUPPLY" && scarcityRound < retries && adapter.waitForPartial) {
-              const waitMs = record.plan.execution.retryWaitMs ?? 15e3;
-              report("waiting-supply", { waitMs, attempt: ++scarcityRound, attemptLimit: retries });
-              await adapter.waitForPartial(waitMs, () => stopped);
-              await check();
-              missingVersions.clear();
-              record.demand = initialStreamlinedPurchaseDemand(record.plan, record.route).map((n, i) => Math.max(n, record.fulfilled[i]));
-              await save();
-              continue;
-            }
             return { status: "paused", reason: pauseReason, record };
           }
-          scarcityRound = 0;
           if ((wave.purchases.length || boughtThisWave > 0) && material.length < record.challenge.selectionLimit && material.reduce((sum2, r) => sum2 + r.item.points, record.submittedScore) < record.challenge.targetScore) {
             const canGrow = nextStreamlinedWave(streamlinedDemandRoute(record), {
               ...state,

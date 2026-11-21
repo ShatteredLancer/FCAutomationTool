@@ -936,9 +936,11 @@ async function exerciseStreamlinedMarket(page) {
   assert.equal(await run.isEnabled(), true, 'A read-only holdings pause can be retried without a recovery click');
   await page.evaluate(() => { globalThis.marketSmoke.mode = 'no-supply'; });
   await run.click();
-  await page.getByText('有限重试后仍无授权范围内的限价候选，已暂停。已购材料保留，可稍后重试或生成新方案；普通缺货不需要核对交易回执。', { exact: true }).waitFor();
-  assert.equal(await run.isEnabled(), true, 'Normal scarcity can be retried without a recovery click');
+  await page.getByText('按已确认积分重算后，原授权内仍没有可执行的限价方案，已暂停。已确认的购卡和贡献保留；请点击“生成方案”审核新的候选。不需要核对交易回执。', { exact: true }).waitFor();
+  assert.equal(await run.isEnabled(), false, 'Exhausted approved pool is not replayed');
   await page.evaluate(() => { globalThis.marketSmoke.mode = 'completed'; });
+  await page.getByRole('button', { name: '生成方案', exact: true }).click();
+  await page.waitForFunction(() => !globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot.querySelector('[data-solve]').disabled);
   await run.click();
   await page.getByText('目标已达成，奖励状态需另行核对。', { exact: true }).waitFor();
   assert.equal(await run.isDisabled(), true);
