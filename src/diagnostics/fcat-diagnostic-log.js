@@ -44,7 +44,7 @@ const NUMBER_FIELDS = Object.freeze(['startPrice','buyNow','durationSeconds','mi
   'planningDurationMs', 'ownedValueDurationMs', 'catalogReadDurationMs', 'quoteReadDurationMs',
   'localSearchDurationMs', 'repairSeedDurationMs', 'localSearchNodes', 'ownedValueCandidateCount', 'ownedValueQuotedCount',
   'ownedSilverValueQuotedCount', 'ownedGoldValueQuotedCount', 'ownedBronzeValueQuotedCount',
-  'unpricedOwnedCount',
+  'unpricedOwnedCount', 'scaffoldNodes', 'scaffoldPlans', 'scaffoldQuotedCount',
   'inventoryCount', 'inventoryClubCount', 'inventoryStorageCount', 'inventoryRawClubCount', 'inventoryRawStorageCount', 'inventorySkippedNonPlayerCount', 'inventoryTradeableCount',
   'inventoryUntradeableCount', 'inventoryTradeabilityUnknown', 'acceptedInventoryCount', 'eligibleInventoryCount', 'filteredInventoryCount', 'inventoryReservedCount',
   'reservationExcludedCount', 'reservationTargetCount', 'reservationReferenceCount',

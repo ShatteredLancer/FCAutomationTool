@@ -1,5 +1,5 @@
 import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
-  finishPuzzleSearch, finishPuzzleSearchCooperatively, isFc27PuzzleSearchBudget } from './puzzle-preview.js';
+  finishPuzzleSearch, finishPuzzleSearchCooperatively, isFc27PuzzleSearchBudget, iterateFc27PuzzlePositionScaffolds } from './puzzle-preview.js';
 import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
 import { evaluateFc27PuzzleRating, evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
@@ -975,6 +975,48 @@ function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, wal
   best.cards.forEach((card, index) => { squad[slotIds[index]] = card; });
   return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false, ...metrics,
     plans: [{ ...projectSuggestion(squad, facts, rules.length), estimatedCost: best.spent }] };
+}
+
+// When one position is empty and the other positions can already satisfy the
+// dominant tier, spend the existing final read on a linked cheaper filler.
+// This is just positional capacity, not proof of a legal or affordable team.
+export function planFc27PuzzleOpenPositionQuery(input, cards, rules, usedQueries) {
+  if (!Array.isArray(input.challenge.formation?.positions) || rules.some(rule => /^from-/.test(rule.kind))) return null;
+  const gold = rules.find(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
+    && rule.qualities.length === 1 && rule.qualities[0] === 3 && rule.count === required(input) - 1);
+  if (!gold || !allowedFc27MarketTiers(rules, input.policy).some(tier => tier.level === 'silver')) return null;
+  const slots = input.challenge.formation.positions.filter((_, i) => !input.challenge.brickIndices.includes(i));
+  const hasPosition = position => cards.some(card => card.positions.includes(position));
+  if (slots.filter(position => !hasPosition(position)).length !== 1) return null;
+  const options = slots.filter(hasPosition).map(position => cards.filter(card => card.rating >= 75 && card.positions.includes(position)));
+  const assignments = new Map();
+  const assign = (slot, seen) => options[slot].some(({ definitionId }) => {
+    if (seen.has(definitionId)) return false;
+    seen.add(definitionId);
+    if (assignments.has(definitionId) && !assign(assignments.get(definitionId), seen)) return false;
+    assignments.set(definitionId, slot);
+    return true;
+  });
+  if (!options.every((_, slot) => assign(slot, new Set()))) return null;
+  const leagues = new Map();
+  const leagueCap = Math.min(slots.length, ...rules.filter(rule => rule.kind === 'same-league' && rule.mode !== 'min').map(rule => rule.value));
+  for (const card of cards) {
+    const lane = leagues.get(card.leagueId) ?? { league: card.leagueId, spine: 0, silver: 0 };
+    lane.spine += Number(assignments.has(card.definitionId)); lane.silver += Number(card.rating >= 65 && card.rating < 75);
+    leagues.set(card.leagueId, lane);
+  }
+  return [...leagues.values()].filter(row => row.spine > 0 && row.spine < leagueCap)
+    .sort((a, b) => b.spine - a.spine || b.silver - a.silver || a.league - b.league)
+    .map(({ league }) => ({ start: 0, count: 20, level: 'silver', league }))
+    .find(query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query))) ?? null;
+}
+
+export async function findFc27PuzzlePositionScaffolds(input, entries, options) {
+  const candidates = puzzleMarketValueCandidates(input, entries);
+  const result = await finishPuzzleSearchCooperatively(iterateFc27PuzzlePositionScaffolds({
+    ...input, candidates, maxNodes: options.maxNodes, maxPlans: options.maxPlans, onProgress: options.onProgress,
+  }), options);
+  return { ...result, plans: result.plans.map(plan => projectSuggestion(plan.squad, plan.facts, plan.requirementCount)) };
 }
 
 export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>

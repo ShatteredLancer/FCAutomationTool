@@ -6,6 +6,87 @@ import {evaluateFc27PuzzleSquad} from '../../src/fc27/puzzle-evaluator.js';
 import {parseFc27SbcRequirements,matchFc27SbcRequirements} from '../../src/fc27/sbc-requirements.js';
 import {planPuzzleLeagueMinimumAffinity, planPuzzleCappedLeagueDiscovery} from '../../src/fc27/puzzle-query-affinity.js';
 
+// Black Friday Flash 6 (137/201): public challenge rules and 4-3-3 reference
+// formation, with synthetic cards/quotes at the incident's logged pool size.
+// https://www.fut.gg/sbc/challenges/27-137-black-friday-flash-6/
+// https://www.fodder.gg/pt/sbc/black-friday-flash-6-137
+it.each(['standard','missing-quote','price-cap','off-position'])('137/201 Black Friday Flash 6 verifies positions and real hard requirements before pricing (%s)',async(mode)=>{
+  const input=puzzleFillFixture(), base=input.inventory.items[0], memory=new Map(), trace=[];
+  const positions=[0,3,5,5,7,14,14,14,23,25,27];
+  Object.assign(input.challenge,{setId:137,id:201,formation:{id:16,positions},rawRequirements:[
+    marketRow(6,2),marketRow(5,3,-1,1),marketRow(8,3),marketRow(17,3,10),marketRow(3,2),marketRow(35,28),
+  ]});
+  input.policy.maxRating=82;
+  input.inventory.items=[
+    {...base,id:800,definitionId:800,rating:72,locked:true,positions:[0]},
+    {...base,id:801,definitionId:801,rating:72,activeSquad:true,positions:[25]},
+    ...Array.from({length:101},(_,i)=>({...base,id:20000+i,definitionId:20000+i,rating:86})),
+  ];
+  const marketBase={nationId:8,leagueId:31,rarity:0,groups:[],special:false,evolution:false,cosmetic:false};
+  const spine=positions.map((position,i)=>({...marketBase,rating:i===4?72:76,
+    definitionId:1010+i,positions:[position],leagueId:[13,31,16,19][Math.floor(i/3)],
+    teamId:1+Math.floor(i/3),nationId:i<8?8:9}));
+  if(mode==='off-position') spine.at(-1).positions=[11];
+  const backup={...spine.at(-1),definitionId:1099};
+  const rows=[...spine,backup];
+  const page=(spineRows,index,count)=>[...spineRows,...Array.from({length:count-spineRows.length},(_,i)=>({
+    ...marketBase, definitionId:4000+index*100+i,rating:index===1?76:72,positions:[11],leagueId:31,
+    teamId:300+i,nationId:30+i,
+  }))];
+  const pages={silver:page(mode==='off-position'?[spine[4]]:[],0,20),
+    gold:page([...spine.filter(card=>card.rating>=75),backup],1,20),
+    'silver:31':page([spine[4]],2,19),
+    'gold:31':page([],3,19).map(card=>({...card,rating:76}))};
+  const transport={readCatalogPage:vi.fn(async query=>{
+    trace.push({query}); const key=query.league? `${query.level}:${query.league}` : query.level;
+    return {status:'observed',source:'ea-defid',season:'27',query,observedAt:input.now,entries:pages[key]??[]};
+  }),readQuotePage:vi.fn(),buy:vi.fn(),save:vi.fn(),submit:vi.fn()};
+  const evaluate=input.evaluateSquad;
+  input.evaluateSquad=squad=>{
+    const result=evaluate(squad);
+    trace.push({facts:result.status==='observed'?result.chemistry:null,versionIds:squad.filter(Boolean).map(card=>card.definitionId)});
+    return result;
+  };
+  const loadPublicPrices=vi.fn(async ids=>{
+    trace.push({ids});
+    return {policy:{source:'futbin'},references:Object.fromEntries(ids.map(definitionId=>[definitionId,
+      {definitionId,season:'27',platform:'pc',quotes:Object.fromEntries(['futgg','futbin'].map(source=>[source,
+        {schema:2,source,definitionId,season:'27',platform:'pc',price:definitionId===1020&&mode==='missing-quote'?null
+          :definitionId===1020&&mode==='price-cap'?1100:600,
+          fetchedAt:input.now,sourceUpdatedAt:null,expiresAt:input.now+300000,error:null}]))}]))};
+  });
+  const result=await createFc27PuzzleProcurementSession({createTransport:async()=>transport,loadPublicPrices,now:()=>input.now,
+    get:async(key,fallback)=>structuredClone(memory.get(key)??fallback),set:async(key,value)=>memory.set(key,structuredClone(value))})
+    .plan(input,{adaptiveSearch:true,optimizeMaterialValue:true,quoteCeiling:1000});
+  expect(result.status,JSON.stringify(result.diagnostics)).toBe('suggested');
+  expect(result.diagnostics.catalogCandidates,JSON.stringify({trace,diagnostics:result.diagnostics})).toBe(59);
+  expect(result.diagnostics.nodeCap).toBe(200000);
+  const firstQuote=trace.findIndex(row=>row.ids);
+  expect(trace.slice(0,firstQuote).filter(row=>row.query)).toHaveLength(3);
+  expect(trace.slice(0,firstQuote).some(row=>row.facts>=28)).toBe(true);
+  const quotes=loadPublicPrices.mock.calls.flatMap(([ids])=>ids);
+  if(mode!=='off-position'){
+    expect(trace.slice(0,firstQuote).filter(row=>row.query).at(-1).query).toEqual({start:0,count:20,level:'silver',league:31});
+    expect(result.diagnostics.nodes).toBeLessThan(500);
+    expect(result.diagnostics.scaffoldQuotedCount).toBe(12);
+    expect(quotes).toHaveLength(12);
+    expect(quotes.every(id=>rows.some(card=>card.definitionId===id))).toBe(true);
+  }else{
+    expect(result.diagnostics.nodes).toBeLessThan(200000);
+    expect(quotes).toHaveLength(11);
+    expect(trace.slice(0,firstQuote).some(row=>row.facts>=28&&quotes.every(id=>row.versionIds.includes(id)))).toBe(true);
+  }
+  expect(result.plans[0].purchaseCount).toBe(11);
+  if(['missing-quote','price-cap'].includes(mode)) expect(result.plans[0].purchases.some(card=>card.definitionId===1099)).toBe(true);
+  const squad=Array(11).fill(null), plan=result.plans[0];
+  for(const card of plan.purchases) squad[card.slot]=card;
+  if(mode!=='off-position') expect(squad.every((card,i)=>card.positions.includes(positions[i]))).toBe(true);
+  const facts=evaluate(squad);
+  expect(matchFc27SbcRequirements({requirements:parseFc27SbcRequirements(input.challenge.rawRequirements,11).rules,
+    squad,chemistry:facts.chemistry,teamRating:facts.teamRating,clubLinks:input.clubLinks}).status).toBe('satisfied');
+  for(const fn of ['readQuotePage','buy','save','submit']) expect(transport[fn]).not.toHaveBeenCalled();
+});
+
 // Screenshot requirement shape, not the unexported account/formation/cards.
 it('uses a dominant-quality league page before three unrelated tier pages exhaust discovery',async()=>{
   const input=puzzleFillFixture(),template=input.inventory.items[0];

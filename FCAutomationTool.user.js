@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.123
+// @version      27.0.124
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.123", at: Date.now(), status: 'started',
+    state = { version: "27.0.124", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -5913,6 +5913,145 @@
       return true;
     }));
   }
+  function* iterateFc27PuzzlePositionScaffolds({
+    challenge,
+    evaluateSquad,
+    groupMatcher,
+    clubLinks,
+    chemistry,
+    candidates,
+    maxNodes,
+    maxPlans = 2,
+    onProgress
+  }) {
+    const slots = challenge.formation?.positions?.flatMap((position, slot) => challenge.brickIndices.includes(slot) ? [] : [{ position, slot }]);
+    const parsed = parseFc27SbcRequirements(challenge.rawRequirements, slots?.length ?? 0);
+    const resolveClub = createFc27ClubResolver(clubLinks);
+    const counters = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+    const plans = [], signatures = /* @__PURE__ */ new Set();
+    let nodes = 0;
+    const result = () => ({ plans, nodes, search: counters });
+    if (parsed.status !== "observed" || !slots?.length || slots.length > 11 || typeof evaluateSquad !== "function" || !resolveClub) return result();
+    const items = parsed.rules.filter((rule) => itemKinds.has(rule.kind));
+    const relations = parsed.rules.filter((rule) => /^(same|distinct)-/.test(rule.kind));
+    const cards = filterUnaryCandidates(candidates, items, slots.length, groupMatcher, resolveClub);
+    const rowOf = (card) => ({
+      card,
+      items: items.map((rule) => matchFc27SbcItemRule(rule, card, groupMatcher, resolveClub)),
+      groups: relations.map((rule) => relationValue(rule, card, resolveClub))
+    });
+    const rows = cards.map(rowOf);
+    if (rows.some((row) => row.items.includes(null) || row.groups.some((id16) => !integer10(id16, 1, Number.MAX_SAFE_INTEGER)))) return result();
+    const fitting = slots.map(({ position }) => rows.filter(({ card }) => card.positions?.includes(position)));
+    if (fitting.some((list3) => !list3.length)) return result();
+    const assigned = Array(slots.length).fill(null), occupied = /* @__PURE__ */ new Set(), chosen = [];
+    const counts = items.map(() => 0), groups = relations.map(() => /* @__PURE__ */ new Map());
+    const maxLimited = (rule) => rule.mode !== "min" && rule.mode !== void 0;
+    const minLimited = (rule) => rule.mode !== "max";
+    const possible = (row) => !occupied.has(row.card.definitionId) && items.every((rule, i) => !maxLimited(rule) || !row.items[i] || counts[i] < rule.count) && relations.every((rule, i) => !maxLimited(rule) || (rule.kind.startsWith("same-") ? (groups[i].get(row.groups[i]) ?? 0) < rule.value : groups[i].has(row.groups[i]) || groups[i].size < rule.value));
+    const minChemistry = Math.max(0, ...parsed.rules.filter((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind)).map((rule) => rule.value));
+    const chemistryBound = createFc27PuzzlePartialChemistryBound({
+      candidates: cards,
+      slots: slots.map((row) => row.slot),
+      formation: challenge.formation,
+      chemistry
+    });
+    const take = (kind) => {
+      if (nodes >= maxNodes) return false;
+      nodes++;
+      counters[kind]++;
+      if (nodes % 128 === 0) onProgress?.({ nodes, search: { ...counters } });
+      return true;
+    };
+    const visit = function* () {
+      if (plans.length >= maxPlans || !take("placementNodes")) return;
+      yield;
+      const left = slots.length - chosen.length;
+      if (!left) {
+        const signature3 = [...occupied].sort((a, b) => a - b).join(",");
+        if (signatures.has(signature3) || !take("evaluations")) return;
+        signatures.add(signature3);
+        const squad = Array(challenge.slotCount).fill(null);
+        assigned.forEach((row, i) => {
+          squad[slots[i].slot] = { ...row.card, slot: slots[i].slot };
+        });
+        const facts2 = evaluateSquad(squad);
+        if (facts2 && (!facts2.status || facts2.status === "observed") && matchFc27SbcRequirements({
+          requirements: parsed.rules,
+          squad: squad.filter(Boolean),
+          chemistry: facts2?.chemistry,
+          teamRating: facts2?.teamRating,
+          groupMatcher,
+          clubLinks
+        }).status === "satisfied") {
+          plans.push({
+            squad,
+            facts: { chemistry: facts2.chemistry ?? null, teamRating: facts2.teamRating ?? null },
+            requirementCount: parsed.rules.length
+          });
+        }
+        return;
+      }
+      if (chemistryBound && chemistryBound(chosen.map((row) => row.card), 0) < minChemistry) return;
+      const offers = fitting.flatMap((pool, i) => assigned[i] ? [] : [[i, pool.filter(possible)]]);
+      if (offers.some(([, pool]) => !pool.length)) return;
+      const available = [...new Set(offers.flatMap(([, pool]) => pool))];
+      if (new Set(available.map((row) => row.card.definitionId)).size < left) return;
+      for (let i = 0; i < items.length; i++) if (minLimited(items[i])) {
+        const demand = items[i].count - counts[i];
+        if (demand > 0 && Math.min(
+          offers.filter(([, pool]) => pool.some((row) => row.items[i])).length,
+          new Set(available.filter((row) => row.items[i]).map((row) => row.card.definitionId)).size
+        ) < demand) return;
+      }
+      for (let i = 0; i < relations.length; i++) {
+        const rule = relations[i], used = groups[i], byGroup = /* @__PURE__ */ new Map();
+        for (const [slot, pool] of offers) for (const row of pool) {
+          const key2 = row.groups[i], group = byGroup.get(key2) ?? { slots: /* @__PURE__ */ new Set(), definitions: /* @__PURE__ */ new Set() };
+          group.slots.add(slot);
+          group.definitions.add(row.card.definitionId);
+          byGroup.set(key2, group);
+        }
+        if (rule.kind.startsWith("distinct-")) {
+          if (minLimited(rule) && used.size + Math.min(left, [...byGroup.keys()].filter((key2) => !used.has(key2)).length) < rule.value) return;
+          if (maxLimited(rule)) {
+            const capacity = [...byGroup].map(([key2, g]) => ({ existing: used.has(key2), n: Math.min(g.slots.size, g.definitions.size) })).sort((a, b) => Number(b.existing) - Number(a.existing) || b.n - a.n).slice(0, [...used.keys()].filter((key2) => byGroup.has(key2)).length + rule.value - used.size).reduce((sum2, row) => sum2 + row.n, 0);
+            if (capacity < left) return;
+          }
+        } else if (minLimited(rule) && Math.max(0, ...used.values()) < rule.value && ![...byGroup].some(([key2, g]) => (used.get(key2) ?? 0) + Math.min(g.slots.size, g.definitions.size) >= rule.value)) return;
+      }
+      const [index, options] = offers.sort((a, b) => a[1].length - b[1].length || a[0] - b[0])[0];
+      const scored = options.map((row) => {
+        const clause = items.reduce((sum2, rule, i) => sum2 + Number(minLimited(rule) && counts[i] < rule.count && row.items[i]) * 4, 0);
+        const connection = chosen.reduce((sum2, other) => sum2 + Number(row.card.nationId === other.card.nationId) + Number(row.card.leagueId === other.card.leagueId) * 2 + Number(resolveClub(row.card.teamId) === resolveClub(other.card.teamId)) * 2, 0);
+        const relation = relations.reduce((sum2, rule, i) => sum2 + (rule.kind.startsWith("same-") && minLimited(rule) ? (groups[i].get(row.groups[i]) ?? 0) * 3 : rule.kind.startsWith("distinct-") && minLimited(rule) && groups[i].size < rule.value && !groups[i].has(row.groups[i]) ? 3 : 0), 0);
+        return { row, score: clause + connection + relation };
+      }).sort((a, b) => b.score - a.score || Number(Boolean(a.row.card.catalogRef)) - Number(Boolean(b.row.card.catalogRef)) || a.row.card.rating - b.row.card.rating || a.row.card.definitionId - b.row.card.definitionId);
+      for (const { row } of scored) {
+        if (nodes >= maxNodes || plans.length >= maxPlans) break;
+        assigned[index] = row;
+        occupied.add(row.card.definitionId);
+        chosen.push(row);
+        row.items.forEach((value, i) => {
+          counts[i] += Number(value);
+        });
+        row.groups.forEach((key2, i) => groups[i].set(key2, (groups[i].get(key2) ?? 0) + 1));
+        yield* visit();
+        row.groups.forEach((key2, i) => {
+          if (groups[i].get(key2) === 1) groups[i].delete(key2);
+          else groups[i].set(key2, groups[i].get(key2) - 1);
+        });
+        row.items.forEach((value, i) => {
+          counts[i] -= Number(value);
+        });
+        chosen.pop();
+        occupied.delete(row.card.definitionId);
+        assigned[index] = null;
+      }
+    };
+    yield* visit();
+    return result();
+  }
   var previewFc27PuzzleSquad = (input) => finishPuzzleSearch(iterateFc27PuzzleSquad(input));
   var previewFc27PuzzleSquadCooperatively = (input, options) => finishPuzzleSearchCooperatively(iterateFc27PuzzleSquad(input), options);
   function* iterateFc27PuzzleSquad({
@@ -8970,6 +9109,44 @@
       plans: [{ ...projectSuggestion(squad, facts2, rules.length), estimatedCost: best.spent }]
     };
   }
+  function planFc27PuzzleOpenPositionQuery(input, cards, rules, usedQueries) {
+    if (!Array.isArray(input.challenge.formation?.positions) || rules.some((rule) => /^from-/.test(rule.kind))) return null;
+    const gold = rules.find((rule) => rule.kind === "quality-count" && rule.mode !== "max" && rule.qualities.length === 1 && rule.qualities[0] === 3 && rule.count === required(input) - 1);
+    if (!gold || !allowedFc27MarketTiers(rules, input.policy).some((tier) => tier.level === "silver")) return null;
+    const slots = input.challenge.formation.positions.filter((_, i) => !input.challenge.brickIndices.includes(i));
+    const hasPosition = (position) => cards.some((card) => card.positions.includes(position));
+    if (slots.filter((position) => !hasPosition(position)).length !== 1) return null;
+    const options = slots.filter(hasPosition).map((position) => cards.filter((card) => card.rating >= 75 && card.positions.includes(position)));
+    const assignments = /* @__PURE__ */ new Map();
+    const assign = (slot, seen) => options[slot].some(({ definitionId }) => {
+      if (seen.has(definitionId)) return false;
+      seen.add(definitionId);
+      if (assignments.has(definitionId) && !assign(assignments.get(definitionId), seen)) return false;
+      assignments.set(definitionId, slot);
+      return true;
+    });
+    if (!options.every((_, slot) => assign(slot, /* @__PURE__ */ new Set()))) return null;
+    const leagues = /* @__PURE__ */ new Map();
+    const leagueCap = Math.min(slots.length, ...rules.filter((rule) => rule.kind === "same-league" && rule.mode !== "min").map((rule) => rule.value));
+    for (const card of cards) {
+      const lane = leagues.get(card.leagueId) ?? { league: card.leagueId, spine: 0, silver: 0 };
+      lane.spine += Number(assignments.has(card.definitionId));
+      lane.silver += Number(card.rating >= 65 && card.rating < 75);
+      leagues.set(card.leagueId, lane);
+    }
+    return [...leagues.values()].filter((row) => row.spine > 0 && row.spine < leagueCap).sort((a, b) => b.spine - a.spine || b.silver - a.silver || a.league - b.league).map(({ league }) => ({ start: 0, count: 20, level: "silver", league })).find((query) => !usedQueries.some((used) => JSON.stringify(used) === JSON.stringify(query))) ?? null;
+  }
+  async function findFc27PuzzlePositionScaffolds(input, entries2, options) {
+    const candidates = puzzleMarketValueCandidates(input, entries2);
+    const result = await finishPuzzleSearchCooperatively(iterateFc27PuzzlePositionScaffolds({
+      ...input,
+      candidates,
+      maxNodes: options.maxNodes,
+      maxPlans: options.maxPlans,
+      onProgress: options.onProgress
+    }), options);
+    return { ...result, plans: result.plans.map((plan) => projectSuggestion(plan.squad, plan.facts, plan.requirementCount)) };
+  }
   var suggestFc27PuzzleJointPurchasesCooperatively = (input, entries2, options) => finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries2, options), options);
   function* iterateJointPurchases(input, entries2, {
     maxNodes = 5e4,
@@ -10661,6 +10838,75 @@
             [...entries2.values()].filter((card) => !unavailable.has(card.definitionId)),
             usedQueries
           ) : null;
+          const structureFirst = Boolean(loadPublicPrices && adaptiveBudget && jointSearch && !incumbent && ownedPool.length === 0 && required2 >= 7 && rules.status === "observed" && rules.rules.some((rule) => ["min-chemistry", "exact-chemistry"].includes(rule.kind) && rule.value > 0) && rules.rules.some((rule) => /^(same-|distinct-|from-)/.test(rule.kind)));
+          const accountScaffold = (result) => {
+            searchSpent += result.nodes ?? 0;
+            accountFixedNodes(searchSpent);
+            diagnostics.nodes = searchSpent;
+            diagnostics.scaffoldNodes = (diagnostics.scaffoldNodes ?? 0) + (result.nodes ?? 0);
+            diagnostics.scaffoldPlans = (diagnostics.scaffoldPlans ?? 0) + (result.plans?.length ?? 0);
+            diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+            for (const key2 of Object.keys(diagnostics.search)) diagnostics.search[key2] += result.search?.[key2] ?? 0;
+          };
+          const priceScaffolds = async (plans) => {
+            const complete = plans.filter((plan) => !plan.selectedOwned.length && plan.purchases.length === required2);
+            if (!complete.length) return null;
+            hadPlans = true;
+            const ids2 = new Set(complete.flatMap((plan) => plan.purchases.map((card) => card.definitionId)));
+            const candidates = [...entries2.values()].filter((card) => ids2.has(card.definitionId) && !references.has(card.definitionId));
+            await priceCandidates(candidates);
+            diagnostics.scaffoldQuotedCount = (diagnostics.scaffoldQuotedCount ?? 0) + candidates.length;
+            return complete.filter((plan) => plan.purchases.every((card) => validPublicValue(quotes.get(card.definitionId)?.price))).map((plan) => {
+              const purchases = plan.purchases.map((card) => ({
+                ...card,
+                estimatedUnitPrice: quotes.get(card.definitionId).price,
+                priceReference: references.get(card.definitionId),
+                priceSource: publicPolicy.source,
+                quotedAt: quotes.get(card.definitionId).observedAt
+              }));
+              const estimatedCost = purchases.reduce((sum2, card) => sum2 + card.estimatedUnitPrice, 0);
+              return { ...plan, purchases, estimatedCost, ...totalValueMode ? { inventoryValue: 0, materialValue: estimatedCost } : {} };
+            }).filter((plan) => materialCeiling === null || !totalValueMode || plan.materialValue < materialCeiling).sort((a, b) => comparePuzzlePlans(a, b, objective()))[0] ?? null;
+          };
+          const finishScaffold = async (plan) => {
+            incumbent = [plan];
+            adaptiveBudget.markFeasible();
+            diagnostics.stage = "local-market-search";
+            diagnostics.priceSource = publicPolicy.source;
+            diagnostics.searchComplete = false;
+            diagnostics.optimalWithinPool = false;
+            diagnostics.initialEstimatedCost ??= plan.estimatedCost;
+            ownedReuseChecked = true;
+            return finishIncumbent(false);
+          };
+          const planScaffolds = async () => {
+            const remaining = () => [...entries2.values()].filter((card) => !unavailable.has(card.definitionId));
+            for (let attempt = 0; attempt < 2 && searchRemaining() > 0; attempt++) {
+              const ceiling = Math.min(2200, searchRemaining());
+              diagnostics.stage = "structural-search";
+              reportProgress();
+              const result = await measure("searchMs", () => findFc27PuzzlePositionScaffolds(input, remaining(), {
+                maxNodes: ceiling,
+                maxPlans: 2,
+                assertCurrent,
+                onProgress: (value) => reportProgress({
+                  ...value,
+                  phase: "structural-search",
+                  nodes: searchSpent + value.nodes,
+                  maxNodes: searchBudget
+                })
+              }));
+              assertCurrent();
+              accountScaffold(result);
+              if (!result.plans.length) break;
+              const previous = unavailable.size;
+              const priced3 = await priceScaffolds(result.plans);
+              if (priced3) return priced3;
+              if (previous === unavailable.size) break;
+              diagnostics.replans++;
+            }
+            return null;
+          };
           let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex((old) => same15(old, query)) === index);
           while (pendingQueries.length && usedQueries.length < 3) {
             assertOptimization();
@@ -10690,6 +10936,41 @@
             if (usedQueries.length === 1 && discovery?.query && !discovery.focus) {
               pendingQueries = [discovery.query, ...pendingQueries.filter((next) => !same15(next, discovery.query))];
               continue;
+            }
+            if (structureFirst && !discovery?.focus) {
+              diagnostics.usableCandidates = puzzleMarketValueCandidates(input, [...entries2.values()].filter((card) => !unavailable.has(card.definitionId))).length;
+              const priced3 = await planScaffolds();
+              if (priced3) return await finishScaffold(priced3);
+              if (usedQueries.length < 3) {
+                const available = [...entries2.values()].filter((card) => !unavailable.has(card.definitionId));
+                const next = planFc27PuzzleShortageQueries(input, available, { usedQueries });
+                if (next.status !== "ready") return finish(next);
+                const positionQuery = planFc27PuzzleOpenPositionQuery(input, puzzleMarketValueCandidates(input, available), rules.rules, usedQueries);
+                const tierFallback = allowedFc27MarketTiers(rules.rules, input.policy).map(({ level: level2 }) => ({ start: 0, count: 20, level: level2 }));
+                pendingQueries = [...[discovery?.query, positionQuery].filter(Boolean), ...next.queries, ...pendingQueries, ...tierFallback].filter((candidate, index, all) => !usedQueries.some((used) => same15(used, candidate)) && all.findIndex((other) => same15(other, candidate)) === index);
+                if (pendingQueries.length) continue;
+              }
+              if (baseSearchRemaining() > 0) {
+                diagnostics.stage = "structural-search";
+                reportProgress();
+                const fallback = await measure("searchMs", () => suggestFc27PuzzleJointPurchasesCooperatively(
+                  input,
+                  [...entries2.values()].filter((card) => !unavailable.has(card.definitionId)),
+                  {
+                    maxNodes: baseSearchRemaining(),
+                    searchBudget: adaptiveBudget,
+                    assertCurrent,
+                    onProgress: (value) => reportProgress({ ...value, phase: "structural-search", nodes: searchSpent + value.nodes, maxNodes: searchBudget })
+                  }
+                ));
+                assertCurrent();
+                accountScaffold(fallback);
+                diagnostics.localReason = fallback.reason;
+                diagnostics.truncated = fallback.truncated;
+                const fallbackPlan = await priceScaffolds(fallback.plans ?? []);
+                if (fallbackPlan) return await finishScaffold(fallbackPlan);
+              }
+              break;
             }
             let focusedIds = null, deferredPrices = [];
             if (loadPublicPrices) {
@@ -16018,6 +16299,9 @@
             searchMs: d?.searchMs,
             hintMs: d?.hintMs,
             localSearchNodes: d?.localSearchNodes,
+            scaffoldNodes: d?.scaffoldNodes,
+            scaffoldPlans: d?.scaffoldPlans,
+            scaffoldQuotedCount: d?.scaffoldQuotedCount,
             optimizationBudgetExhausted: d?.optimizationBudgetExhausted,
             planningDurationMs: d?.planningDurationMs,
             ownedValueDurationMs: d?.ownedValueDurationMs,
@@ -32303,6 +32587,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
       "owned-value-search": "\u6B63\u5728\u5C1D\u8BD5\u4F4E\u4EF7\u5E93\u5B58\u66FF\u6362\u2026",
       "catalog-hints": "\u6B63\u5728\u6BD4\u8F83\u5176\u4ED6\u4F4E\u4EF7\u5361\u7FA4\uFF0C\u5386\u53F2\u8D44\u6599\u4EC5\u7528\u4E8E\u9009\u62E9\u67E5\u8BE2\u65B9\u5411\u2026",
       "catalog-read": "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u5361\u6C60\u2026",
+      "structural-search": "\u6B63\u5728\u6309\u9898\u76EE\u6761\u4EF6\u548C\u9635\u4F4D\u9A8C\u8BC1\u7EC4\u5408\u2026",
       "local-market-search": "\u6B63\u5728\u8BA1\u7B97\u8865\u5361\u7EC4\u5408\u2026",
       "quote-read": "\u6B63\u5728\u67E5\u8BE2\u65B9\u6848\u62A5\u4EF7\u2026"
     };
@@ -32451,6 +32736,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         "repair-seed": "\u5BFB\u627E\u5E93\u5B58\u57FA\u7840\u9635\u5BB9",
         "query-planning": "\u89C4\u5212\u8D44\u6599\u67E5\u8BE2",
         "catalog-read": "\u8BFB\u53D6\u7403\u5458\u8D44\u6599",
+        "structural-search": "\u5148\u9A8C\u9635\u540E\u67E5\u4EF7",
         "local-market-search": "\u672C\u5730\u7EC4\u5408\u6C42\u89E3",
         "quote-read": "\u8BFB\u53D6\u5E02\u573A\u62A5\u4EF7"
       }[d.stage] ?? "\u672A\u77E5";
@@ -47430,6 +47716,9 @@ ${version ?? ""}`;
     "ownedGoldValueQuotedCount",
     "ownedBronzeValueQuotedCount",
     "unpricedOwnedCount",
+    "scaffoldNodes",
+    "scaffoldPlans",
+    "scaffoldQuotedCount",
     "inventoryCount",
     "inventoryClubCount",
     "inventoryStorageCount",
@@ -53878,7 +54167,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.123" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.124" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -54293,8 +54582,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.123"}`,
-    version: "27.0.123",
+    title: `FC Automation Tool ${"27.0.124"}`,
+    version: "27.0.124",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

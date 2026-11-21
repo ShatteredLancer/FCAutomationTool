@@ -6,7 +6,8 @@ export const formatFc27PuzzleProgress = progress => {
   const procurementPhases = { 'repair-seed': '正在寻找补卡起点…', 'query-planning': '正在规划卡池查询…',
     'owned-value-read': '正在估算库存材料价值…', 'owned-value-search': '正在尝试低价库存替换…',
     'catalog-hints': '正在比较其他低价卡群，历史资料仅用于选择查询方向…',
-    'catalog-read': '正在读取候选卡池…', 'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
+    'catalog-read': '正在读取候选卡池…', 'structural-search': '正在按题目条件和阵位验证组合…',
+    'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
   const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
   const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);
   const lines = [hasBudget ? `${stage}\n节点 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
@@ -168,7 +169,7 @@ export function formatFc27PuzzleNativeResult(result) {
       lines.push('中间估价不能作为可购买方案。再次点击会按当前报价重新规划，不会自动重复购买。');
     }
     const stage = ({ 'repair-seed': '寻找库存基础阵容', 'query-planning': '规划资料查询',
-      'catalog-read': '读取球员资料', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
+      'catalog-read': '读取球员资料', 'structural-search': '先验阵后查价', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
     const route = ({ repair: '局部替换 1–2 张', joint: '库存与候选联合求解' })[d.route] ?? '尚未确定';
     lines.push(`停在${stage}；${route}。资料 ${countText(d.catalogPages)} 页，去重候选 ${countText(d.catalogCandidates)}，资料预筛合格 ${countText(d.usableCandidates)}。`);
     if (code(d.localReason)) lines.push(`本地结果：${d.localReason}；检查 ${countText(d.checks)} 次 / 节点 ${countText(d.nodes)}${d.truncated === true ? '（搜索或结果截断）' : ''}。`);

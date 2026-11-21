@@ -1,7 +1,8 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
   puzzleOwnedValueCandidates, puzzleMarketValueCandidates, puzzleTotwMarketCandidates,
-  refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague } from './puzzle-procurement.js';
+  refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague, findFc27PuzzlePositionScaffolds,
+  planFc27PuzzleOpenPositionQuery } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
@@ -874,6 +875,68 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         ? discoverFc27PuzzleCappedLeague(input, ownedPool.filter(card => !totalValueMode || materialPrices.has(card.definitionId)),
           [...entries.values()].filter(card => !unavailable.has(card.definitionId)), usedQueries)
         : null;
+      const structureFirst = Boolean(loadPublicPrices && adaptiveBudget && jointSearch && !incumbent && ownedPool.length === 0
+        && required >= 7 && rules.status === 'observed'
+        && rules.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)
+        && rules.rules.some(rule => /^(same-|distinct-|from-)/.test(rule.kind)));
+      const accountScaffold = result => {
+        searchSpent += result.nodes ?? 0;
+        accountFixedNodes(searchSpent);
+        diagnostics.nodes = searchSpent;
+        diagnostics.scaffoldNodes = (diagnostics.scaffoldNodes ?? 0) + (result.nodes ?? 0);
+        diagnostics.scaffoldPlans = (diagnostics.scaffoldPlans ?? 0) + (result.plans?.length ?? 0);
+        diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+        for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += result.search?.[key] ?? 0;
+      };
+      const priceScaffolds = async plans => {
+        const complete = plans.filter(plan => !plan.selectedOwned.length && plan.purchases.length === required);
+        if (!complete.length) return null;
+        hadPlans = true;
+        const ids = new Set(complete.flatMap(plan => plan.purchases.map(card => card.definitionId)));
+        const candidates = [...entries.values()].filter(card => ids.has(card.definitionId) && !references.has(card.definitionId));
+        await priceCandidates(candidates);
+        diagnostics.scaffoldQuotedCount = (diagnostics.scaffoldQuotedCount ?? 0) + candidates.length;
+        return complete.filter(plan => plan.purchases.every(card => validPublicValue(quotes.get(card.definitionId)?.price)))
+          .map(plan => {
+            const purchases = plan.purchases.map(card => ({ ...card, estimatedUnitPrice: quotes.get(card.definitionId).price,
+              priceReference: references.get(card.definitionId), priceSource: publicPolicy.source,
+              quotedAt: quotes.get(card.definitionId).observedAt }));
+            const estimatedCost = purchases.reduce((sum, card) => sum + card.estimatedUnitPrice, 0);
+            return { ...plan, purchases, estimatedCost, ...(totalValueMode ? { inventoryValue: 0, materialValue: estimatedCost } : {}) };
+          }).filter(plan => materialCeiling === null || !totalValueMode || plan.materialValue < materialCeiling)
+          .sort((a, b) => comparePuzzlePlans(a, b, objective()))[0] ?? null;
+      };
+      const finishScaffold = async plan => {
+        incumbent = [plan];
+        adaptiveBudget.markFeasible();
+        diagnostics.stage = 'local-market-search';
+        diagnostics.priceSource = publicPolicy.source;
+        diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
+        diagnostics.initialEstimatedCost ??= plan.estimatedCost;
+        // There is no safe inventory to reuse. Don't price the rest of the
+        // catalogue just to rediscover an exactly verified, priced lineup.
+        ownedReuseChecked = true;
+        return finishIncumbent(false);
+      };
+      const planScaffolds = async () => {
+        const remaining = () => [...entries.values()].filter(card => !unavailable.has(card.definitionId));
+        for (let attempt = 0; attempt < 2 && searchRemaining() > 0; attempt++) {
+          const ceiling = Math.min(2200, searchRemaining());
+          diagnostics.stage = 'structural-search'; reportProgress();
+          const result = await measure('searchMs', () => findFc27PuzzlePositionScaffolds(input, remaining(), {
+            maxNodes: ceiling, maxPlans: 2, assertCurrent, onProgress: value => reportProgress({ ...value,
+              phase: 'structural-search', nodes: searchSpent + value.nodes, maxNodes: searchBudget }),
+          }));
+          assertCurrent(); accountScaffold(result);
+          if (!result.plans.length) break;
+          const previous = unavailable.size;
+          const priced = await priceScaffolds(result.plans);
+          if (priced) return priced;
+          if (previous === unavailable.size) break;
+          diagnostics.replans++;
+        }
+        return null;
+      };
       let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex(old => same(old, query)) === index);
       while (pendingQueries.length && usedQueries.length < 3) {
         assertOptimization();
@@ -905,6 +968,43 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           // anchor before quoting the broad sample or consuming solver nodes.
           pendingQueries = [discovery.query, ...pendingQueries.filter(next => !same(next, discovery.query))];
           continue;
+        }
+        if (structureFirst && !discovery?.focus) {
+          diagnostics.usableCandidates = puzzleMarketValueCandidates(input, [...entries.values()]
+            .filter(card => !unavailable.has(card.definitionId))).length;
+          const priced = await planScaffolds();
+          if (priced) return await finishScaffold(priced);
+          if (usedQueries.length < 3) {
+            const available = [...entries.values()].filter(card => !unavailable.has(card.definitionId));
+            const next = planFc27PuzzleShortageQueries(input, available, { usedQueries });
+            if (next.status !== 'ready') return finish(next);
+            const positionQuery = planFc27PuzzleOpenPositionQuery(input, puzzleMarketValueCandidates(input, available), rules.rules, usedQueries);
+            // A focused route can end with only two distinct pages. Spend a
+            // spare existing lane on an allowed tier before giving up on a
+            // missing position. Still at most three overall.
+            const tierFallback = allowedFc27MarketTiers(rules.rules, input.policy).map(({ level }) => ({ start: 0, count: 20, level }));
+            pendingQueries = [...[discovery?.query, positionQuery].filter(Boolean), ...next.queries, ...pendingQueries, ...tierFallback]
+              .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
+                && all.findIndex(other => same(other, candidate)) === index);
+            if (pendingQueries.length) continue;
+          }
+          // Legal off-position fillers and alternate chemistry arrangements
+          // are still possible. The ordinary solver gets only the remaining
+          // allowance, and its results are verified before any price read.
+          if (baseSearchRemaining() > 0) {
+            diagnostics.stage = 'structural-search'; reportProgress();
+            const fallback = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input,
+              [...entries.values()].filter(card => !unavailable.has(card.definitionId)), {
+                maxNodes: baseSearchRemaining(), searchBudget: adaptiveBudget, assertCurrent,
+                onProgress: value => reportProgress({ ...value, phase: 'structural-search', nodes: searchSpent + value.nodes, maxNodes: searchBudget }),
+              }));
+            assertCurrent(); accountScaffold(fallback);
+            diagnostics.localReason = fallback.reason;
+            diagnostics.truncated = fallback.truncated;
+            const fallbackPlan = await priceScaffolds(fallback.plans ?? []);
+            if (fallbackPlan) return await finishScaffold(fallbackPlan);
+          }
+          break;
         }
         let focusedIds = null, deferredPrices = [];
         if (loadPublicPrices) {
