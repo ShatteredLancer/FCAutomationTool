@@ -476,7 +476,7 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
         if (scope) {
           const pool = add(output, 'details'), rows = scope.groups.flatMap(group => group.items);
           add(pool, 'summary', `授权市场替代池：${number(rows.length)} 个版本`);
-          add(pool, 'small', '执行时可在这些版本中选择成本更低的可行配方，仍受总预算和每卡冻结上限限制。现有库存仅限清单中的已选实体；估价不保证市场供应。');
+          add(pool, 'small', '同评分、同积分有至少三个版本报价时，低于第三低报价的版本各按一张估算。买不到时按已授权预算和单卡上限换卡，同批可一起贡献。库存仅使用清单中选定的卡。');
           for (const item of rows) add(pool, 'small', `${item.name ?? `版本 ${item.definitionId}`} · ${item.rating} OVR · ${number(item.points)} 分 · 估价 ${number(item.price)} · 上限 ${number(item.purchaseMaxBuy)} 金币`);
         }
       }

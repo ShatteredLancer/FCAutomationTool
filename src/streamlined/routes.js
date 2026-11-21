@@ -11,6 +11,25 @@ const dominates = (a, b, rank) => a.purchaseCost <= b.purchaseCost && a.unknownV
   && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue
     || a.materialValue !== b.materialValue || a.count !== b.count || rank(a, b) <= 0);
 const empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
+const familyKey = group => JSON.stringify([group.item.rating, group.item.points]);
+
+// The third distinct version sets the lowest price supported by three quotes.
+// Duplicate rows or expired quotes cannot supply another observation.
+export function isolatedStreamlinedQuotes(groups) {
+  const families = new Map(), isolated = new Set();
+  for (const group of groups) {
+    if (group.source !== 'market') continue;
+    const key = familyKey(group), prices = families.get(key) ?? new Map();
+    for (const item of group.items) prices.set(item.definitionId, Math.min(prices.get(item.definitionId) ?? Infinity, item.price));
+    families.set(key, prices);
+  }
+  for (const prices of families.values()) {
+    if (prices.size < 3) continue;
+    const floor = [...prices.values()].sort((a, b) => a - b)[2];
+    for (const [id, price] of prices) if (price < floor) isolated.add(id);
+  }
+  return isolated;
+}
 const add = (state, group, index, count) => {
   const counts = state.counts.slice(); counts[index] = (counts[index] ?? 0) + count;
   return { score: state.score + group.item.points * count, count: state.count + count, counts,
@@ -63,6 +82,30 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   const target = challenge.remainingScore, started = now(), frontier = [];
   const stock = groups.map((g, i) => ({ g, i })).filter(v => v.g.source === 'inventory');
   const marketEntries = groups.map((g, i) => ({ g, i })).filter(v => v.g.source === 'market');
+  const expensiveFirst = marketEntries.slice().sort((a, b) => b.g.item.price - a.g.item.price);
+  const families = new Map();
+  for (const entry of marketEntries) {
+    const key = familyKey(entry.g), family = families.get(key) ?? [];
+    family.push(entry); families.set(key, family);
+  }
+  const boundedFamilies = [];
+  const isolated = isolatedStreamlinedQuotes(groups);
+  for (const id of input.originalIsolatedQuotes ?? []) isolated.add(id);
+  for (const family of families.values()) {
+    family.sort((a, b) => a.g.item.price - b.g.item.price);
+    const versions = new Set(family.flatMap(({ g }) => g.items.map(item => item.definitionId)));
+    const singles = [...versions].filter(id => isolated.has(id)).length;
+    if (!singles && (versions.size < 3 || family.length === 1)) continue;
+    // Price the rest at the distinct versions' own quotes over full batches.
+    const coverage = Math.ceil(target / family[0].g.item.points);
+    const width = Math.max(1, Math.min(challenge.selectionLimit, versions.size - singles));
+    const copies = Math.max(1, Math.ceil((coverage - singles) / width));
+    for (const { g } of family) {
+      const capacity = g.items.reduce((n, item) => n + (isolated.has(item.definitionId) ? 1 : copies), 0);
+      g.quantity = Math.min(g.quantity, capacity);
+    }
+    boundedFamilies.push(family);
+  }
   const stockByScore = new Map();
   for (const entry of stock) {
     const rows = stockByScore.get(entry.g.item.points) ?? [];
@@ -73,9 +116,25 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   let nodes = 0, stopped = null, labels = 1;
   const remember = state => {
     if (state.score < target) return;
+    // The fast seeds express demand in one price bucket. Price every overflow
+    // copy at the next available real quote before comparing stock or budget.
+    for (const family of boundedFamilies) {
+      let excess = 0;
+      for (const { g, i } of family) {
+        const overflow = (state.counts[i] ?? 0) - g.quantity;
+        if (overflow > 0) { state = add(state, g, i, -overflow); excess += overflow; }
+      }
+      if (!excess) continue;
+      for (const { g, i } of family) {
+        const count = Math.min(excess, g.quantity - (state.counts[i] ?? 0));
+        if (count > 0) { state = add(state, g, i, count); excess -= count; }
+        if (!excess) break;
+      }
+      if (excess) return;
+    }
     // Every feasible recipe, including later pair/DP results, reuses known
     // equal-score stock before pruning. This never increases material value.
-    if (state.purchaseCost && stock.length) for (const { g, i } of marketEntries) {
+    if (state.purchaseCost && stock.length) for (const { g, i } of expensiveFirst) {
       let pending = state.counts[i] ?? 0;
       if (!pending) continue;
       for (const entry of stockByScore.get(g.item.points) ?? []) {
@@ -104,9 +163,8 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   }
   // Fast feasible seeds for large targets: zero/all eligible stock plus every
   // pair of priced score groups. No per-copy market objects are allocated.
-  // Same-score expensive buckets cannot improve a market cover. Keep the
-  // original groups for exact search/execution, but avoid wasting seed time
-  // enumerating their equivalent quantities before cheap pairs are visited.
+  // Represent each score by its cheapest bucket during enumeration. remember()
+  // distributes excess demand across the family's actual prices and capacities.
   const cheapest = new Map();
   for (const [i, g] of groups.entries()) if (g.source === 'market') {
     const old = cheapest.get(g.item.points);
@@ -115,6 +173,16 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
   const market = [...cheapest.values()].sort((a, b) => a.g.item.price / a.g.item.points - b.g.item.price / b.g.item.points
     || b.g.item.points - a.g.item.points);
   const bases = [empty()];
+  if (boundedFamilies.length) {
+    const byUnitCost = groups.map((g, i) => ({ g, i })).sort((a, b) =>
+      (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points);
+    let seed = empty();
+    for (const { g, i } of byUnitCost) {
+      seed = add(seed, g, i, Math.min(g.quantity, Math.ceil((target - seed.score) / g.item.points)));
+      if (seed.score >= target) break;
+    }
+    remember(seed);
+  }
   for (const order of [stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity)
     || b.g.item.points - a.g.item.points),
     stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
@@ -208,17 +276,8 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
     }
   }
   frontier.sort(rank);
-  // A repeated cheapest version is a valid multi-wave demand, not an auction
-  // supply guarantee. Keep that optimum and add bounded, explicitly priced
-  // alternatives using distinct equal-score versions; never raise its caps.
+  // Compare quicker, explicitly priced alternatives within the same capacities.
   const diversified = [];
-  const familyKey = g => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
-  const families = new Map();
-  for (const entry of marketEntries) {
-    const key = familyKey(entry.g), family = families.get(key) ?? [];
-    family.push(entry); families.set(key, family);
-  }
-  for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
   for (const base of frontier.slice(0, 8)) {
     if (!base.purchaseCost || base.unknownValue) continue;
     const demands = new Map(); let upper = 1;
@@ -239,7 +298,7 @@ export function* planStreamlinedRoutesSteps(input, { maxNodes = 300000, maxState
       for (const [key, count] of demands) {
         let remaining = count;
         for (const { g, i } of families.get(key)) {
-          const quantity = Math.min(remaining, waves * g.items.length);
+          const quantity = Math.min(remaining, g.quantity, waves * g.items.length);
           if (quantity) state = add(state, g, i, quantity);
           remaining -= quantity;
           if (!remaining) break;

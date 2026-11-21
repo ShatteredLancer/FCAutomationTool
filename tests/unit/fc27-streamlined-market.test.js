@@ -115,10 +115,11 @@ it('produces a frozen plan after rolling expiration recovery and regenerates wit
     inspect: () => ({ context: f.f.input.context, challenge: f.f.input.challenge }),
     get: async (_key, fallback) => fallback, set, now: f.now });
   const first = await session.plan({ mode: 'inventory-market' });
-  expect(first).toMatchObject({ status: 'ready', quoteSource: 'futbin', marketError: null, purchaseCost: 3750 });
+  expect(first).toMatchObject({ status: 'ready', quoteSource: 'futbin', marketError: null, purchaseCost: 7250 });
+  expect(first.plan.route.groups.map(group => [group.item.price, group.quantity])).toEqual([[250, 1], [500, 14]]);
   expect(first.plan.route.groups[0].item).toMatchObject({ price: 250, purchaseMaxBuy: 300 });
   const second = await session.plan({ mode: 'inventory-market' });
-  expect(second).toMatchObject({ status: 'ready', purchaseCost: 3750 });
+  expect(second).toMatchObject({ status: 'ready', purchaseCost: 7250 });
   expect(f.readFutbin).toHaveBeenCalledTimes(166);
   expect(set).not.toHaveBeenCalled();
 });

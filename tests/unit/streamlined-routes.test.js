@@ -10,7 +10,26 @@ const input = (target, versions, inventory = []) => ({ challenge: challenge({ sc
 const solve = (value, options) => { const iterator = planStreamlinedRoutesSteps(value, options); let step;
   do { step = iterator.next(); } while (!step.done); return step.value; };
 
-it('keeps cheapest repeated demand and offers a near-price distinct-version cover without changing stock', () => {
+it('spreads bulk demand across actual quoted versions and uses competitive owned stock at a bounded search cutoff', () => {
+  // Reported single-version lows and score gap; other per-version prices are synthetic.
+  const versions = [market(100, 830, 700), market(200, 2100, 2000, 85)];
+  for (let i = 1; i < 30; i++) {
+    versions.push(market(100 + i, 830, 850), market(200 + i, 2100, 2500, 85));
+  }
+  const stock = Array.from({ length: 47 }, (_, i) => safeItem({ id: i + 1, definitionId: 500 + i, rating: 84, points: 830, price: 800 }));
+  for (const maxNodes of [1, 300000]) {
+    const result = solve(input(152530, versions, stock), { maxNodes });
+    const route = result.routes[0];
+    expect(route.inventoryCount).toBe(47);
+    expect(route.score).toBeGreaterThanOrEqual(152530);
+    expect(route.minBatches).toBeLessThanOrEqual(7);
+    for (const candidate of result.routes) for (const group of candidate.groups) {
+      if ([100, 200].includes(group.item.definitionId)) expect(group.quantity).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
+it('compares the distinct-version cover with the other rating after limiting a lone low quote', () => {
   let identity = 900;
   const stock = repeatedDemand.inventory.flatMap(row => Array.from({ length: row.quantity }, () =>
     safeItem({ id: ++identity, definitionId: identity, rating: row.rating, points: row.points, price: row.price })));
@@ -19,7 +38,7 @@ it('keeps cheapest repeated demand and offers a near-price distinct-version cove
     ...Array.from({ length: 8 }, (_, i) => market(102 + i, 830, 1050)),
     ...Array.from({ length: 3 }, (_, i) => market(201 + i, 4100, 5000, 86))];
   const result = solve(input(repeatedDemand.remainingScore, versions, stock), { maxNodes: 1 });
-  expect(result.routes[0]).toMatchObject(repeatedDemand.selected);
+  expect(result.routes[0]).toMatchObject({ totalValue: 15000, purchaseCost: 15000, count: 3, minBatches: 1 });
   const practical = result.routes.find(row => row.minBatches === 1 && row.inventoryCount === 4);
   expect(practical).toMatchObject({ totalValue: 15100, purchaseCost: 9400, count: 13, score: 12060, repeatPurchaseCount: 0 });
   const expanded = expandStreamlinedRoute(practical, challenge({ scoreRequirement: 12000 }));
@@ -39,10 +58,10 @@ it('does not silently diversify into costly versions or change a lowest-coins ob
 it('never increases an approved budget or reuses missing/stale versions for a diversified cover', () => {
   const versions = [market(101, 830, 1000), market(102, 830, 1050),
     market(103, 830, 1050), { ...market(104, 830, 1050), quote: null }];
-  const result = solve(input(2490, versions), { maxNodes: 1, budget: 3050 });
-  expect(result.routes[0]).toMatchObject({ purchaseCost: 3000, minBatches: 3 });
-  expect(result.routes.some(row => row.purchaseCost === 3050 && row.minBatches === 2)).toBe(true);
-  expect(result.routes.every(row => row.purchaseCost <= 3050 && row.groups.every(g => g.items.every(i => i.definitionId !== 104)))).toBe(true);
+  expect(solve(input(2490, versions), { maxNodes: 1, budget: 3050 }).routes).toHaveLength(0);
+  const result = solve(input(2490, versions), { maxNodes: 1, budget: 3100 });
+  expect(result.routes[0]).toMatchObject({ purchaseCost: 3100, minBatches: 1 });
+  expect(result.routes.every(row => row.purchaseCost <= 3100 && row.groups.every(g => g.items.every(i => i.definitionId !== 104)))).toBe(true);
 });
 
 it('keeps thousand-card demand compressed without assuming thirty distinct quoted versions', () => {
@@ -78,7 +97,8 @@ it('seeds a cheap TOTW cover before exhausting a tiny budget on costly same-scor
     market(200, 830, 925, 84), market(201, 410, 700, 83)];
   for (const order of [versions, versions.slice().reverse()]) {
     const result = solve(input(12000, order), { maxNodes: 1 });
-    expect(result.routes[0]).toMatchObject({ purchaseCost: 13650, score: 12030, count: 15 });
+    expect(result.routes[0]).toMatchObject({ purchaseCost: 20525, score: 12310, count: 29 });
+    expect(result.routes[0].groups.find(g => g.item.definitionId === 200)?.quantity).toBe(1);
     expect(result.searchComplete).toBe(false);
   }
 });

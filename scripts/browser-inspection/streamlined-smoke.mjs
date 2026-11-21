@@ -517,7 +517,9 @@ async function exerciseStreamlinedRollingExpiry(page) {
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.getByText(/刷新过期补卡报价 \d+ \/ 52 · FUTBIN · 已等待 \d+ 秒/, { exact: true }).waitFor();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('[data-result]').innerText(), /待购 3,750 金币/);
+  assert.match(await page.locator('[data-result]').innerText(), /待购 7,250 金币/);
+  assert.equal(await page.locator('.player-price').filter({ hasText: /^250 金币/ }).count(), 1);
+  assert.equal(await page.locator('.player-price').filter({ hasText: /^500 金币/ }).count(), 14);
   assert.equal(await page.evaluate(() => globalThis.rollingExpirySmoke.reads), 144, 'One quote round stops launching reads at its shared 90-second deadline');
   assert.match(await page.locator('[data-result]').innerText(), /补卡版本报价：有效 144 \/ 166/);
   assert.equal(await page.locator('[data-quote-confirm]').count(), 0, 'Quote coverage is accepted by the trusted execution action, not an extra checkbox');
@@ -603,14 +605,16 @@ async function exerciseStreamlinedDistinctRecipe(page) {
   await page.locator('[data-objective]').selectOption('lowest-value');
   await page.getByRole('button', { name: '生成方案', exact: true }).click();
   await page.locator('.route-list button').first().waitFor();
-  assert.match(await page.locator('.route-list button').first().innerText(), /总价值 14,700.*至少 9 批/);
-  const alternative = page.locator('.route-list button').filter({ hasText: '待购 9,400' });
-  assert.equal(await alternative.count(), 1);
-  await alternative.click();
+  const selected = page.locator('.route-list button').first();
+  assert.match(await selected.innerText(), /总价值 15,100.*待购 9,400.*至少 1 批/);
+  await selected.click();
   await page.waitForFunction(() => globalThis.document.getElementById('fcat-streamlined-panel').shadowRoot
     .querySelector('[data-result]').textContent.includes('待购 9,400'));
-  assert.match(await alternative.innerText(), /库存 4 \/ 待购 9.*至少 1 批/);
+  assert.match(await selected.innerText(), /库存 4 \/ 待购 9.*至少 1 批/);
   assert.equal(await page.locator('.player-row').count(), 13);
+  const names = await page.locator('.player-text strong').allTextContents();
+  assert.deepEqual(names.filter(name => name.startsWith('Distinct ')).sort(),
+    Array.from({ length: 9 }, (_, i) => `Distinct ${101 + i}`));
   assert.equal(await page.locator('[data-contribute]').isDisabled(), true);
   assert.equal(await page.evaluate(() => globalThis.distinctRecipeSmoke.writes), 0);
   for (const width of [1280, 390]) {

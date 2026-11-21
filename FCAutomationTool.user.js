@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FC Automation Tool
 // @namespace    https://github.com/ShatteredLancer/FCAutomationTool
-// @version      27.0.125
+// @version      27.0.126
 // @description  FC27 traditional SBC preparation, confirmed single submission and recovery.
 // @homepageURL  https://github.com/ShatteredLancer/FCAutomationTool
 // @supportURL   https://github.com/ShatteredLancer/FCAutomationTool/issues
@@ -30,7 +30,7 @@
   };
   try {
     root = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    state = { version: "27.0.125", at: Date.now(), status: 'started',
+    state = { version: "27.0.126", at: Date.now(), status: 'started',
       readyState: document.readyState, top: window.top === window,
       grants: { unsafeWindow: typeof unsafeWindow !== 'undefined',
         get: typeof GM_getValue === 'function', set: typeof GM_setValue === 'function',
@@ -43546,6 +43546,22 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
   // src/streamlined/routes.js
   var dominates = (a, b, rank3) => a.purchaseCost <= b.purchaseCost && a.unknownValue <= b.unknownValue && a.purchaseCost + a.materialValue <= b.purchaseCost + b.materialValue && a.count <= b.count && (a.purchaseCost !== b.purchaseCost || a.unknownValue !== b.unknownValue || a.materialValue !== b.materialValue || a.count !== b.count || rank3(a, b) <= 0);
   var empty = () => ({ score: 0, count: 0, purchaseCost: 0, materialValue: 0, unknownValue: 0, counts: [] });
+  var familyKey = (group) => JSON.stringify([group.item.rating, group.item.points]);
+  function isolatedStreamlinedQuotes(groups) {
+    const families = /* @__PURE__ */ new Map(), isolated = /* @__PURE__ */ new Set();
+    for (const group of groups) {
+      if (group.source !== "market") continue;
+      const key2 = familyKey(group), prices = families.get(key2) ?? /* @__PURE__ */ new Map();
+      for (const item2 of group.items) prices.set(item2.definitionId, Math.min(prices.get(item2.definitionId) ?? Infinity, item2.price));
+      families.set(key2, prices);
+    }
+    for (const prices of families.values()) {
+      if (prices.size < 3) continue;
+      const floor = [...prices.values()].sort((a, b) => a - b)[2];
+      for (const [id16, price3] of prices) if (price3 < floor) isolated.add(id16);
+    }
+    return isolated;
+  }
   var add2 = (state, group, index, count3) => {
     const counts = state.counts.slice();
     counts[index] = (counts[index] ?? 0) + count3;
@@ -43611,6 +43627,30 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const target = challenge.remainingScore, started = now(), frontier2 = [];
     const stock = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "inventory");
     const marketEntries = groups.map((g, i) => ({ g, i })).filter((v) => v.g.source === "market");
+    const expensiveFirst = marketEntries.slice().sort((a, b) => b.g.item.price - a.g.item.price);
+    const families = /* @__PURE__ */ new Map();
+    for (const entry of marketEntries) {
+      const key2 = familyKey(entry.g), family = families.get(key2) ?? [];
+      family.push(entry);
+      families.set(key2, family);
+    }
+    const boundedFamilies = [];
+    const isolated = isolatedStreamlinedQuotes(groups);
+    for (const id16 of input.originalIsolatedQuotes ?? []) isolated.add(id16);
+    for (const family of families.values()) {
+      family.sort((a, b) => a.g.item.price - b.g.item.price);
+      const versions = new Set(family.flatMap(({ g }) => g.items.map((item2) => item2.definitionId)));
+      const singles = [...versions].filter((id16) => isolated.has(id16)).length;
+      if (!singles && (versions.size < 3 || family.length === 1)) continue;
+      const coverage = Math.ceil(target / family[0].g.item.points);
+      const width = Math.max(1, Math.min(challenge.selectionLimit, versions.size - singles));
+      const copies = Math.max(1, Math.ceil((coverage - singles) / width));
+      for (const { g } of family) {
+        const capacity = g.items.reduce((n, item2) => n + (isolated.has(item2.definitionId) ? 1 : copies), 0);
+        g.quantity = Math.min(g.quantity, capacity);
+      }
+      boundedFamilies.push(family);
+    }
     const stockByScore = /* @__PURE__ */ new Map();
     for (const entry of stock) {
       const rows = stockByScore.get(entry.g.item.points) ?? [];
@@ -43621,7 +43661,27 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     let nodes = 0, stopped = null, labels2 = 1;
     const remember = (state) => {
       if (state.score < target) return;
-      if (state.purchaseCost && stock.length) for (const { g, i } of marketEntries) {
+      for (const family of boundedFamilies) {
+        let excess = 0;
+        for (const { g, i } of family) {
+          const overflow = (state.counts[i] ?? 0) - g.quantity;
+          if (overflow > 0) {
+            state = add2(state, g, i, -overflow);
+            excess += overflow;
+          }
+        }
+        if (!excess) continue;
+        for (const { g, i } of family) {
+          const count3 = Math.min(excess, g.quantity - (state.counts[i] ?? 0));
+          if (count3 > 0) {
+            state = add2(state, g, i, count3);
+            excess -= count3;
+          }
+          if (!excess) break;
+        }
+        if (excess) return;
+      }
+      if (state.purchaseCost && stock.length) for (const { g, i } of expensiveFirst) {
         let pending3 = state.counts[i] ?? 0;
         if (!pending3) continue;
         for (const entry of stockByScore.get(g.item.points) ?? []) {
@@ -43663,6 +43723,15 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     const market = [...cheapest.values()].sort((a, b) => a.g.item.price / a.g.item.points - b.g.item.price / b.g.item.points || b.g.item.points - a.g.item.points);
     const bases = [empty()];
+    if (boundedFamilies.length) {
+      const byUnitCost = groups.map((g, i) => ({ g, i })).sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points);
+      let seed = empty();
+      for (const { g, i } of byUnitCost) {
+        seed = add2(seed, g, i, Math.min(g.quantity, Math.ceil((target - seed.score) / g.item.points)));
+        if (seed.score >= target) break;
+      }
+      remember(seed);
+    }
     for (const order2 of [
       stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) - (b.g.item.price ?? Infinity) || b.g.item.points - a.g.item.points),
       stock.slice().sort((a, b) => (a.g.item.price ?? Infinity) / a.g.item.points - (b.g.item.price ?? Infinity) / b.g.item.points),
@@ -43762,14 +43831,6 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     }
     frontier2.sort(rank3);
     const diversified = [];
-    const familyKey = (g) => JSON.stringify([g.item.points, g.item.rating, g.item.rarity ?? null]);
-    const families = /* @__PURE__ */ new Map();
-    for (const entry of marketEntries) {
-      const key2 = familyKey(entry.g), family = families.get(key2) ?? [];
-      family.push(entry);
-      families.set(key2, family);
-    }
-    for (const family of families.values()) family.sort((a, b) => a.g.item.price - b.g.item.price);
     for (const base of frontier2.slice(0, 8)) {
       if (!base.purchaseCost || base.unknownValue) continue;
       const demands = /* @__PURE__ */ new Map();
@@ -43793,7 +43854,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         for (const [key2, count3] of demands) {
           let remaining = count3;
           for (const { g, i } of families.get(key2)) {
-            const quantity = Math.min(remaining, waves * g.items.length);
+            const quantity = Math.min(remaining, g.quantity, waves * g.items.length);
             if (quantity) state = add2(state, g, i, quantity);
             remaining -= quantity;
             if (!remaining) break;
@@ -44043,6 +44104,10 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
     const scope2 = record.plan.execution?.purchaseScope;
     if (!scope2) return null;
     const blocked12 = /* @__PURE__ */ new Set([...heldDefinitions, ...blockedDefinitions]);
+    const originalIsolatedQuotes = isolatedStreamlinedQuotes(scope2.groups);
+    for (const entry of record.entries) {
+      if (entry.source === "market" && ["club", "consumed"].includes(entry.state) && originalIsolatedQuotes.has(entry.definitionId)) blocked12.add(entry.definitionId);
+    }
     const ready = record.entries.filter((entry) => ["ready", "club"].includes(entry.state));
     const credit = ready.reduce((sum2, entry) => sum2 + record.route.groups[entry.groupIndex].item.points, 0);
     const remainingScore = Math.max(0, record.challenge.targetScore - record.submittedScore - credit);
@@ -44057,6 +44122,7 @@ dialog.fcat-fodder[open]{display:flex;flex-direction:column}dialog.fcat-fodder::
         eligibility: { known: true, matches: (item2) => ({ status: allowed.has(item2.definitionId) ? "eligible" : "ineligible" }) },
         inventory: [],
         market,
+        originalIsolatedQuotes,
         mode: "market",
         objective: record.plan.objective,
         // Frozen valuations are not renewed here. find() refreshes the selected
@@ -48881,7 +48947,7 @@ ${Number.isSafeInteger(p.contributed) ? `\u5DF2\u8D21\u732E ${number4(p.contribu
         if (scope2) {
           const pool = add3(output, "details"), rows = scope2.groups.flatMap((group) => group.items);
           add3(pool, "summary", `\u6388\u6743\u5E02\u573A\u66FF\u4EE3\u6C60\uFF1A${number4(rows.length)} \u4E2A\u7248\u672C`);
-          add3(pool, "small", "\u6267\u884C\u65F6\u53EF\u5728\u8FD9\u4E9B\u7248\u672C\u4E2D\u9009\u62E9\u6210\u672C\u66F4\u4F4E\u7684\u53EF\u884C\u914D\u65B9\uFF0C\u4ECD\u53D7\u603B\u9884\u7B97\u548C\u6BCF\u5361\u51BB\u7ED3\u4E0A\u9650\u9650\u5236\u3002\u73B0\u6709\u5E93\u5B58\u4EC5\u9650\u6E05\u5355\u4E2D\u7684\u5DF2\u9009\u5B9E\u4F53\uFF1B\u4F30\u4EF7\u4E0D\u4FDD\u8BC1\u5E02\u573A\u4F9B\u5E94\u3002");
+          add3(pool, "small", "\u540C\u8BC4\u5206\u3001\u540C\u79EF\u5206\u6709\u81F3\u5C11\u4E09\u4E2A\u7248\u672C\u62A5\u4EF7\u65F6\uFF0C\u4F4E\u4E8E\u7B2C\u4E09\u4F4E\u62A5\u4EF7\u7684\u7248\u672C\u5404\u6309\u4E00\u5F20\u4F30\u7B97\u3002\u4E70\u4E0D\u5230\u65F6\u6309\u5DF2\u6388\u6743\u9884\u7B97\u548C\u5355\u5361\u4E0A\u9650\u6362\u5361\uFF0C\u540C\u6279\u53EF\u4E00\u8D77\u8D21\u732E\u3002\u5E93\u5B58\u4EC5\u4F7F\u7528\u6E05\u5355\u4E2D\u9009\u5B9A\u7684\u5361\u3002");
           for (const item2 of rows) add3(pool, "small", `${item2.name ?? `\u7248\u672C ${item2.definitionId}`} \xB7 ${item2.rating} OVR \xB7 ${number4(item2.points)} \u5206 \xB7 \u4F30\u4EF7 ${number4(item2.price)} \xB7 \u4E0A\u9650 ${number4(item2.purchaseMaxBuy)} \u91D1\u5E01`);
         }
       }
@@ -53510,6 +53576,8 @@ ${detail.join(" \xB7 ")}`;
         if (reconcileOnly) return { status: record.completed ? "completed" : "recovered", record };
         if (now() >= approval.expiresAt) return { status: "paused", reason: "FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED", record };
         let scarcityRound = 0;
+        const missingVersions = /* @__PURE__ */ new Set();
+        const isolated = isolatedStreamlinedQuotes(record.plan.execution?.purchaseScope?.groups ?? []);
         while (!stopped && record.submittedScore < record.challenge.targetScore) {
           await check();
           for (let i = 0; i < record.entries.length; i++) {
@@ -53551,15 +53619,6 @@ ${detail.join(" \xB7 ")}`;
             groupIndex: readyEntries[index]?.groupIndex,
             item: row
           }).filter((row) => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
-          if (!ready.length && record.plan.execution?.purchaseScope && record.confirmedBatches > 0) {
-            const demand = await replanStreamlinedPurchaseDemand(record, { ...state, now, stopped: () => stopped });
-            await check();
-            if (demand && !same6(demand, record.demand)) {
-              report("replanning");
-              record.demand = demand;
-              await save();
-            }
-          }
           const wave = nextStreamlinedWave(streamlinedDemandRoute(record), {
             ...state,
             ready,
@@ -53569,8 +53628,12 @@ ${detail.join(" \xB7 ")}`;
             consumedIds: record.consumedIds,
             fulfilled: record.fulfilled
           });
-          const material = [...wave.material], attempted = new Set(state.blockedDefinitions ?? []);
+          const material = [...wave.material], attempted = /* @__PURE__ */ new Set([...state.blockedDefinitions ?? [], ...missingVersions]);
+          for (const entry of record.entries) {
+            if (entry.source === "market" && isolated.has(entry.definitionId) && ["club", "consumed"].includes(entry.state)) attempted.add(entry.definitionId);
+          }
           let searchFailure = null, budgetBlocked = false, replans = 0;
+          let replaceMissing = false;
           let lastBought = now(), boughtThisWave = 0;
           while (!stopped) {
             const next = nextStreamlinedWave(streamlinedDemandRoute(record), {
@@ -53586,11 +53649,13 @@ ${detail.join(" \xB7 ")}`;
             });
             const slot = next.purchases[0];
             if (!slot) {
-              if (material.length || state.freeSlots === 0 || !record.plan.execution?.purchaseScope || replans >= record.route.groups.length) break;
+              if (material.length && !replaceMissing || state.freeSlots <= boughtThisWave || !record.plan.execution?.purchaseScope || replans >= record.route.groups.length) break;
+              replaceMissing = false;
               report("replanning");
+              const bought = new Set(material.map((row) => row.item.definitionId));
               const demand = await replanStreamlinedPurchaseDemand(record, {
                 ...state,
-                blockedDefinitions: [...attempted],
+                blockedDefinitions: [...attempted].filter((id16) => !bought.has(id16)),
                 now,
                 stopped: () => stopped
               });
@@ -53622,6 +53687,10 @@ ${detail.join(" \xB7 ")}`;
               const offer = await adapter.find(candidate, cap, record);
               await check();
               if (!offer || offer.unavailable) {
+                if (!offer) {
+                  missingVersions.add(candidate.definitionId);
+                  replaceMissing = true;
+                }
                 if (offer?.unavailable && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
                 report("search-result", {
                   definitionId: candidate.definitionId,
@@ -53699,6 +53768,7 @@ ${detail.join(" \xB7 ")}`;
               report("waiting-supply", { waitMs, attempt: ++scarcityRound, attemptLimit: retries });
               await adapter.waitForPartial(waitMs, () => stopped);
               await check();
+              missingVersions.clear();
               record.demand = initialStreamlinedPurchaseDemand(record.plan, record.route).map((n, i) => Math.max(n, record.fulfilled[i]));
               await save();
               continue;
@@ -54308,7 +54378,7 @@ ${detail.join(" \xB7 ")}`;
     lockManager: unsafeWindow.navigator.locks,
     liveEnabled: true
   };
-  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.125" });
+  var diagnosticLog = createFcatDiagnosticLog({ gmGetValue: GM_getValue, gmSetValue: GM_setValue, version: "27.0.126" });
   var bootFailures = [];
   var safeBoot = (label, action, fallback = null) => {
     try {
@@ -54723,8 +54793,8 @@ ${detail.join(" \xB7 ")}`;
   var acceptancePanel = safeBoot("acceptance-panel", () => mountFc27AcceptancePanel({
     document: unsafeWindow.document,
     hostId: "fcat-fc27-production",
-    title: `FC Automation Tool ${"27.0.125"}`,
-    version: "27.0.125",
+    title: `FC Automation Tool ${"27.0.126"}`,
+    version: "27.0.126",
     liveEnabled: dependencies.liveEnabled,
     galleryCatalog,
     galleryAccountScope: galleryProgress.scope,

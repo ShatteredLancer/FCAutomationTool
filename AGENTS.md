@@ -1,5 +1,9 @@
 # FC Automation Tool AI Agent Engineering Guide
 
+2026-11-21 Streamlined 27.0.126 已升版。纳入孤立市场低报价限量、真实版本替代和已购孤立版本防重复，根脚本与 dist 已重建并通过版本一致性检查。完整 verify 及专项离线 Chrome 证据沿用本轮修复结果，未执行真实买卡或提交 SBC。提交前保留两个私人诊断 tmp，不入 Git。
+
+2026-11-21 Streamlined 批量补卡估价（本地 27.0.125）。01:08Z 的 .119 日志选中同一 84 的 113 张×700、同一 85 的 28 张×2000，Club 合格 84/85/86 各 47/15/12 张。每个评分和贡献积分相同的候选池有至少三个版本时，低于第三低报价的版本各最多按一张规划，余量按其他版本报价与库存比较。买空的版本在本次执行中先让位给已授权替代，限次等待后可复查。两张低价并列时按版本跨批核对已购。模拟 700 搜空、八个 850 版本可用，20 张按 8+8+4 贡献，低价只搜一次。正式会话及离线 Chrome 覆盖分摊后金额、具体球员和库存，verify 518 文件 6892 项、专项 108 文件 2042 项、完整离线 Chrome 通过。根目录和 dist 均为 3153002 字节，SHA256 76d2021c6d4b9969e6f5e99f5f9c06f0cdaacb2ee4035de3a99b86039f80b33f，已安装专用 Chrome 并核对全文。当前账号成交价与供应待实盘验证，见 docs/FC27_STREAMLINED_MARKET_ROUTES_ZH.md 及 artifacts/streamlined-quote-depth-{verified,prelaunch-verified,install}.log。
+
 2026-11-21 Streamlined 主阵容复核（本地 27.0.119）。00:42Z 诊断显示 EA 已确认末批 6 张、累计 47470/200000，随后两次生成卡在 protection-active-state/inactive。规划、外部库存及恢复预览遇到 0 号未启用或名单未加载时，过期原生阵容列表时间戳，按 EA 最新 activeSquadId 读取对应阵容详情，再执行原锁卡及完整卡位核验。中途失败可由同账号下一次预览重新读取。编译版 EA 阵容方法使用模拟数据回放 0 和非零主阵容通过，无真实购卡或贡献。verify 518/6847、专项 108/2003、完整离线 Chrome 通过；根脚本与 dist 均为 3081347 字节，SHA256 16529fb1e98e9f719bb3c7ad68e6086a1c6a71fbc52f44bed4decc18d470e1c6，已安装专用 Chrome 并核对全文。原账号重试待验证。见 artifacts/squad-refresh-{native-replay,verify,prelaunch}.log。
 
 2026-11-21 公共市场搜索默认间隔缩至 1–3 秒（本地 27.0.119）。普通 SBC、Streamlined SBC、Gallery 购卡及交易任务共用账号设置。任务配置 schema 1 的精确旧值 7/15 在读取时迁移，其他区间沿用，升级后可手动再选 7/15。原任务及其他设置在下一次正常保存时一并写入 schema 2。按 14 次连续空搜索、固定区间中点、含周期休息的模拟，首末发出间隔从 150 秒降至 33 秒。全量 518 文件 6839 项、专项 108 文件 2002 项、离线 Chrome 和任务页 mock 通过。根脚本与 dist 均为 3077518 字节，SHA256 03aa599e15ec73bc82accf12ec41426ee75aa95e70dc1f4a6b18d140bfd3dc1a，已在现有专用 Chrome 安装并核对全文。实际 EA 购卡耗时待实测。见 artifacts/search-gap-{simulation,verify,prelaunch,mock}.log。

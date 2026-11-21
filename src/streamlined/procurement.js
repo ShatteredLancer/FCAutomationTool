@@ -1,5 +1,6 @@
 import { integer, same, fail } from './contract.js';
 import { nextStreamlinedWave } from './waves.js';
+import { isolatedStreamlinedQuotes } from './routes.js';
 import { streamlinedPurchaseNeedsRecovery } from './purchase-journal.js';
 import { approvedStreamlinedPurchaseRoute, initialStreamlinedPurchaseDemand, streamlinedDemandRoute, replanStreamlinedPurchaseDemand } from './purchase-scope.js';
 
@@ -91,6 +92,8 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
       if (reconcileOnly) return { status: record.completed ? 'completed' : 'recovered', record };
       if (now() >= approval.expiresAt) return { status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED', record };
       let scarcityRound = 0;
+      const missingVersions = new Set();
+      const isolated = isolatedStreamlinedQuotes(record.plan.execution?.purchaseScope?.groups ?? []);
       while (!stopped && record.submittedScore < record.challenge.targetScore) {
         await check();
         for (let i = 0; i < record.entries.length; i++) {
@@ -130,19 +133,18 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
         const ready = materialized.map((row, index) => row?.item ? row : ({
           groupIndex: readyEntries[index]?.groupIndex, item: row,
         })).filter(row => Number.isSafeInteger(row.groupIndex) && row.item).slice(0, record.challenge.selectionLimit);
-        if (!ready.length && record.plan.execution?.purchaseScope && record.confirmedBatches > 0) {
-          // Availability can change after a settled batch. Reconsider the
-          // cheaper approved recipe instead of sticking to a premium fallback
-          // selected earlier when the original version had no supply.
-          const demand = await replanStreamlinedPurchaseDemand(record, { ...state, now, stopped: () => stopped });
-          await check();
-          if (demand && !same(demand, record.demand)) { report('replanning'); record.demand = demand; await save(); }
-        }
         const wave = nextStreamlinedWave(streamlinedDemandRoute(record), { ...state, ready, limit: record.challenge.selectionLimit,
           submittedScore: record.submittedScore, targetScore: record.challenge.targetScore,
           consumedIds: record.consumedIds, fulfilled: record.fulfilled });
-        const material = [...wave.material], attempted = new Set(state.blockedDefinitions ?? []);
+        const material = [...wave.material], attempted = new Set([...(state.blockedDefinitions ?? []), ...missingVersions]);
+        // Demand is stored per price group. Two isolated versions at the same
+        // price must not turn into two copies of the first after a new batch.
+        for (const entry of record.entries) {
+          if (entry.source === 'market' && isolated.has(entry.definitionId)
+              && ['club', 'consumed'].includes(entry.state)) attempted.add(entry.definitionId);
+        }
         let searchFailure = null, budgetBlocked = false, replans = 0;
+        let replaceMissing = false;
         let lastBought = now(), boughtThisWave = 0;
         while (!stopped) {
           // Reallocate after every version attempt using actual material, not
@@ -155,13 +157,15 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
             consumedIds: record.consumedIds, fulfilled: record.fulfilled });
           const slot = next.purchases[0];
           if (!slot) {
-            // Consume an already acquired cheap version before repeating it;
-            // do not pay a premium just to fill this batch more quickly.
-            if (material.length || state.freeSlots === 0 || !record.plan.execution?.purchaseScope
+            // Fill a confirmed shortage from the approved pool even when this
+            // batch already contains material. Otherwise keep the chosen recipe.
+            if ((material.length && !replaceMissing) || state.freeSlots <= boughtThisWave || !record.plan.execution?.purchaseScope
                 || replans >= record.route.groups.length) break;
+            replaceMissing = false;
             report('replanning');
+            const bought = new Set(material.map(row => row.item.definitionId));
             const demand = await replanStreamlinedPurchaseDemand(record, { ...state,
-              blockedDefinitions: [...attempted], now, stopped: () => stopped });
+              blockedDefinitions: [...attempted].filter(id => !bought.has(id)), now, stopped: () => stopped });
             await check();
             if (!demand || same(demand, record.demand)) break;
             record.demand = demand; await save(); replans++;
@@ -181,6 +185,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
               attempt: attempt + 1, attemptLimit: approval.attempts });
             const offer = await adapter.find(candidate, cap, record); await check();
             if (!offer || offer.unavailable) {
+              if (!offer) { missingVersions.add(candidate.definitionId); replaceMissing = true; }
               if (offer?.unavailable && /^FC27_[A-Z0-9_]+$/.test(offer.reason)) searchFailure = offer.reason;
               report('search-result', { definitionId: candidate.definitionId,
                 reason: offer?.reason ?? 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', count: 0 });
@@ -249,6 +254,7 @@ export function createStreamlinedProcurement({ journal, lock, adapter, operation
             const waitMs = record.plan.execution.retryWaitMs ?? 15000;
             report('waiting-supply', { waitMs, attempt: ++scarcityRound, attemptLimit: retries });
             await adapter.waitForPartial(waitMs, () => stopped); await check();
+            missingVersions.clear();
             // Re-open the original cheapest recipe on each bounded retry.
             record.demand = initialStreamlinedPurchaseDemand(record.plan, record.route).map((n, i) => Math.max(n, record.fulfilled[i]));
             await save(); continue;

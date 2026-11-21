@@ -1,6 +1,6 @@
 # FC Automation Tool
 
-27.0.125 单周黑评分 SBC 已有库存阵容也会按材料总值优化；保留同一张周黑，不买卡、不提交。[版本说明](docs/releases/27.0.125.md)
+27.0.126 Streamlined SBC 不再重复套用孤立的市场最低报价，会按真实版本和合格库存分配补卡。[版本说明](docs/releases/27.0.126.md)
 
 27.0.119 支持在 EA Web App 11502 启动市场交易任务。保活失败时显示警告并保留定时任务。出售任务先处理 Transfer List 和 Unassigned，再处理 Club，收到每张卡的挂牌回执后立即继续。[版本说明](docs/releases/27.0.119.md)
 
@@ -58,7 +58,7 @@ FC27 只读首版：
 
 <https://github.com/ShatteredLancer/FCAutomationTool/releases/download/v0.8.60/DailyLoopRunner.user.js>
 
-For current main, install [FCAutomationTool 27.0.125](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/refs/heads/main/FCAutomationTool.user.js). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
+For current main, install [FCAutomationTool 27.0.126](https://raw.githubusercontent.com/ShatteredLancer/FCAutomationTool/refs/heads/main/FCAutomationTool.user.js). It retains the FC27 installation identity and GM storage, without migrating FC26 Runner/Acceptance journals or approvals. Disable old Runner, Preview, Acceptance and Hot Reload scripts; keep FSU Local **26.09.10**. See [development notes](docs/DEVELOPMENT.md) for installation verification. FSU remains independent. A main update is not a new GitHub Release; `releases/latest` can remain on an older tag.
 
 Tampermonkey 首次显示权限确认时，检查脚本来源、版本和网络域名后再安装。旧的 `FC26 Daily Loop Runner - Validation` 与生产版属于不同脚本；安装生产版前请禁用或删除旧脚本。
 

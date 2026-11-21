@@ -1,5 +1,5 @@
 import { integer, same, fail, deepFreeze } from './contract.js';
-import { groupStreamlinedCandidates, runStreamlinedRoutes } from './routes.js';
+import { groupStreamlinedCandidates, isolatedStreamlinedQuotes, runStreamlinedRoutes } from './routes.js';
 
 // This is an authorization envelope, not evidence of auction supply. Only the
 // selected stock IDs are consumable; the separately displayed market pool can
@@ -59,6 +59,11 @@ export async function replanStreamlinedPurchaseDemand(record, { heldDefinitions 
   const scope = record.plan.execution?.purchaseScope;
   if (!scope) return null;
   const blocked = new Set([...heldDefinitions, ...blockedDefinitions]);
+  const originalIsolatedQuotes = isolatedStreamlinedQuotes(scope.groups);
+  for (const entry of record.entries) {
+    if (entry.source === 'market' && ['club', 'consumed'].includes(entry.state)
+        && originalIsolatedQuotes.has(entry.definitionId)) blocked.add(entry.definitionId);
+  }
   const ready = record.entries.filter(entry => ['ready', 'club'].includes(entry.state));
   const credit = ready.reduce((sum, entry) => sum + record.route.groups[entry.groupIndex].item.points, 0);
   const remainingScore = Math.max(0, record.challenge.targetScore - record.submittedScore - credit);
@@ -68,7 +73,7 @@ export async function replanStreamlinedPurchaseDemand(record, { heldDefinitions 
   const allowed = new Set(market.map(item => item.definitionId));
   const result = await runStreamlinedRoutes({ challenge: { ...record.challenge, remainingScore },
     policy: record.policy, eligibility: { known: true, matches: item => ({ status: allowed.has(item.definitionId) ? 'eligible' : 'ineligible' }) },
-    inventory: [], market, mode: 'market', objective: record.plan.objective,
+    inventory: [], market, originalIsolatedQuotes, mode: 'market', objective: record.plan.objective,
     // Frozen valuations are not renewed here. find() refreshes the selected
     // version's actual quote before any search/bid and never raises its cap.
     quoteSource: market[0].quote.source, quoteAt: scope.quotedAt },
