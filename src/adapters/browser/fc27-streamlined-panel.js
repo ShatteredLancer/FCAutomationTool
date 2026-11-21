@@ -12,7 +12,7 @@ export function streamlinedPurchaseResumeMessage(result) {
       || ![record?.budget, record?.spent, record?.submittedScore, record?.challenge?.targetScore,
         audit.contributedCount, audit.unconsumedPurchaseCount].every(Number.isSafeInteger)
       || record.submittedScore >= record.challenge.targetScore) return null;
-  return `已恢复原购卡任务：已确认 ${number(audit.contributedCount)} 张、${number(record.submittedScore)} / ${number(record.challenge.targetScore)} 分；已购待处理 ${number(audit.unconsumedPurchaseCount)} 张。已花 ${number(record.spent)} 金币，原预算剩余 ${number(record.budget - record.spent)}。请点击“继续原方案购买并贡献”；原预算和单卡上限不变，已确认材料不会重复投入。`;
+  return `已恢复原购卡任务：已确认 ${number(audit.contributedCount)} 张、${number(record.submittedScore)} / ${number(record.challenge.targetScore)} 分；已购待处理 ${number(audit.unconsumedPurchaseCount)} 张。已花 ${number(record.spent)} 金币，原预算剩余 ${number(record.budget - record.spent)}。请点击“继续原方案购买并贡献”；原预算和单卡上限不变，已确认材料不会重复投入。${audit.excludedUnavailable ? `继续时会跳过已确认限价内无货的 ${number(audit.excludedUnavailable)} 个版本。` : ''}`;
 }
 
 export function streamlinedConfirmedContribution(result) {
@@ -72,7 +72,7 @@ export function streamlinedExecutionProgress(p = {}) {
       buying: '买入中', moving: '移入 Club', 'partial-ready': '等待部分批次收批', validation: '复核材料',
       contribution: '贡献中', reconciliation: '核对回执', confirmed: '贡献已确认', recovery: '核对已有执行记录',
       'batch-cooldown': '已确认上一批，批次间冷却', 'progress-backoff': '读取进度暂未成功，退避后重试',
-      replanning: '选择授权范围内的最低成本替代方案', 'waiting-supply': '等待后重试市场供应', 'search-result': '本次搜索完成',
+      replanning: '按已确认积分在原授权内重算剩余方案', 'search-result': '本次搜索完成',
       'checking-holdings': '核对 Club 版本持有', 'purchase-rejected': 'EA 拒绝了买入请求' }[p.phase] ?? '执行中';
   let text = `${Number.isSafeInteger(p.batchNumber) ? `第 ${number(p.batchNumber)} 批 · ` : ''}${label}`;
   if (p.phase === 'checking-holdings') text += `\n版本核对 ${number(p.holdingsBatch)} / ${number(p.holdingsBatchTotal)} 组 · 第 ${number(Math.floor((p.offset ?? 0) / 250) + 1)} 页`;
@@ -81,7 +81,7 @@ export function streamlinedExecutionProgress(p = {}) {
   text += `\n${Number.isSafeInteger(p.contributed) ? `已贡献 ${number(p.contributed)} 张 · ` : ''}已确认 ${number(p.submittedScore)} / ${number(p.targetScore)} 分`;
   if (p.readyCount !== undefined) text += `\n本批就绪 ${number(p.readyCount)} / ${number(p.selectionLimit)} 张 · ${number(p.readyPoints)} 分`;
   if (p.phase === 'materialize') text += `\n外部卡 ${number(p.completed)} / ${number(p.materialTotal)} 张`;
-  if (p.phase === 'waiting-supply') text += `\n供应重试 ${number(p.attempt)} / ${number(p.attemptLimit)}`;
+  if (p.phase === 'replanning' && p.excludedUnavailable > 0) text += `\n已跳过 ${number(p.excludedUnavailable)} 个限价内无货的版本`;
   if (p.phase === 'progress-backoff') text += `\n准备第 ${number(p.attempt + 1)} / ${number(p.attemptLimit)} 次读取 · 等待 ${number(Math.ceil(p.waitMs / 1000))} 秒`;
   return text;
 }
@@ -92,9 +92,6 @@ export function streamlinedExecutionClock(p, elapsedMs = 0, phaseElapsedMs = 0, 
   if (active) text += ` · 当前步骤等待 ${seconds(phaseElapsedMs)} 秒`;
   if (active && p?.phase === 'partial-ready' && Number.isSafeInteger(p.waitMs)) {
     text += ` · 预计收批等待剩余 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} 秒`;
-  }
-  if (active && p?.phase === 'waiting-supply' && Number.isSafeInteger(p.waitMs)) {
-    text += ` · 供应重试等待剩余 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} 秒`;
   }
   if (active && ['batch-cooldown', 'progress-backoff'].includes(p?.phase) && Number.isSafeInteger(p.waitMs)) {
     text += ` · 读取等待剩余 ${Math.ceil(Math.max(0, p.waitMs - Math.max(0, phaseElapsedMs)) / 1000)} 秒`;
@@ -143,7 +140,7 @@ export function streamlinedExecutionMessage(reason, recovery = null, protection 
     FC27_STREAMLINED_EXTERNAL_BATCH_ORDER: '外部卡须按完整批次顺序执行，先确认 Club 前置卡消耗；已确认批次会自动跳过。',
     FC27_STREAMLINED_STOPPED: '已停止；已确认成交保留。有未决回执时先核对，否则可直接继续。',
     FC27_STREAMLINED_NO_AFFORDABLE_CARDS: '当前方案没有可执行的限价内候选，已暂停。已确认购入的材料保留。',
-    FC27_STREAMLINED_PURCHASE_NO_SUPPLY: '有限重试后仍无授权范围内的限价候选，已暂停。已购材料保留，可稍后重试或生成新方案；普通缺货不需要核对交易回执。',
+    FC27_STREAMLINED_PURCHASE_NO_SUPPLY: '按已确认积分重算后，原授权内仍没有可执行的限价方案，已暂停。已确认的购卡和贡献保留；请点击“生成方案”审核新的候选。不需要核对交易回执。',
     FC27_STREAMLINED_PURCHASE_CAPACITY_FULL: '未分配区已满。请手动腾出空间后重试；未搜索市场，也未自动丢弃卡片。',
     FC27_STREAMLINED_PURCHASE_VERSION_HELD: '剩余版本已在 Club 持有，但未被选为本次库存材料。请选择其他路线，或重新生成方案明确选择这些库存卡；不会自动消耗。',
     FC27_STREAMLINED_PURCHASE_BUDGET_LIMIT: '剩余预算不足以完成本次购买，未提高限价。请重新生成方案并明确调整预算。',
@@ -768,7 +765,8 @@ export function mountFc27StreamlinedPanel({ document, readTarget, session, nativ
       if (serial !== opened) return;
       renderResult({ ...result, record: outcome.record, confirmation: outcome.confirmation,
         executionReason: outcome.reason ?? (outcome.status === 'completed' ? 'FC27_STREAMLINED_COMPLETED' : result.executionReason),
-        liveExecutionEnabled: result.liveExecutionEnabled && ['partial', 'stopped', 'paused'].includes(outcome.status) });
+        liveExecutionEnabled: result.liveExecutionEnabled && ['partial', 'stopped', 'paused'].includes(outcome.status)
+          && outcome.reason !== 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY' });
       showOutcome(outcome);
     } catch (error) { if (serial === opened) showOutcome({ reason: safeReason(error) }); }
     finally { setBusy(false); }

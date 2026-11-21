@@ -136,8 +136,8 @@ it('counts elapsed/waiting time without claiming that a timer confirms a transac
     .toContain('剩余 0 秒');
   expect(streamlinedExecutionClock({ phase: 'search' }, 5000, 3000, false)).toBe('本次耗时 5 秒');
   expect(streamlinedExecutionClock({}, NaN, -3000)).toContain('0 秒');
-  expect(streamlinedExecutionClock({ phase: 'waiting-supply', waitMs: 15000 }, 30000, 4000)).toContain('供应重试等待剩余 11 秒');
-  expect(streamlinedExecutionProgress({ phase: 'waiting-supply', attempt: 1, attemptLimit: 2 })).toContain('供应重试 1 / 2');
+  expect(streamlinedExecutionProgress({ phase: 'replanning', submittedScore: 25895, targetScore: 40000, excludedUnavailable: 2 }))
+    .toContain('已跳过 2 个限价内无货的版本');
   expect(streamlinedExecutionProgress({ phase: 'partial-ready', waitMs: 0 })).toContain('立即贡献');
 });
 

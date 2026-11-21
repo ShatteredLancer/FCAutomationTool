@@ -8,15 +8,15 @@ import { createStreamlinedPurchaseJournal, validateStreamlinedPurchase } from '.
 import { streamlinedPurchaseBudgetPreview } from '../../src/adapters/browser/fc27-streamlined-panel.js';
 import { decodeStoredValue } from '../../src/runtime/compact-storage.js';
 
-const card = (id, points, price) => ({ ...safeItem({ source: 'market', definitionId: id, points, price,
-  quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 10000 } }), purchaseMaxBuy: price });
+const card = (id, points, price, cap = price) => ({ ...safeItem({ source: 'market', definitionId: id, points, price,
+  quote: { source: 'futgg', definitionId: id, price, fetchedAt: 1, expiresAt: 10000 } }), purchaseMaxBuy: cap });
 async function fixture({ inventory = [], market = [card(201, 20, 200), card(202, 100, 1100)], submittedScore = 0,
-  targetScore = 100, selectionLimit = 5 } = {}) {
-  const c = challenge({ scoreRequirement: targetScore, submittedScore, selectionLimit });
-  const input = { challenge: c, inventory, market, policy, eligibility, quoteSource: 'futgg', quoteAt: 100, objective: 'lowest-value' };
+  targetScore = 100, selectionLimit = 5, target = {}, objective = 'lowest-value' } = {}) {
+  const c = challenge({ ...target, scoreRequirement: targetScore, submittedScore, selectionLimit });
+  const input = { challenge: c, inventory, market, policy, eligibility, quoteSource: 'futgg', quoteAt: 100, objective };
   const result = await runStreamlinedRoutes(input, { now: () => 100, schedule: async () => {} });
   const route = result.routes[0], scope = createStreamlinedPurchaseScope(input);
-  const plan = createStreamlinedPlan({ context: c.context, challenge: c, policy, result: { ...expandStreamlinedRoute(route, c), route },
+  const plan = createStreamlinedPlan({ context: c.context, challenge: c, policy, objective, result: { ...expandStreamlinedRoute(route, c), route },
     execution: { purchaseAttempts: 2, partialWaitMs: 1000, purchaseScope: scope, scarcityRetries: 2, retryWaitMs: 15000 } });
   const values = new Map();
   const journal = createStreamlinedPurchaseJournal({ get: async (key, fallback) => structuredClone(values.get(key) ?? fallback),
@@ -35,6 +35,89 @@ async function fixture({ inventory = [], market = [card(201, 20, 200), card(202,
   return { plan, scope, adapter, driver, approval, journal, values };
 }
 
+// Real 191/264 progress/budget and empty-search limits, synthetic prior
+// receipts and pool. Start from a settled .125 journal without miss history.
+async function settled191264() {
+  const stock = Array.from({ length: 27 }, (_v, i) => safeItem({ id: 100 + i, definitionId: 1100 + i, points: 700 }));
+  const f = await fixture({ target: { setId: 191, id: 264 }, targetScore: 40000, selectionLimit: 30,
+    inventory: stock, objective: 'inventory-first',
+    market: [card(210676, 830, 750, 800), card(230142, 1185, 750, 900), card(230999, 830, 900)] });
+  const route = approvedStreamlinedPurchaseRoute(f.plan);
+  const priorPurchases = [...Array(7).fill(210676), 230142];
+  const entries = [
+    ...stock.map(item => ({ source: 'inventory', groupIndex: route.groups.findIndex(g => g.items.some(i => i.id === item.id)),
+      definitionId: item.definitionId, itemId: item.id, key: `stock:${item.id}`, price: null, cap: null, tradeId: null, state: 'consumed' })),
+    ...priorPurchases.map((definitionId, i) => ({ source: 'market', definitionId, itemId: 300 + i,
+      groupIndex: route.groups.findIndex(g => g.items.some(item => item.definitionId === definitionId)),
+      key: `paid:${i}`, tradeId: String(600 + i), cap: definitionId === 210676 ? 800 : 900, price: 750, state: 'consumed' })),
+  ];
+  const fulfilled = route.groups.map((_g, i) => entries.filter(entry => entry.groupIndex === i).length);
+  const record = await f.journal.write({ schema: 2, context: f.plan.context, operationId: '191-264', revision: 0,
+    fingerprint: f.plan.fingerprint, plan: f.plan, challenge: f.plan.challenge, policy: f.plan.policy, route,
+    demand: route.groups.map((group, i) => Math.max(fulfilled[i], f.plan.route.groups.find(g => g.key === group.key)?.quantity ?? 0)),
+    budget: 22080, spent: 6000, submittedScore: 25895, consumedIds: entries.map(e => e.itemId),
+    fulfilled, confirmedBatches: 8, contribution: null, completed: false, entries });
+  let score = record.submittedScore;
+  f.adapter.readState.mockImplementation(async () => ({ submittedScore: score, freeSlots: 30, heldDefinitions: [], blockedDefinitions: [] }));
+  f.adapter.contribute.mockImplementation(async batch => ({ confirmed: true,
+    submittedScore: score += batch.material.reduce((sum, row) => sum + row.item.points, 0) }));
+  const find = f.adapter.find.getMockImplementation();
+  f.adapter.find.mockImplementation(async (item, cap) => {
+    if (item.definitionId === 210676 || item.definitionId === 230142) return null;
+    return find(item, cap);
+  });
+  return { ...f, record, approval: { ...f.approval, budget: 22080 } };
+}
+
+it('191/264 replans from 25,895 confirmed points once per empty version and keeps the original ledger and caps', async () => {
+  const f = await settled191264();
+  const progress = [];
+  const result = await f.driver.execute(f.plan, f.approval, { onProgress: row => progress.push(row) });
+  expect(result).toMatchObject({ status: 'completed', record: {
+    submittedScore: 40005, spent: 21300, budget: 22080, confirmedBatches: 25, operationId: '191-264',
+  } });
+  expect(f.adapter.find.mock.calls.filter(([item]) => item.definitionId !== 230999)
+    .map(([item, cap]) => [item.definitionId, cap]).sort()).toEqual([[210676, 800], [230142, 900]]);
+  expect(f.adapter.buy).toHaveBeenCalledTimes(17);
+  expect(f.adapter.buy.mock.calls.every(([row]) => row.definitionId === 230999 && row.cap <= 900)).toBe(true);
+  const contributed = f.adapter.contribute.mock.calls.flatMap(([batch]) => batch.material.map(row => row.item.id));
+  expect(new Set(contributed).size).toBe(17);
+  expect(contributed.some(id => f.record.consumedIds.includes(id))).toBe(false);
+  expect(result.record.consumedIds).toEqual([...f.record.consumedIds, ...contributed]);
+  expect(progress).toEqual(expect.arrayContaining([expect.objectContaining({ phase: 'replanning', remainingScore: 14105 })]));
+  expect(f.adapter.waitForPartial).not.toHaveBeenCalled();
+});
+
+it('191/264 stops if no approved substitute has supply and skips those versions after reload', async () => {
+  const f = await settled191264();
+  f.adapter.find.mockResolvedValue(null);
+  const expected = { status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY',
+    record: { submittedScore: 25895, spent: 6000, budget: 22080, confirmedBatches: 8, consumedIds: f.record.consumedIds } };
+  expect(await f.driver.execute(f.plan, f.approval)).toMatchObject(expected);
+  expect(f.adapter.find).toHaveBeenCalledTimes(3);
+  const reload = createStreamlinedProcurement({ journal: f.journal, lock: { acquire: async () => () => {} },
+    adapter: f.adapter, operationId: () => 'new-id', now: () => 100 });
+  expect(await reload.execute(f.plan, null, { reconcileOnly: true })).toMatchObject({ status: 'recovered',
+    record: { supplyMisses: expect.arrayContaining([210676, 230142, 230999]) } });
+  expect(await reload.execute(f.plan, f.approval)).toMatchObject(expected);
+  expect(f.adapter.find).toHaveBeenCalledTimes(3);
+  for (const fn of ['buy', 'move', 'contribute', 'waitForPartial']) expect(f.adapter[fn]).not.toHaveBeenCalled();
+});
+
+it('191/264 never sends a bid for an alternative offered above its own frozen cap', async () => {
+  const f = await settled191264();
+  const find = f.adapter.find.getMockImplementation();
+  f.adapter.find.mockImplementation(async (...args) => {
+    const offer = await find(...args);
+    return offer ? { ...offer, price: 950 } : null;
+  });
+  expect(await f.driver.execute(f.plan, f.approval)).toMatchObject({
+    status: 'recovery-required', reason: 'FC27_STREAMLINED_PURCHASE_OFFER_CHANGED', mismatch: 'price',
+    record: { submittedScore: 25895, spent: 6000, consumedIds: f.record.consumedIds },
+  });
+  for (const fn of ['buy', 'move', 'contribute']) expect(f.adapter[fn]).not.toHaveBeenCalled();
+});
+
 async function shortageFixture() {
   const stock = safeItem({ id: 11, definitionId: 101, rating: 84, points: 830, price: 1100 });
   const f = await fixture({ inventory: [stock], market: [card(201, 830, 1100), card(202, 830, 1200)],
@@ -50,7 +133,7 @@ it('reproduces the reported stock-first stop when the cheapest version is absent
   const result = await f.driver.execute(f.plan, { ...f.approval, budget: 41800 });
   expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY',
     record: { submittedScore: 2490, spent: 0, consumedIds: [11] } });
-  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201, 201, 201, 201]);
+  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201]);
   expect(f.adapter.buy).not.toHaveBeenCalled();
 });
 
@@ -130,37 +213,42 @@ it('replans to the cheapest approved feasible substitute only after the selected
   expect(validateStreamlinedPurchase(result.record, f.plan.context)).toBe(result.record);
 });
 
-it('returns to the cheaper approved version after a settled fallback batch when its supply returns', async () => {
+it('keeps the replacement after a settled fallback batch rather than probing the empty version again', async () => {
   const f = await fixture({ market: [card(201, 20, 200), card(202, 50, 650)] });
   const find = f.adapter.find.getMockImplementation(); let cheapReads = 0;
   f.adapter.find.mockImplementation(async item => item.definitionId === 201 && ++cheapReads === 1 ? null : find(item));
   const result = await f.driver.execute(f.plan, { ...f.approval, budget: 1300 });
-  expect(result).toMatchObject({ status: 'completed', record: { spent: 1250, submittedScore: 110 } });
-  expect(f.adapter.buy.mock.calls.map(([entry]) => entry.definitionId)).toEqual([202, 201, 201, 201]);
+  expect(result).toMatchObject({ status: 'completed', record: { spent: 1300, submittedScore: 100, supplyMisses: [201] } });
+  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201, 202, 202]);
 });
 
-it('never increases the total budget to buy a premium substitute; retries scarcity twice without manual recovery', async () => {
+it('never increases the total budget to buy a premium substitute or repeats an empty search', async () => {
   const f = await fixture(); f.adapter.find.mockResolvedValue(null);
   const result = await f.driver.execute(f.plan, { ...f.approval, budget: 1000 });
   expect(result).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_NO_SUPPLY', record: { budget: 1000, spent: 0 } });
-  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201, 201, 201]);
-  expect(f.adapter.waitForPartial.mock.calls).toEqual([[15000, expect.any(Function)], [15000, expect.any(Function)]]);
+  expect(f.adapter.find.mock.calls.map(([item]) => item.definitionId)).toEqual([201]);
+  expect(f.adapter.waitForPartial).not.toHaveBeenCalled();
   expect(f.adapter.buy).not.toHaveBeenCalled();
 });
 
-it('continues a normal scarcity pause with one new execution click, without a recovery action', async () => {
+it('can check restored supply with a freshly generated and explicitly approved plan, not by replaying the old plan', async () => {
   const f = await fixture(), found = f.adapter.find.getMockImplementation();
   f.adapter.find.mockResolvedValue(null);
   expect((await f.driver.execute(f.plan, f.approval)).status).toBe('paused');
   f.adapter.find.mockImplementation(found);
-  expect((await f.driver.execute(f.plan, f.approval)).status).toBe('completed');
+  const alternate = createStreamlinedPlan({ context: f.plan.context, challenge: f.plan.challenge,
+    policy: f.plan.policy, result: f.plan, execution: { ...f.plan.execution, purchaseAttempts: 3 } });
+  expect(await f.driver.execute(alternate, f.approval)).toMatchObject({ reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_REQUIRED' });
+  expect(f.adapter.find).toHaveBeenCalledTimes(2);
+  expect((await f.driver.execute(alternate, { ...f.approval, fingerprint: alternate.fingerprint })).status).toBe('completed');
 });
 
-it('stops during scarcity backoff without buying, contributing or automatically continuing', async () => {
+it('stops during scarcity replanning without buying, contributing or automatically continuing', async () => {
   const f = await fixture(); f.adapter.find.mockResolvedValue(null);
-  f.adapter.waitForPartial.mockImplementation(async () => f.driver.stop());
-  expect((await f.driver.execute(f.plan, f.approval)).status).toBe('stopped');
-  expect(f.adapter.find).toHaveBeenCalledTimes(2); expect(f.adapter.buy).not.toHaveBeenCalled();
+  expect((await f.driver.execute(f.plan, f.approval, { onProgress: row => {
+    if (row.phase === 'replanning') f.driver.stop();
+  } })).status).toBe('stopped');
+  expect(f.adapter.find).toHaveBeenCalledTimes(1); expect(f.adapter.buy).not.toHaveBeenCalled();
   expect(f.adapter.contribute).not.toHaveBeenCalled();
 });
 
@@ -201,6 +289,8 @@ it('rejects an injected runtime pool or quantity beyond the approved journal env
   expect(() => validateStreamlinedPurchase(changed, f.plan.context)).toThrow('PURCHASE_JOURNAL_INVALID');
   const demand = structuredClone(result.record); demand.demand[0] = demand.route.groups[0].quantity + 1;
   expect(() => validateStreamlinedPurchase(demand, f.plan.context)).toThrow('PURCHASE_JOURNAL_INVALID');
+  for (const supplyMisses of [[999], [201,201]]) expect(() =>
+    validateStreamlinedPurchase({ ...result.record, supplyMisses }, f.plan.context)).toThrow('PURCHASE_JOURNAL_INVALID');
 });
 
 it('does not require a plan recovery for settled contributions; archives receipts before a new explicit approval', async () => {
@@ -229,12 +319,13 @@ it('retains an unknown buy in the new scope journal and neither replans nor bids
   expect((await f.journal.read(f.plan.context)).entries[0].state).toBe('buy-pending');
 });
 
-it('does not turn an expired approval during a scarcity wait into a fictitious unknown trade', async () => {
+it('does not turn an expired approval during scarcity replanning into a fictitious unknown trade', async () => {
   const f = await fixture(); f.adapter.find.mockResolvedValue(null);
   let at = 100;
   const driver = createStreamlinedProcurement({ journal: f.journal, lock: { acquire: async () => () => {} },
     adapter: f.adapter, operationId: () => 'expired', now: () => at });
-  f.adapter.waitForPartial.mockImplementation(async () => { at = f.approval.expiresAt; });
-  expect(await driver.execute(f.plan, f.approval)).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED' });
+  expect(await driver.execute(f.plan, f.approval, { onProgress: row => {
+    if (row.phase === 'replanning') at = f.approval.expiresAt;
+  } })).toMatchObject({ status: 'paused', reason: 'FC27_STREAMLINED_PURCHASE_APPROVAL_EXPIRED' });
   expect(f.adapter.buy).not.toHaveBeenCalled();
 });

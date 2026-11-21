@@ -509,8 +509,7 @@ export function createFc27StreamlinedSession({ inspect, readInputs, refreshSquad
         const plan = ['ready', 'partial'].includes(result.status)
           ? createStreamlinedPlan({ context: input.context, challenge: input.challenge, policy: input.policy, result, objective: config.objective,
             execution: { purchaseAttempts, partialWaitMs: config.partialWaitMs,
-              ...(purchaseScope ? { purchaseScope,
-                scarcityRetries: 2, retryWaitMs: 15000 } : {}),
+              ...(purchaseScope ? { purchaseScope } : {}),
               ...(quoteCoverage.limited ? { quoteLimited: true } : {}) } }) : null;
         let execution = null, executionReason = 'FC27_STREAMLINED_WRITE_CONTRACT_UNVERIFIED', executionRecovery = null, executionError = null;
         if (plan && typeof createExecution === 'function') {
