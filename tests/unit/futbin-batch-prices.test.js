@@ -1,5 +1,31 @@
 import { expect, it, vi } from 'vitest';
-import { readFutbinBatchPrices } from '../../src/fc27/futbin-batch-prices.js';
+import { readFc27RatedFodderIds, readFutbinBatchPrices } from '../../src/fc27/futbin-batch-prices.js';
+
+it('shortlists an exact rating and ordinary rarity, ranking both PC and console on their own price', async () => {
+  const rows = [
+    { resource_id: 1, rating: 82, raretype: 1, pc_LCPrice: 500, ps_LCPrice: 600 },
+    { resource_id: 2, rating: 82, raretype: 0, pc_LCPrice: 650, ps_LCPrice: 550 },
+    { resource_id: 3, rating: 82, raretype: 3, pc_LCPrice: 150, ps_LCPrice: 150 },
+  ];
+  const request = vi.fn(async () => JSON.stringify({ data: rows }));
+  expect(await readFc27RatedFodderIds([82], { request, platform: 'pc' })).toEqual([[1, 2]]);
+  expect(await readFc27RatedFodderIds([82], { request, platform: 'console' })).toEqual([[2, 1]]);
+  expect(new URL(request.mock.calls[1][0]).searchParams.get('rating')).toBe('82-82');
+  await expect(readFc27RatedFodderIds([81], { request, platform: 'pc' })).rejects.toThrow('FC27_PUBLIC_PRICE_RESPONSE_INVALID');
+});
+
+it('passes a fresh discovery page to the existing quote reader without another network request or a newer timestamp', async () => {
+  let now = 1000;
+  const cache = new Map(), request = vi.fn(async () => JSON.stringify({ data: [
+    { resource_id: 1, rating: 79, raretype: 0, pc_LCPrice: 300, ps_LCPrice: 350 },
+  ] }));
+  expect(await readFc27RatedFodderIds([79], { platform: 'pc', request, cache, now: () => now })).toEqual([[1]]);
+  now += 1000;
+  expect(await readFutbinBatchPrices([1], [{ definitionId: 1, rating: 79 }], {
+    platform: 'pc', request, cache, now: () => now, cacheOnly: true,
+  })).toMatchObject({ requests: 0, rows: [{ definitionId: 1, price: 300, fetchedAt: 1000 }] });
+  expect(request).toHaveBeenCalledOnce();
+});
 
 const players = Array.from({ length: 12 }, (_, i) => ({ definitionId: i + 1, rating: 84 }));
 const payload = rows => JSON.stringify({ errorcode: '200', data: rows });

@@ -3,7 +3,7 @@ import { createPublicPricePolicyStore, publicPriceSourceEnabled, normalizeGaller
 import { createFsuReferencePrice } from '../../fc27/fsu-reference-price.js';
 import { parsePublicFutbinPrice, parsePublicFutggPrices } from '../../fc27/public-price-responses.js';
 import { createFc27FutbinHttp } from './fc27-futbin-http.js';
-import { readFutbinBatchPrices } from '../../fc27/futbin-batch-prices.js';
+import { readFc27RatedFodderIds, readFutbinBatchPrices } from '../../fc27/futbin-batch-prices.js';
 import { readFc27Context } from '../ea/fc27-local-read.js';
 import { traditionalJournalScope } from '../../fc27/traditional-journal.js';
 import { createPurchasePriceApproval } from '../../fc27/purchase-price-approval.js';
@@ -191,6 +191,18 @@ export function createFc27PublicPrices({ root, get, set, gmRequest, transport, d
       }
     },
     load,
+    async puzzleRatedFodder(ratings, { isCurrent = () => true } = {}) {
+      const captured = capture(), settings = await policyStore.read(captured.scope);
+      if (!publicPriceSourceEnabled(settings, 'futbin')) return [];
+      const check = async () => {
+        captured.assert();
+        if (!isCurrent()) throw Error('FC27_PUBLIC_PRICE_CONTEXT_CHANGED');
+        if (!publicPriceSourceEnabled(await policyStore.read(captured.scope), 'futbin')) throw Error('FC27_PUBLIC_PRICE_FUTBIN_DISABLED');
+        captured.assert();
+      };
+      return readFc27RatedFodderIds(ratings, { request, check, now, cache: futbinPages, quoteTtlMs: settings.quoteValidityMinutes * 60000,
+        platform: settings.futbinPlatform ? (settings.futbinPlatform === 'pc' ? 'pc' : 'console') : captured.platform });
+    },
     async cachedEstimates(ids, options = {}) {
       const captured = capture(), settings = await policyStore.read(captured.scope); captured.assert();
       const policy = options.policy ?? settings;

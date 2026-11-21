@@ -1,13 +1,17 @@
 import { findFc27PuzzleRepairSeedCooperatively, planFc27PuzzleRepairQueries, suggestFc27PuzzlePurchasesCooperatively,
   planFc27PuzzleShortageQueries, suggestFc27PuzzleJointPurchasesCooperatively, marketCandidates,
-  puzzleOwnedValueCandidates, puzzleMarketValueCandidates, refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague } from './puzzle-procurement.js';
+  puzzleOwnedValueCandidates, puzzleMarketValueCandidates, puzzleTotwMarketCandidates,
+  refineFc27PuzzleOwnedValue, discoverFc27PuzzleCappedLeague, findFc27PuzzlePositionScaffolds,
+  planFc27PuzzleOpenPositionQuery, refineFc27PuzzleOwnedTotwValue } from './puzzle-procurement.js';
 import { createPurchasePriceApproval } from './purchase-price-approval.js';
 import { prepareFc27PuzzleConceptPlan } from './puzzle-concept-plan.js';
 import { traditionalJournalScope } from './traditional-journal.js';
-import { parseFc27SbcRequirements } from './sbc-requirements.js';
+import { isFc27TotwCard, isFc27TotwRatingOnly, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { collectSafePuzzleCandidates } from './puzzle-material-policy.js';
 import { allowedFc27MarketTiers } from './market-query-route.js';
 import { readFc27PuzzleCatalogHints, yieldPuzzleHintTask } from './puzzle-catalog-hints.js';
-import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
+import { DEFAULT_PUZZLE_QUOTE_CEILING, MAX_PUZZLE_QUOTE_PRICE, MAX_PUZZLE_RATED_FODDER_LANES,
+  PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from './puzzle-procurement-policy.js';
 import { comparePuzzlePlans, sortPuzzlePlans } from './puzzle-plan-ranking.js';
 import { createFc27PuzzleSearchBudget } from './puzzle-preview.js';
 
@@ -126,11 +130,10 @@ const failureDetails = (reason, value) => {
 // cooldown, or revalidate a method fingerprint locally. No same-action retry;
 // pending and other failures stay blocked.
 // The caller holds the account lock across this operation.
-export function createFc27PuzzleProcurementSession({ createTransport, get, set, list = null,
+export function createFc27PuzzleProcurementSession({ createTransport, get, set, list = null, loadRatedFodder = null,
   loadPublicPrices = null, loadCachedPrices = null, now = Date.now } = {}) {
   let busy = false;
-  const ownedValues = async (input, { assertCurrent, onProgress, preferred = [] }) => {
-    const safe = puzzleOwnedValueCandidates(input);
+  const ownedValues = async (input, { assertCurrent, onProgress, preferred = [], safe = puzzleOwnedValueCandidates(input) }) => {
     const byDefinition = new Map();
     for (const item of [...preferred.map(key => safe.find(item => item.id === key)).filter(Boolean), ...safe]) {
       if (!byDefinition.has(item.definitionId)) byDefinition.set(item.definitionId, item);
@@ -174,26 +177,39 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
     busy = true;
     try {
       assertCurrent();
+      const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, preview.required);
+      const ratedTotw = parsed.status === 'observed' && isFc27TotwRatingOnly(parsed.rules)
+        && parsed.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind));
+      const pool = ratedTotw ? collectSafePuzzleCandidates(input).candidates ?? [] : puzzleOwnedValueCandidates(input);
+      const anchor = ratedTotw ? pool.find(card => isFc27TotwCard(card) && preview.selected.some(ref =>
+        ref.id === card.id && ref.definitionId === card.definitionId && ref.rating === card.rating && ref.pile === card.pile)) : null;
+      if (ratedTotw && !anchor) return preview;
+      const safe = ratedTotw ? pool.filter(card => card === anchor
+        || (!isFc27TotwCard(card) && card.definitionId !== anchor.definitionId)) : pool;
       const valued = await ownedValues(input, { assertCurrent,
         onProgress: value => onProgress?.({ phase: 'quote-read', quoteCompleted: value.index, quoteTotal: value.total }),
-        preferred: preview.selected.map(item => item.id) });
-      const result = await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
+        preferred: preview.selected.map(item => item.id), safe });
+      const result = ratedTotw ? await refineFc27PuzzleOwnedTotwValue(input, preview, safe, valued.prices, parsed.rules, { assertCurrent,
+        onProgress: value => onProgress?.({ ...value, phase: 'owned-value-search', nodes: preview.nodes + value.nodes, maxNodes: preview.maxNodes }),
+      }) : await refineFc27PuzzleOwnedValue(input, preview, valued.prices, { assertCurrent, onProgress });
       assertCurrent();
       if (valued.approval?.rows.some(row => row.estimate !== null && row.quotes[valued.approval.policy.source].expiresAt <= now())) {
         return { ...preview, materialValue: null, valueReason: 'FC27_BUY_REFERENCE_PRICE_EXPIRED' };
       }
+      const uniqueOwnedCount = new Set(safe.map(card => card.definitionId)).size;
       return { ...result, priceSource: valued.approval?.policy.source ?? null,
         valueExpiresAt: valued.prices.size ? Math.min(...valued.approval.rows.filter(row => row.estimate !== null)
           .map(row => row.quotes[valued.approval.policy.source].expiresAt)) : null,
-        valueQuotedCount: valued.prices.size,
-        valueCoverageComplete: valued.prices.size === new Set(puzzleOwnedValueCandidates(input).map(item => item.definitionId)).size };
+        valueCandidateCount: uniqueOwnedCount, valueQuotedCount: valued.prices.size,
+        unpricedOwnedCount: uniqueOwnedCount - valued.prices.size, valueCoverageComplete: valued.prices.size === uniqueOwnedCount };
     } catch (error) {
       assertCurrent();
       return { ...preview, materialValue: null, valueReason: safeReason(error) };
     } finally { busy = false; }
   },
   async plan(input, { assertCurrent = () => {}, quoteCeiling = DEFAULT_PUZZLE_QUOTE_CEILING,
-    onProgress = null, optimizeMaterialValue = false, materialCeiling = null, ownedIncumbent = null, adaptiveSearch = false } = {}) {
+    onProgress = null, optimizeMaterialValue = false, materialCeiling = null, ownedIncumbent = null, adaptiveSearch = false,
+    totwBudget = null, excludedTotwDefinitions = [], keepOwnedTotw = false } = {}) {
     if (busy) return stop('FC27_PURCHASE_BUSY');
     busy = true;
     let requests = 0; let cacheHits = 0; let transport; let adaptiveBudget = null;
@@ -264,22 +280,6 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
       const scope = traditionalJournalScope(input.context);
       assertCurrent();
       reportProgress();
-      // A current, fully verified owned lineup is already a better search seed
-      // than a relaxed-chemistry repair seed. Re-running the 50k repair search
-      // here duplicated the initial inventory solve and delayed material-value
-      // planning before any market candidate was considered.
-      const hasOwnedIncumbent = ownedIncumbent?.status === 'preview'
-        && Array.isArray(ownedIncumbent.selected)
-        && ownedIncumbent.selected.length === input.challenge.slotCount - input.challenge.brickIndices.length;
-      const seed = hasOwnedIncumbent ? { status: 'unavailable', reason: 'FC27_PURCHASE_REPAIR_SEED_NOT_NEEDED' }
-        : await measure('seedMs', () => findFc27PuzzleRepairSeedCooperatively(input,
-          value => reportProgress({ ...value, phase: 'repair-seed' }), { assertCurrent }));
-      if (seed.status !== 'ready' && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_UNAVAILABLE'
-          && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_NOT_NEEDED') return finish(seed);
-      diagnostics.route = seed.status === 'ready' ? 'repair' : 'joint';
-      diagnostics.stage = 'query-planning';
-      const route = seed.status === 'ready' ? planFc27PuzzleRepairQueries(input, seed) : planFc27PuzzleShortageQueries(input);
-      if (route.status !== 'ready') return finish(route);
       const cachedRead = async (kind, query) => {
         diagnostics.stage = kind === 'catalog' ? 'catalog-read' : 'quote-read';
         reportProgress();
@@ -354,6 +354,156 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         // that completed observation with a permanent transport failure.
         assertCurrent(); return result;
       };
+      const required = input.challenge.slotCount - input.challenge.brickIndices.length;
+      const rules = parseFc27SbcRequirements(input.challenge.rawRequirements, required);
+      if (rules.status === 'observed' && isFc27TotwRatingOnly(rules.rules)) {
+        diagnostics.route = 'joint';
+        diagnostics.requestedObjective = diagnostics.objective = 'additional-coins';
+        if (!Number.isSafeInteger(totwBudget) || totwBudget < 150) return finish(stop('FC27_BUY_INSUFFICIENT_COINS'));
+        if (!Array.isArray(excludedTotwDefinitions)) return finish(stop('FC27_PUZZLE_RESERVATION_UNVERIFIED'));
+        const normalOwnedCount = new Set(puzzleOwnedValueCandidates(input).map(card => card.definitionId)).size;
+        if (!keepOwnedTotw && normalOwnedCount < required - 1) {
+          return finish(stop('SAFE_MATERIAL_SHORTAGE'));
+        }
+        if (keepOwnedTotw && (!rules.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))
+            || !collectSafePuzzleCandidates(input).candidates?.some(isFc27TotwCard))) return finish(stop('SAFE_MATERIAL_SHORTAGE'));
+        if (typeof loadPublicPrices !== 'function') return finish(stop('FC27_BUY_REFERENCE_PRICE_UNAVAILABLE'));
+        const cap = Math.min(quoteCeiling ?? MAX_PUZZLE_QUOTE_PRICE, totwBudget);
+        const platform = /^pc(?::|$)/i.test(input.context.platform) ? 'pc' : /^(psn|xbox)(?::|$)/i.test(input.context.platform) ? 'console' : null;
+        const excluded = new Set(excludedTotwDefinitions), prices = new Map(), references = new Map(), entries = new Map(), queries = [];
+        let pricePolicy, spent = 0;
+        const limit = 50000;
+        const gap = keepOwnedTotw ? Math.max(1, required - 1 - normalOwnedCount) : 1;
+        let discovery = [0, 20, 40].map(start => ({ start, count: 20, level: keepOwnedTotw ? 'gold' : 'totw' }));
+        if (keepOwnedTotw && typeof loadRatedFodder === 'function') {
+          const maxRating = input.policy.maxRating;
+          const target = Math.max(...rules.rules.filter(rule => rule.kind === 'min-team-rating').map(rule => rule.value));
+          const anchor = Math.min(maxRating, Math.max(75, target + 1));
+          const lanesBelow = MAX_PUZZLE_RATED_FODDER_LANES - Number(maxRating > anchor);
+          const ratings = [...Array.from({ length: lanesBelow }, (_, i) => anchor - i), ...(maxRating > anchor ? [maxRating] : [])]
+            .filter(rating => rating >= Math.max(75, input.policy.goldRange[0]));
+          let lanes = [];
+          try {
+            lanes = await measure('hintMs', () => loadRatedFodder(ratings, { isCurrent: () => { assertCurrent(); return true; } }));
+          } catch { assertCurrent(); /* A failed optional shortlist leaves the native gold pages available. */ }
+          const inClub = new Set(input.inventory.items.map(card => card.definitionId));
+          const shortlist = new Set();
+          if (Array.isArray(lanes) && lanes.length <= MAX_PUZZLE_RATED_FODDER_LANES
+              && lanes.every(lane => Array.isArray(lane) && lane.length <= 100)) {
+            for (let row = 0; row < 100 && shortlist.size < 60; row++) for (const lane of lanes) {
+              const id = lane[row];
+              if (shortlist.size < 60 && Number.isSafeInteger(id) && id > 0 && id <= 0x7fffffff
+                  && !inClub.has(id) && !excluded.has(id)) shortlist.add(id);
+            }
+          }
+          if (shortlist.size) {
+            const ids = [...shortlist], exactQueries = [];
+            for (let start = 0; start < ids.length; start += 20) {
+              exactQueries.push({ start: 0, count: 20, level: 'gold', definitionIds: ids.slice(start, start + 20) });
+            }
+            discovery = (shortlist.size >= gap ? exactQueries : [...exactQueries, ...discovery]).slice(0, 3);
+          }
+        }
+        const search = async maxPurchases => {
+          diagnostics.stage = 'local-market-search';
+          const result = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input, [...entries.values()], {
+            ...(keepOwnedTotw ? { keepOwnedTotw: maxPurchases, walletLimit: totwBudget } : { oneTotw: true }),
+            prices, priceSource: pricePolicy.source, maxNodes: limit - spent, assertCurrent,
+            onProgress: value => reportProgress({ ...value, nodes: spent + value.nodes, maxNodes: limit }),
+          }));
+          assertCurrent(); spent += result.nodes ?? 0; diagnostics.nodes = spent;
+          diagnostics.usableCandidates = result.marketCandidates;
+          diagnostics.localReason = result.reason; diagnostics.search = result.search;
+          if (keepOwnedTotw) {
+            diagnostics.searchComplete = result.searchComplete;
+            diagnostics.optimalWithinPool = result.optimalWithinPool;
+            diagnostics.optimizationBudgetExhausted = result.truncated === true;
+          }
+          if (result.status === 'suggested') {
+            const plan = result.plans?.[0];
+            if (!plan?.purchases?.length || plan.purchases.length > maxPurchases
+                || plan.purchases.some(item => !prices.has(item.definitionId))) return stop('FC27_CONCEPT_PLAN_UNVERIFIED');
+            const purchases = plan.purchases.map(item => {
+              const row = references.get(item.definitionId), quote = row.quotes[pricePolicy.source];
+              if (quote.expiresAt <= now()) throw Error('FC27_BUY_REFERENCE_PRICE_EXPIRED');
+              return { ...item, estimatedUnitPrice: prices.get(item.definitionId), quotedAt: quote.fetchedAt,
+                priceReference: { definitionId: item.definitionId, platform, season: '27', quotes: row.quotes },
+                pricePolicy, priceSource: pricePolicy.source };
+            });
+            diagnostics.estimatedCost = plan.estimatedCost;
+            return { ...result, queries, plans: [{ ...plan, purchases }] };
+          }
+          if (!['SAFE_MATERIAL_SHORTAGE', 'FC27_PUZZLE_CONSTRAINT_SHORTAGE', 'FC27_PUZZLE_NO_PLAN_FOUND',
+            'FC27_PURCHASE_REPAIR_NO_PLAN', 'FC27_PUZZLE_SEARCH_LIMIT'].includes(result.reason)) return { ...result, queries };
+          return null;
+        };
+        const quoteCandidates = async () => {
+          const normalize = keepOwnedTotw ? marketCandidates : puzzleTotwMarketCandidates;
+          const candidates = normalize(input, [...entries.values()]).filter(row => !references.has(row.definitionId));
+          if (!candidates.length) return false;
+          diagnostics.stage = 'quote-read'; quoteTotal = candidates.length; quoteCompleted = 0; reportProgress();
+          const definitions = candidates.map(card => card.definitionId);
+          const snapshot = await measure('pricingMs', () => loadPublicPrices(definitions, { purpose: 'puzzle', rows: candidates,
+            ...(pricePolicy ? { policy: pricePolicy } : {}), isCurrent: () => { assertCurrent(); return true; },
+            onProgress: value => { quoteCompleted = value.index; quoteTotal = value.total; reportProgress(); } }));
+          assertCurrent();
+          const approval = createPurchasePriceApproval({ scope, definitionIds: definitions, references: snapshot.references,
+            policy: snapshot.policy, season: '27', platform, now: now() });
+          if (pricePolicy && !same(pricePolicy, approval.policy)) throw Error('FC27_PUBLIC_PRICE_POLICY_INVALID');
+          pricePolicy = approval.policy; diagnostics.priceSource = pricePolicy.source;
+          for (const row of approval.rows) {
+            references.set(row.definitionId, row);
+            if (row.estimate !== null && row.maxBuy !== null && row.estimate <= cap && row.estimate <= row.maxBuy) {
+              prices.set(row.definitionId, row.estimate);
+            } else diagnostics.excludedUnavailable++;
+          }
+          return true;
+        };
+        for (const query of discovery) {
+          const before = cacheHits;
+          const page = await measure('catalogMs', () => cachedRead('catalog', query));
+          if (page?.status !== 'observed' || page.source !== 'ea-defid' || page.season !== '27' || !same(page.query, query)
+              || !id(page.observedAt) || page.observedAt > now() || now() - page.observedAt > 86400000
+              || !Array.isArray(page.entries) || page.entries.length > query.count
+              || new Set(page.entries.map(row => row?.definitionId)).size !== page.entries.length
+              || query.definitionIds && page.entries.some(row => !query.definitionIds.includes(row?.definitionId))) {
+            throw Error('FC27_PURCHASE_CATALOG_UNVERIFIED');
+          }
+          queries.push(query); diagnostics.catalogPages++;
+          diagnostics.catalogQueries.push({ ...query, returnedCount: page.entries.length, cached: cacheHits > before });
+          for (const row of page.entries) {
+            if (entries.has(row?.definitionId) && !same(entries.get(row.definitionId), row)) throw Error('FC27_PURCHASE_CATALOG_CHANGED');
+            if (!excluded.has(row?.definitionId)) entries.set(row?.definitionId, row);
+          }
+          diagnostics.catalogCandidates = entries.size;
+          if (!keepOwnedTotw && await quoteCandidates() && prices.size && spent < limit) {
+            const result = await search(gap);
+            if (result) return finish(result);
+          }
+          if (spent >= limit || !query.definitionIds && (page.pageEndObserved || page.entries.length < query.count)) break;
+        }
+        // Compare the bounded set at once, rather than accepting the first
+        // eligible high-rating page or repeating the search per headcount.
+        if (keepOwnedTotw && await quoteCandidates() && prices.size >= gap) {
+          const result = await search(required - 1);
+          if (result) return finish(result);
+        }
+        return finish({ ...stop(spent >= limit ? 'FC27_PUZZLE_SEARCH_LIMIT'
+          : keepOwnedTotw ? 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE'
+            : prices.size ? 'FC27_PURCHASE_REPAIR_NO_PLAN' : 'FC27_PURCHASE_TOTW_UNAVAILABLE'), queries });
+      }
+      // A verified owned lineup avoids a second repair search.
+      const hasOwnedIncumbent = ownedIncumbent?.status === 'preview'
+        && Array.isArray(ownedIncumbent.selected) && ownedIncumbent.selected.length === required;
+      const seed = hasOwnedIncumbent ? { status: 'unavailable', reason: 'FC27_PURCHASE_REPAIR_SEED_NOT_NEEDED' }
+        : await measure('seedMs', () => findFc27PuzzleRepairSeedCooperatively(input,
+          value => reportProgress({ ...value, phase: 'repair-seed' }), { assertCurrent }));
+      if (seed.status !== 'ready' && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_UNAVAILABLE'
+          && seed.reason !== 'FC27_PURCHASE_REPAIR_SEED_NOT_NEEDED') return finish(seed);
+      diagnostics.route = seed.status === 'ready' ? 'repair' : 'joint';
+      diagnostics.stage = 'query-planning';
+      const route = seed.status === 'ready' ? planFc27PuzzleRepairQueries(input, seed) : planFc27PuzzleShortageQueries(input);
+      if (route.status !== 'ready') return finish(route);
       const entries = new Map(); const quotes = new Map(); const usedQueries = [];
       const positionSkipped = new Set();
       const pages = []; let searchSpent = 0;
@@ -736,6 +886,68 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
         ? discoverFc27PuzzleCappedLeague(input, ownedPool.filter(card => !totalValueMode || materialPrices.has(card.definitionId)),
           [...entries.values()].filter(card => !unavailable.has(card.definitionId)), usedQueries)
         : null;
+      const structureFirst = Boolean(loadPublicPrices && adaptiveBudget && jointSearch && !incumbent && ownedPool.length === 0
+        && required >= 7 && rules.status === 'observed'
+        && rules.rules.some(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind) && rule.value > 0)
+        && rules.rules.some(rule => /^(same-|distinct-|from-)/.test(rule.kind)));
+      const accountScaffold = result => {
+        searchSpent += result.nodes ?? 0;
+        accountFixedNodes(searchSpent);
+        diagnostics.nodes = searchSpent;
+        diagnostics.scaffoldNodes = (diagnostics.scaffoldNodes ?? 0) + (result.nodes ?? 0);
+        diagnostics.scaffoldPlans = (diagnostics.scaffoldPlans ?? 0) + (result.plans?.length ?? 0);
+        diagnostics.search ??= { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+        for (const key of Object.keys(diagnostics.search)) diagnostics.search[key] += result.search?.[key] ?? 0;
+      };
+      const priceScaffolds = async plans => {
+        const complete = plans.filter(plan => !plan.selectedOwned.length && plan.purchases.length === required);
+        if (!complete.length) return null;
+        hadPlans = true;
+        const ids = new Set(complete.flatMap(plan => plan.purchases.map(card => card.definitionId)));
+        const candidates = [...entries.values()].filter(card => ids.has(card.definitionId) && !references.has(card.definitionId));
+        await priceCandidates(candidates);
+        diagnostics.scaffoldQuotedCount = (diagnostics.scaffoldQuotedCount ?? 0) + candidates.length;
+        return complete.filter(plan => plan.purchases.every(card => validPublicValue(quotes.get(card.definitionId)?.price)))
+          .map(plan => {
+            const purchases = plan.purchases.map(card => ({ ...card, estimatedUnitPrice: quotes.get(card.definitionId).price,
+              priceReference: references.get(card.definitionId), priceSource: publicPolicy.source,
+              quotedAt: quotes.get(card.definitionId).observedAt }));
+            const estimatedCost = purchases.reduce((sum, card) => sum + card.estimatedUnitPrice, 0);
+            return { ...plan, purchases, estimatedCost, ...(totalValueMode ? { inventoryValue: 0, materialValue: estimatedCost } : {}) };
+          }).filter(plan => materialCeiling === null || !totalValueMode || plan.materialValue < materialCeiling)
+          .sort((a, b) => comparePuzzlePlans(a, b, objective()))[0] ?? null;
+      };
+      const finishScaffold = async plan => {
+        incumbent = [plan];
+        adaptiveBudget.markFeasible();
+        diagnostics.stage = 'local-market-search';
+        diagnostics.priceSource = publicPolicy.source;
+        diagnostics.searchComplete = false; diagnostics.optimalWithinPool = false;
+        diagnostics.initialEstimatedCost ??= plan.estimatedCost;
+        // There is no safe inventory to reuse. Don't price the rest of the
+        // catalogue just to rediscover an exactly verified, priced lineup.
+        ownedReuseChecked = true;
+        return finishIncumbent(false);
+      };
+      const planScaffolds = async () => {
+        const remaining = () => [...entries.values()].filter(card => !unavailable.has(card.definitionId));
+        for (let attempt = 0; attempt < 2 && searchRemaining() > 0; attempt++) {
+          const ceiling = Math.min(2200, searchRemaining());
+          diagnostics.stage = 'structural-search'; reportProgress();
+          const result = await measure('searchMs', () => findFc27PuzzlePositionScaffolds(input, remaining(), {
+            maxNodes: ceiling, maxPlans: 2, assertCurrent, onProgress: value => reportProgress({ ...value,
+              phase: 'structural-search', nodes: searchSpent + value.nodes, maxNodes: searchBudget }),
+          }));
+          assertCurrent(); accountScaffold(result);
+          if (!result.plans.length) break;
+          const previous = unavailable.size;
+          const priced = await priceScaffolds(result.plans);
+          if (priced) return priced;
+          if (previous === unavailable.size) break;
+          diagnostics.replans++;
+        }
+        return null;
+      };
       let pendingQueries = [...baselineQueries, ...route.queries].filter((query, index, all) => all.findIndex(old => same(old, query)) === index);
       while (pendingQueries.length && usedQueries.length < 3) {
         assertOptimization();
@@ -767,6 +979,43 @@ export function createFc27PuzzleProcurementSession({ createTransport, get, set, 
           // anchor before quoting the broad sample or consuming solver nodes.
           pendingQueries = [discovery.query, ...pendingQueries.filter(next => !same(next, discovery.query))];
           continue;
+        }
+        if (structureFirst && !discovery?.focus) {
+          diagnostics.usableCandidates = puzzleMarketValueCandidates(input, [...entries.values()]
+            .filter(card => !unavailable.has(card.definitionId))).length;
+          const priced = await planScaffolds();
+          if (priced) return await finishScaffold(priced);
+          if (usedQueries.length < 3) {
+            const available = [...entries.values()].filter(card => !unavailable.has(card.definitionId));
+            const next = planFc27PuzzleShortageQueries(input, available, { usedQueries });
+            if (next.status !== 'ready') return finish(next);
+            const positionQuery = planFc27PuzzleOpenPositionQuery(input, puzzleMarketValueCandidates(input, available), rules.rules, usedQueries);
+            // A focused route can end with only two distinct pages. Spend a
+            // spare existing lane on an allowed tier before giving up on a
+            // missing position. Still at most three overall.
+            const tierFallback = allowedFc27MarketTiers(rules.rules, input.policy).map(({ level }) => ({ start: 0, count: 20, level }));
+            pendingQueries = [...[discovery?.query, positionQuery].filter(Boolean), ...next.queries, ...pendingQueries, ...tierFallback]
+              .filter((candidate, index, all) => !usedQueries.some(used => same(used, candidate))
+                && all.findIndex(other => same(other, candidate)) === index);
+            if (pendingQueries.length) continue;
+          }
+          // Legal off-position fillers and alternate chemistry arrangements
+          // are still possible. The ordinary solver gets only the remaining
+          // allowance, and its results are verified before any price read.
+          if (baseSearchRemaining() > 0) {
+            diagnostics.stage = 'structural-search'; reportProgress();
+            const fallback = await measure('searchMs', () => suggestFc27PuzzleJointPurchasesCooperatively(input,
+              [...entries.values()].filter(card => !unavailable.has(card.definitionId)), {
+                maxNodes: baseSearchRemaining(), searchBudget: adaptiveBudget, assertCurrent,
+                onProgress: value => reportProgress({ ...value, phase: 'structural-search', nodes: searchSpent + value.nodes, maxNodes: searchBudget }),
+              }));
+            assertCurrent(); accountScaffold(fallback);
+            diagnostics.localReason = fallback.reason;
+            diagnostics.truncated = fallback.truncated;
+            const fallbackPlan = await priceScaffolds(fallback.plans ?? []);
+            if (fallbackPlan) return await finishScaffold(fallbackPlan);
+          }
+          break;
         }
         let focusedIds = null, deferredPrices = [];
         if (loadPublicPrices) {

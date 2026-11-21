@@ -1,4 +1,5 @@
 import { createSeasonContext } from './prelaunch-contract.js';
+import { FC27_TOTW_RARITY, isFc27TotwCard } from '../domain/player-rarity.js';
 
 const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
 const identity = value => integer(value, 1, Number.MAX_SAFE_INTEGER);
@@ -13,7 +14,20 @@ const stop = reason => ({ status: 'blocked', reason, liveExecutionEnabled: false
 
 // Accept normalized, complete facts only. Passive samples and screenshot facts
 // cannot supply identities, safety fields, or an authorization to use real cards.
-export function collectSafeTraditionalCandidates({ context, challenge, inventory, policy } = {}) {
+export function collectSafeTraditionalCandidates(input) {
+  return collectCandidates(input);
+}
+
+// Internal Puzzle client verifies the native rarity condition before requesting
+// the single allowed exception. The ordinary entry point never passes it.
+export function collectPuzzleCandidatePool({ context, challenge, inventory, policy } = {}, totwRequired = false) {
+  if (challenge?.mechanism !== 'traditional-puzzle') return stop('CHALLENGE_UNVERIFIED');
+  const required = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
+  return collectCandidates({ context, inventory, policy, challenge: { ...challenge, mechanism: 'traditional',
+    requirements: [{ kind: 'player-count', count: required }] } }, totwRequired === true);
+}
+
+function collectCandidates({ context, challenge, inventory, policy } = {}, totwRequired = false) {
   let scope;
   try { scope = createSeasonContext(context); } catch { return stop('CONTEXT_UNAVAILABLE'); }
   if (scope.season !== '27') return stop('UNSUPPORTED_SEASON');
@@ -92,7 +106,9 @@ export function collectSafeTraditionalCandidates({ context, challenge, inventory
       ['type-or-pile-unverified', item.type === 'player' && ['club', 'storage'].includes(item.pile)],
       ['rating-outside-range', integer(item.rating, minRating, Math.min(maxRating, policy.maxRating))],
       ['fsu-gold-range', item.rating < 75 || integer(item.rating, policy.goldRange[0], policy.goldRange[1])],
-      ['special-or-unknown', item.special === false],
+      ['special-or-unknown', totwRequired
+        ? item.special === false && item.rarity !== FC27_TOTW_RARITY || isFc27TotwCard(item)
+        : item.special === false],
       ['evolution-or-unknown', item.evolution === false],
       ['cosmetic-or-unknown', item.cosmetic === false],
       ['concept-or-unknown', item.concept === false],

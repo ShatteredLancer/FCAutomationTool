@@ -6,7 +6,8 @@ export const formatFc27PuzzleProgress = progress => {
   const procurementPhases = { 'repair-seed': '正在寻找补卡起点…', 'query-planning': '正在规划卡池查询…',
     'owned-value-read': '正在估算库存材料价值…', 'owned-value-search': '正在尝试低价库存替换…',
     'catalog-hints': '正在比较其他低价卡群，历史资料仅用于选择查询方向…',
-    'catalog-read': '正在读取候选卡池…', 'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
+    'catalog-read': '正在读取候选卡池…', 'structural-search': '正在按题目条件和阵位验证组合…',
+    'local-market-search': '正在计算补卡组合…', 'quote-read': '正在查询方案报价…' };
   const stage = procurementPhases[progress.phase] ?? stageText[progress.stage] ?? stageText[progress.phase] ?? stageText.planning;
   const hasBudget = Number.isSafeInteger(progress.nodes) && Number.isSafeInteger(progress.maxNodes);
   const lines = [hasBudget ? `${stage}\n节点 ${progressCount(progress.nodes)} / ${progressCount(progress.maxNodes)}` : stage];
@@ -56,7 +57,7 @@ function materialPolicyText(result) {
 const resultText = result => {
   if (result?.reason === 'FC27_BUY_RECOVERY_REQUIRED') return '购买结果尚待核对，请使用本页批量购买按钮恢复，不会重新购买已成交的卡。';
   if (result?.reason === 'FC27_BUY_DRAFT_ACTIVE') return '此阵容已有确认购买的卡；可继续批量购买剩余概念卡，或在原生页面提交已完成的阵容。';
-  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.purchaseCount} 张待购概念卡；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。${Number.isSafeInteger(result.materialValue) ? `整套材料估值 ${result.materialValue} 金币，其中现有卡 ${result.inventoryValue} 金币；按材料总价值优化。${result.valueCoverageComplete === false ? valueScopeText(result) : ''}` : result.valueReason ? '库存估值不完整，本方案仅列新增购卡支出，不把未知市值视为0。' : ''}尚未购买或提交 SBC；${result.valueCoverageComplete === false ? '' : '该建议不保证全市场最低价。'}`;
+  if (result?.status === 'concept-filled') return `已${result.restored ? '恢复' : '保存'}阵容，含 ${result.needsTotwPurchase ? '1 张待购周黑（TOTW）概念卡' : `${result.purchaseCount} 张待购概念卡`}；预计新增购卡支出 ${result.estimatedCost} 金币（不含现有卡市值）。${Number.isSafeInteger(result.teamRating) ? `阵容评分 ${result.teamRating}。` : ''}${Number.isSafeInteger(result.materialValue) ? `整套材料估值 ${result.materialValue} 金币，其中现有卡 ${result.inventoryValue} 金币；按材料总价值优化。${result.valueCoverageComplete === false ? valueScopeText(result) : ''}` : result.valueReason ? '库存估值不完整，本方案仅列新增购卡支出，不把未知市值视为0。' : ''}尚未购买或提交 SBC；${result.valueCoverageComplete === false ? '' : '该建议不保证全市场最低价。'}`;
   const purchase = result?.purchaseSuggestion;
   if (purchase?.reason === 'FC27_PURCHASE_CACHE_EXPIRED') return '补卡资料或报价已过期，本次未采用旧价格、未再次请求或购买；需要更新补卡资料。';
   if (purchase?.reason === 'FC27_MARKET_HTTP_429') return 'EA 市场请求限流，本次已停止并记录，不会自动重试或购买。';
@@ -79,6 +80,11 @@ const resultText = result => {
   if (result?.reason === 'FC27_PUZZLE_SERVER_SQUAD_CHANGED') return '解题期间服务器阵容发生变化，本次未覆盖；请核对当前阵容后再试。';
   if (result?.reason === 'FC27_PUZZLE_SERVER_BASELINE_UNVERIFIED') return '本次服务器阵容核对已失效，未保存；请重新点击解题填充。';
   if (result?.reason === 'FC27_PUZZLE_MATERIAL_COMPOSITION_BLOCKED') return '该阵容未通过选材复核，请重新生成；不会自动替换受保护卡。';
+  if (result?.reason === 'FC27_PUZZLE_TOTW_REQUIRED') return '本题需要 1 张周黑（TOTW）；俱乐部和 SBC 仓库中没有通过当前保护设置的周黑卡。本次未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PURCHASE_TOTW_UNAVAILABLE') return '库存没有合规周黑；本轮在评分上限、限价和金币余额内也没有找到可用的周黑报价。未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE') return '已有合规库存周黑，但在当前评分上限、预算及已核价的普通卡范围内未找到完整方案。未买卡或修改阵容。';
+  if (result?.reason === 'FC27_BUY_INSUFFICIENT_COINS') return '当前金币余额不足或未读到；未买卡或修改阵容。';
+  if (result?.reason === 'FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED') return '当前周黑解题只支持无化学要求的评分挑战。本次未买卡或修改阵容。';
   if (result?.reason === 'FC27_BUY_REFERENCE_PRICE_EXPIRED') return '补卡参考报价在规划结束前过期；本次没有可用补卡方案，请再次点击解题以刷新报价并重新规划。';
   if (shortageReasons.includes(result?.reason)) {
     const composition = result.policy?.materialComposition?.filter(rule => rule.count > 0)
@@ -163,7 +169,7 @@ export function formatFc27PuzzleNativeResult(result) {
       lines.push('中间估价不能作为可购买方案。再次点击会按当前报价重新规划，不会自动重复购买。');
     }
     const stage = ({ 'repair-seed': '寻找库存基础阵容', 'query-planning': '规划资料查询',
-      'catalog-read': '读取球员资料', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
+      'catalog-read': '读取球员资料', 'structural-search': '先验阵后查价', 'local-market-search': '本地组合求解', 'quote-read': '读取市场报价' })[d.stage] ?? '未知';
     const route = ({ repair: '局部替换 1–2 张', joint: '库存与候选联合求解' })[d.route] ?? '尚未确定';
     lines.push(`停在${stage}；${route}。资料 ${countText(d.catalogPages)} 页，去重候选 ${countText(d.catalogCandidates)}，资料预筛合格 ${countText(d.usableCandidates)}。`);
     if (code(d.localReason)) lines.push(`本地结果：${d.localReason}；检查 ${countText(d.checks)} 次 / 节点 ${countText(d.nodes)}${d.truncated === true ? '（搜索或结果截断）' : ''}。`);

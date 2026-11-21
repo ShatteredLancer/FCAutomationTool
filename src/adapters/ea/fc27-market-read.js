@@ -4,6 +4,7 @@ import { readFc27Context } from './fc27-local-read.js';
 import { FC27_CLUB_READ_METHODS, isFc27ClubCompatibleHash } from './fc27-club-read.js';
 import { unwrapFc27ItemFactory } from './fc27-item-factory-observer.js';
 import { MAX_PUZZLE_QUOTE_PRICE, PUZZLE_MARKET_READ_LIMIT, isPuzzleQuoteCeiling } from '../../fc27/puzzle-procurement-policy.js';
+import { FC27_TOTW_RARITY } from '../../domain/player-rarity.js';
 
 // Public FC27 sources reviewed 2026-09-26, captured 2026-09-17. No service
 // market search: its page cache can contain another caller's search results.
@@ -326,13 +327,25 @@ export async function createFc27MarketReadTransport(root, { maxRequests = 8, quo
     },
     readCatalogPage: async (query = {}) => {
       if (quotesOnly) throw error('CATALOG_DISABLED');
-      if (!query || Object.keys(query).some(k => !['start', 'count', 'level', 'nation', 'league', 'team'].includes(k))
-          || !valid(query.start, 0, 1000) || !valid(query.count, 1, 50) || !['bronze', 'silver', 'gold'].includes(query.level)
-          || ['nation', 'league', 'team'].some(k => query[k] !== undefined && !valid(query[k], 1, 1e9))) throw error('QUERY_INVALID');
-      return request('catalog', { type: 'player', sort: 'asc', ...query }, body => {
+      const totw = query?.level === 'totw';
+      const definitions = query?.definitionIds;
+      if (!query || Object.keys(query).some(k => !['start', 'count', 'level', 'nation', 'league', 'team', 'definitionIds'].includes(k))
+          || !valid(query.start, 0, 1000) || !valid(query.count, 1, 50) || !['bronze', 'silver', 'gold', 'totw'].includes(query.level)
+          || ['nation', 'league', 'team'].some(k => query[k] !== undefined && (totw || !valid(query[k], 1, 1e9)))
+          || totw && (query.count !== 20 || ![0, 20, 40].includes(query.start))
+          || definitions !== undefined && (query.level !== 'gold' || query.start !== 0 || query.count !== 20
+            || ['nation', 'league', 'team'].some(key => query[key] !== undefined)
+            || !Array.isArray(definitions) || !valid(definitions.length, 1, 20) || new Set(definitions).size !== definitions.length
+            || definitions.some(id => !valid(id, 1, 0x7fffffff)))) throw error('QUERY_INVALID');
+      // The reviewed native concept query encodes a selected rarity as
+      // rarityIds, independently of the broad special/quality search.
+      const filters = totw ? { start: query.start, count: query.count, rarityIds: FC27_TOTW_RARITY }
+        : definitions ? { start: 0, count: 20, level: 'gold', defId: definitions, rarityIds: [0, 1] } : query;
+      return request('catalog', { type: 'player', sort: 'asc', ...filters }, body => {
         const raw = ownData(body, 'itemData');
         if (!Array.isArray(raw) || raw.length > query.count) throw error('PAYLOAD_UNVERIFIED');
         const entries = raw.map(materialize);
+        if (definitions && entries.some(row => !definitions.includes(row.definitionId))) throw error('DEFINITION_MISMATCH');
         if (new Set(entries.map(p => p.definitionId)).size !== entries.length) throw error('DUPLICATE_DEFINITION');
         return { status: 'observed', season: '27', source: 'ea-defid', observedAt: Date.now(), entries,
           query: { ...query }, complete: false, pageEndObserved: raw.length < query.count };

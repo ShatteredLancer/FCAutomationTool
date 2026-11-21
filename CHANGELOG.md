@@ -5,6 +5,35 @@ All notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [27.0.125] - 2026-11-21
+
+- 已有合规库存阵容的单周黑评分 SBC 也遵循「最低材料总值」：固定原方案的周黑，给合规库存候选估价，优先降低材料价值，同价时贴近题目评分。仍不买卡、不提交；缺少可比报价时保留原合规方案。
+
+## [27.0.124] - 2026-11-21
+
+- 无合规库存的复杂默契 SBC 优先按实际阵位和硬约束找可行阵容，只给通过完整验算的方案候选查价。缺价时复用同一预算寻找替补，保留合法非本职位置的备选路径。
+- 市场目录和节点上限不变；诊断记录验阵节点数、可行方案数和核价候选数。锁卡、主阵容、评分和购买保护未改。
+
+## [27.0.123] - 2026-11-20
+
+- 已有库存周黑的评分 SBC 按阵容目标评分搜不同评分的普通卡，比较总补卡价；同价时选更接近目标评分的方案，不再在首个可行批次就停止。
+- 按评分组合计算，减少相同评分候选的重复验算；确认购买前显示阵容评分，诊断记录补卡 OVR。
+
+## [27.0.122] - 2026-11-20
+
+- 需要 1 张周黑的评分 SBC：如果库存已有合规周黑、普通材料不足，保留周黑，按去重后的缺口和阵容评分寻找普通补卡；先显示采购清单及上限，再由用户确认。
+- 购买仍按逐卡限价和批次预算，成交后核对已购材料，保留原有未决回执保护，不自动提交。
+
+## [27.0.121] - 2026-11-20
+
+- 普通 SBC 的单周黑评分挑战保留库存优先。缺合规周黑时，按现有评分上限、预算和限价推荐一张 TOTW；明确确认后才买入，成交后重新核对整队，不自动提交。
+- 市场购买锁定方案里的卡版本和参考价上限，保留原交易记录与恢复保护；没找到合规报价不买入、不修改阵容。
+
+## [27.0.120] - 2026-11-20
+
+- Support rating-only Puzzle SBCs with an explicit one-TOTW requirement, using one eligible owned TOTW from Club or SBC Storage.
+- Preserve protection checks and confirm the exact saved lineup without buying players or submitting the SBC.
+
 ## [27.0.119] - 2026-11-19
 
 - Keep scheduled trading tasks armed when a keepalive check fails and report the failed step.

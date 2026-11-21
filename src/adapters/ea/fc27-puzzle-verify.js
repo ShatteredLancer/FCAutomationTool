@@ -55,7 +55,7 @@ export async function inspectFc27VerifiedPuzzlePlan(root, options = {}, onVerifi
         fresh.push(...rows.filter(item => storageSelected.some(ref => ref.id === item.id)));
       }
       if (signature() !== before) return stop('FC27_RUNNER_INPUTS_CHANGED');
-      const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems);
+      const exactValidation = validateFc27PuzzleSelection(selected, fresh, plannedItems, inputs.challenge);
       if (exactValidation.status !== 'verified') return stop(exactValidation.reason);
       const fillPlan = prepareFc27PuzzleFillPlan(inputs, plan);
       const fillPreflight = fillPlan.status === 'prepared'

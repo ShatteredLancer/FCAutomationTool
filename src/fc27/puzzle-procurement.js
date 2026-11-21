@@ -1,10 +1,11 @@
 import { iterateFc27PuzzleSquad, iterateFc27PuzzleCandidateRoutes,
-  finishPuzzleSearch, finishPuzzleSearchCooperatively, isFc27PuzzleSearchBudget } from './puzzle-preview.js';
+  finishPuzzleSearch, finishPuzzleSearchCooperatively, isFc27PuzzleSearchBudget, iterateFc27PuzzlePositionScaffolds } from './puzzle-preview.js';
 import { planFc27MarketQueryRoute, allowedFc27MarketTiers } from './market-query-route.js';
 import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
-import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver } from './sbc-requirements.js';
-import { puzzleMaterialRules } from './puzzle-material-policy.js';
+import { evaluateFc27PuzzleRating, evaluateFc27PuzzleSquad, createFc27PuzzlePartialChemistryBound } from './puzzle-evaluator.js';
+import { parseFc27SbcRequirements, matchFc27SbcRequirements, createFc27ClubResolver, isFc27TotwCard,
+  isFc27TotwRatingOnly } from './sbc-requirements.js';
+import { collectSafePuzzleCandidates, puzzleMaterialRules } from './puzzle-material-policy.js';
 import { MAX_PUZZLE_QUOTE_PRICE } from './puzzle-procurement-policy.js';
 import { planPuzzleNationalityAffinity, planPuzzleLeagueMinimumAffinity, planPuzzleNationalMinimumAffinity,
   planPuzzleCappedLeagueDiscovery } from './puzzle-query-affinity.js';
@@ -447,12 +448,22 @@ function* iteratePurchases(input, seed, entries, { maxChecks = 20000, onProgress
 }
 
 export function marketCandidates(input, entries) {
+  return normalizeMarketCandidates(input, entries, false);
+}
+
+export function puzzleTotwMarketCandidates(input, entries) {
+  const rules = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
+  return rules.status === 'observed' && isFc27TotwRatingOnly(rules.rules) ? normalizeMarketCandidates(input, entries, true) : [];
+}
+
+function normalizeMarketCandidates(input, entries, totwOnly) {
   const owned = new Set(input.inventory.items.map(item => item.definitionId));
   const seen = new Set();
   return entries.filter(item => {
     if (!positive(item?.definitionId) || owned.has(item.definitionId) || seen.has(item.definitionId)) return false;
     seen.add(item.definitionId);
-    return item.special === false && item.evolution === false && item.cosmetic === false && [0, 1].includes(item.rarity)
+    return (totwOnly ? isFc27TotwCard(item) && item.marketable !== false : item.special === false && [0, 1].includes(item.rarity))
+      && item.evolution === false && item.cosmetic === false
       && Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= input.policy.maxRating
       && (item.rating < 75 || item.rating >= input.policy.goldRange[0] && item.rating <= input.policy.goldRange[1])
       && [item.nationId, item.leagueId, item.teamId].every(positive) && !input.policy.excludedLeagueIds.includes(item.leagueId)
@@ -462,7 +473,7 @@ export function marketCandidates(input, entries) {
     ...(typeof item.displayName === 'string' && item.displayName.length <= 201 && !/[\u0000-\u001f]/.test(item.displayName)
       ? { displayName: item.displayName } : {}),
     leagueId: item.leagueId, teamId: item.teamId, positions: [...item.positions], groups: [...item.groups],
-    special: false, evolution: false, cosmetic: false, type: 'player', concept: false, academyEnrolled: false,
+    special: totwOnly, evolution: false, cosmetic: false, type: 'player', concept: false, academyEnrolled: false,
     catalogRef: `fc27:${item.definitionId}` }));
 }
 
@@ -865,13 +876,187 @@ export function planFc27PuzzleShortageQueries(input, entries = [], { usedQueries
   return { status: 'ready', executable: false, queries, complete: false };
 }
 
+// In this challenge shape only the rating multiset matters. Of the normal
+// cards at the same rating, the cheapest N distinct versions dominate every
+// other N-card selection. Keep an owned TOTW and enumerate counts, not IDs.
+function* iterateOwnedTotwRatingCosts(input, rules, owned, market, { prices, walletLimit, maxPurchases, maxNodes, onProgress, priceSource,
+  ownedValues = null }) {
+  const rating = input.chemistry?.rating, count = required(input);
+  if (!rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))
+      || typeof rating?.floatCalculationEnabled !== 'boolean') return stop('FC27_PUZZLE_RATING_CONFIG_UNAVAILABLE');
+  const target = Math.max(...rules.filter(rule => rule.kind === 'min-team-rating').map(rule => rule.value));
+  const slotIds = Array.from({ length: input.challenge.slotCount }, (_n, index) => index)
+    .filter(index => !input.challenge.brickIndices.includes(index));
+  const fromStorage = card => input.policy.storageFirst && card.pile === 'storage' ? 1 : 0;
+  const preferred = (a, b) => fromStorage(b) - fromStorage(a) || (a.id ?? a.definitionId) - (b.id ?? b.definitionId);
+  const totws = new Map(), unique = new Map();
+  const specialDefinitions = new Set(owned.filter(isFc27TotwCard).map(card => card.definitionId));
+  for (const card of owned) {
+    const map = isFc27TotwCard(card) ? totws : unique, key = map === totws ? card.rating : card.definitionId;
+    const old = map.get(key);
+    if (!old || preferred(card, old) < 0) map.set(key, card);
+  }
+  for (const card of market) if (!unique.has(card.definitionId)) unique.set(card.definitionId, card);
+  for (const definitionId of specialDefinitions) unique.delete(definitionId);
+  const costOf = card => ownedValues ? ownedValues.get(card.definitionId) : card.catalogRef ? prices.get(card.definitionId) : 0;
+  const needed = count - 1, grouped = new Map();
+  for (const card of unique.values()) {
+    const group = grouped.get(card.rating) ?? [];
+    group.push(card); grouped.set(card.rating, group);
+  }
+  const buckets = [...grouped.values()].map(group => group.sort((a, b) => costOf(a) - costOf(b) || preferred(a, b)).slice(0, needed))
+    .sort((a, b) => costOf(a[0]) - costOf(b[0]) || b[0].rating - a[0].rating);
+  const totals = values => values.reduce((sums, value) => [...sums, sums.at(-1) + value], [0]);
+  const prefixes = buckets.map(bucket => ({ buy: totals(bucket.map(card => Number(Boolean(card.catalogRef)))),
+    cost: totals(bucket.map(costOf)) }));
+  const suffix = [{ low: [], high: [], cheap: [] }];
+  for (const group of buckets.slice().reverse()) {
+    const prior = suffix[0], ratings = group.map(card => card.rating), costs = group.map(costOf);
+    const merge = (a, b, relation) => [...a, ...b].sort(relation).slice(0, needed);
+    suffix.unshift({ low: merge(ratings, prior.low, (a, b) => a - b),
+      high: merge(ratings, prior.high, (a, b) => b - a), cheap: merge(costs, prior.cheap, (a, b) => a - b) });
+  }
+  for (const node of suffix) {
+    node.lowTotals = totals(node.low); node.highTotals = totals(node.high); node.cheapTotals = totals(node.cheap);
+  }
+  const counters = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+  let nodes = 0, truncated = false, best = null;
+  const take = kind => {
+    if (nodes >= maxNodes) { truncated = true; return false; }
+    nodes++; counters[kind]++;
+    if (nodes % 256 === 0) onProgress?.({ phase: 'combination', nodes, maxNodes, search: { ...counters } });
+    return true;
+  };
+  const chosen = [];
+  const visit = function* (index, left, spent, purchased, sum) {
+    if (!take('combinationNodes')) return;
+    yield;
+    const bounds = suffix[index], minimumCost = spent + (bounds.cheapTotals[left] ?? Infinity);
+    if (purchased > maxPurchases || minimumCost > Math.min(walletLimit, best?.spent ?? Infinity)) return;
+    // EA integer mode can drop at an average-floor boundary. Use a true
+    // optimistic bound (highest sum, lowest possible mean) instead of assuming
+    // that replacing a card by a higher rating is always monotone.
+    const lowMean = Math.floor((sum + (bounds.lowTotals[left] ?? 0)) / 11);
+    const highSum = sum + (bounds.highTotals[left] ?? 0);
+    const highBonus = [...chosen.map(card => card.rating), ...bounds.high.slice(0, left)]
+      .reduce((bonus, ovr) => bonus + Math.max(0, ovr - lowMean), 0);
+    if (highSum + highBonus + Number(rating.floatCalculationEnabled) < target * 11) return;
+    if (!left) {
+      if ((!purchased && !ownedValues) || !take('evaluations')) return;
+      const facts = evaluateFc27PuzzleRating({ squad: chosen, rating });
+      if (facts.status !== 'observed' || facts.teamRating < target) return;
+      if (!best || spent < best.spent || spent === best.spent && (facts.teamRating < best.teamRating
+          || facts.teamRating === best.teamRating && (sum < best.sum || sum === best.sum && purchased < best.purchased))) {
+        best = { cards: chosen.slice(), spent, purchased, sum, teamRating: facts.teamRating };
+      }
+      return;
+    }
+    const bucket = buckets[index];
+    if (!bucket) return;
+    const { buy, cost } = prefixes[index];
+    for (let n = Math.min(left, bucket.length); n >= 0 && !truncated; n--) {
+      chosen.push(...bucket.slice(0, n));
+      yield* visit(index + 1, left - n, spent + cost[n], purchased + buy[n], sum + n * bucket[0].rating);
+      chosen.length -= n;
+    }
+  };
+  for (const card of [...totws.values()].sort((a, b) => b.rating - a.rating || preferred(a, b))) {
+    chosen[0] = card;
+    yield* visit(0, needed, ownedValues ? costOf(card) : 0, 0, card.rating);
+    if (truncated) break;
+  }
+  const metrics = { marketCandidates: market.length, nodes, truncated, searchComplete: !truncated,
+    optimalWithinPool: !truncated, search: { ...counters }, priceSource, marketWideInfeasibilityProven: false };
+  if (!best) return { ...stop(truncated ? 'FC27_PUZZLE_SEARCH_LIMIT' : 'FC27_PURCHASE_REPAIR_NO_PLAN'), ...metrics };
+  const facts = { chemistry: null, teamRating: best.teamRating };
+  if (matchFc27SbcRequirements({ requirements: rules, squad: best.cards, teamRating: best.teamRating }).status !== 'satisfied') {
+    return { ...stop('FC27_CONCEPT_PLAN_UNVERIFIED'), ...metrics };
+  }
+  const squad = Array(input.challenge.slotCount).fill(null);
+  best.cards.forEach((card, index) => { squad[slotIds[index]] = card; });
+  return { status: 'suggested', reason: 'FC27_PURCHASE_SUGGESTIONS_READY', executable: false, ...metrics,
+    plans: [{ ...projectSuggestion(squad, facts, rules.length), estimatedCost: best.spent }] };
+}
+
+// Quote and optimize only the already-eligible inventory. Keeping the same
+// physical TOTW makes its cost constant and never trades a special for fodder.
+export async function refineFc27PuzzleOwnedTotwValue(input, preview, safe, prices, rules, options) {
+  const chosen = preview.selected.map(ref => safe.find(card => sameCandidateRef(card, ref)));
+  if (chosen.length !== required(input) || chosen.some(card => !card || !validValue(prices.get(card.definitionId)))) {
+    return { ...preview, materialValue: null, valueReason: 'FC27_PUZZLE_VALUE_INCOMPLETE' };
+  }
+  const totws = chosen.filter(isFc27TotwCard);
+  if (totws.length !== 1) return preview;
+  const baseline = chosen.reduce((sum, card) => sum + prices.get(card.definitionId), 0);
+  const allowed = safe.filter(card => validValue(prices.get(card.definitionId)));
+  const cap = Math.max(0, Math.min(4000, preview.maxNodes - preview.nodes));
+  const search = cap > 0 ? await finishPuzzleSearchCooperatively(iterateOwnedTotwRatingCosts(input, rules, allowed, [],
+    { maxPurchases: 0, maxNodes: cap, walletLimit: baseline, ownedValues: prices, onProgress: options.onProgress }), options) : null;
+  const plan = search?.plans?.[0];
+  const baselineSum = chosen.reduce((sum, card) => sum + card.rating, 0);
+  const better = plan && (plan.estimatedCost < baseline || plan.estimatedCost === baseline
+    && (plan.teamFacts.teamRating < preview.teamFacts.teamRating || plan.teamFacts.teamRating === preview.teamFacts.teamRating
+      && plan.selectedOwned.reduce((sum, card) => sum + card.rating, 0) < baselineSum));
+  const materialValue = better ? plan.estimatedCost : baseline;
+  const selected = better ? plan.selectedOwned : preview.selected;
+  const selectedQualityCounts = { bronze: 0, silver: 0, gold: 0, unknown: 0 };
+  for (const card of selected) selectedQualityCounts[['bronze', 'silver', 'gold'][qualityRank(card.rating) - 1]]++;
+  return { ...preview, selected, selectedQualityCounts, teamFacts: better ? plan.teamFacts : preview.teamFacts,
+    initialMaterialValue: baseline, materialValue, inventoryValue: materialValue,
+    nodes: preview.nodes + (search?.nodes ?? 0),
+    search: Object.fromEntries(Object.entries(preview.search ?? {}).map(([key, value]) => [key, value + (search?.search?.[key] ?? 0)])),
+    valueReason: better ? 'FC27_PUZZLE_MATERIAL_VALUE_REFINED' : 'FC27_PUZZLE_VALUE_BASELINE_RETAINED' };
+}
+
+// When one position is empty and the other positions can already satisfy the
+// dominant tier, spend the existing final read on a linked cheaper filler.
+// This is just positional capacity, not proof of a legal or affordable team.
+export function planFc27PuzzleOpenPositionQuery(input, cards, rules, usedQueries) {
+  if (!Array.isArray(input.challenge.formation?.positions) || rules.some(rule => /^from-/.test(rule.kind))) return null;
+  const gold = rules.find(rule => rule.kind === 'quality-count' && rule.mode !== 'max'
+    && rule.qualities.length === 1 && rule.qualities[0] === 3 && rule.count === required(input) - 1);
+  if (!gold || !allowedFc27MarketTiers(rules, input.policy).some(tier => tier.level === 'silver')) return null;
+  const slots = input.challenge.formation.positions.filter((_, i) => !input.challenge.brickIndices.includes(i));
+  const hasPosition = position => cards.some(card => card.positions.includes(position));
+  if (slots.filter(position => !hasPosition(position)).length !== 1) return null;
+  const options = slots.filter(hasPosition).map(position => cards.filter(card => card.rating >= 75 && card.positions.includes(position)));
+  const assignments = new Map();
+  const assign = (slot, seen) => options[slot].some(({ definitionId }) => {
+    if (seen.has(definitionId)) return false;
+    seen.add(definitionId);
+    if (assignments.has(definitionId) && !assign(assignments.get(definitionId), seen)) return false;
+    assignments.set(definitionId, slot);
+    return true;
+  });
+  if (!options.every((_, slot) => assign(slot, new Set()))) return null;
+  const leagues = new Map();
+  const leagueCap = Math.min(slots.length, ...rules.filter(rule => rule.kind === 'same-league' && rule.mode !== 'min').map(rule => rule.value));
+  for (const card of cards) {
+    const lane = leagues.get(card.leagueId) ?? { league: card.leagueId, spine: 0, silver: 0 };
+    lane.spine += Number(assignments.has(card.definitionId)); lane.silver += Number(card.rating >= 65 && card.rating < 75);
+    leagues.set(card.leagueId, lane);
+  }
+  return [...leagues.values()].filter(row => row.spine > 0 && row.spine < leagueCap)
+    .sort((a, b) => b.spine - a.spine || b.silver - a.silver || a.league - b.league)
+    .map(({ league }) => ({ start: 0, count: 20, level: 'silver', league }))
+    .find(query => !usedQueries.some(used => JSON.stringify(used) === JSON.stringify(query))) ?? null;
+}
+
+export async function findFc27PuzzlePositionScaffolds(input, entries, options) {
+  const candidates = puzzleMarketValueCandidates(input, entries);
+  const result = await finishPuzzleSearchCooperatively(iterateFc27PuzzlePositionScaffolds({
+    ...input, candidates, maxNodes: options.maxNodes, maxPlans: options.maxPlans, onProgress: options.onProgress,
+  }), options);
+  return { ...result, plans: result.plans.map(plan => projectSuggestion(plan.squad, plan.facts, plan.requirementCount)) };
+}
+
 export const suggestFc27PuzzleJointPurchases = (input, entries, options) =>
   finishPuzzleSearch(iterateJointPurchases(input, entries, options));
 export const suggestFc27PuzzleJointPurchasesCooperatively = (input, entries, options) =>
   finishPuzzleSearchCooperatively(iterateJointPurchases(input, entries, options), options);
 function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress = null, prices = null, priceSource = null, materialPrices = null,
   costCeiling = null, incumbent = null, localOnly = false, localSearchBudget = 4000, onIncumbentCheck = null,
-  searchBudget = null, reuseOwnedOnly = false } = {}) {
+  searchBudget = null, reuseOwnedOnly = false, oneTotw = false, keepOwnedTotw = null, walletLimit = Infinity } = {}) {
   if (!Array.isArray(entries) || entries.length > 60) return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (materialPrices !== null && (!(materialPrices instanceof Map) || !(prices instanceof Map))) return stop('FC27_MARKET_POLICY_INVALID');
   if (searchBudget !== null && (!isFc27PuzzleSearchBudget(searchBudget) || incumbent || localOnly))
@@ -881,16 +1066,24 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
     return stop('FC27_PURCHASE_REPAIR_BUDGET_INVALID');
   if (costCeiling !== null && (!positive(costCeiling) || costCeiling > required(input) * MAX_PUZZLE_QUOTE_PRICE))
     return stop('FC27_MARKET_POLICY_INVALID');
-  const pool = poolOf(input);
+  const pool = keepOwnedTotw === null ? poolOf(input) : collectSafePuzzleCandidates(input);
   if (pool.status !== 'candidates') return stop(pool.reason);
   const parsed = parseFc27SbcRequirements(input.challenge.rawRequirements, required(input));
   if (parsed.status !== 'observed') return stop(parsed.reason);
-  const market = prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
+  if ((oneTotw || keepOwnedTotw !== null) && (!isFc27TotwRatingOnly(parsed.rules) || !(prices instanceof Map) || incumbent || materialPrices || localOnly)
+      || keepOwnedTotw !== null && (oneTotw || !positive(keepOwnedTotw) || keepOwnedTotw >= required(input)
+        || !positive(walletLimit) || !pool.candidates.some(isFc27TotwCard)))
+    return stop('FC27_MARKET_POLICY_INVALID');
+  const market = oneTotw ? puzzleTotwMarketCandidates(input, entries).filter(item => validValue(prices.get(item.definitionId)))
+    : keepOwnedTotw !== null ? marketCandidates(input, entries).filter(item => validValue(prices.get(item.definitionId)))
+      : prices instanceof Map ? puzzleMarketValueCandidates(input, entries) : marketCandidates(input, entries);
   // With no public candidate, only an explicitly supplied feasible incumbent
   // warrants an owned replacement pass. Ordinary shortage routes keep the
   // remote fast exit instead of repeating a futile full inventory search.
   if (!market.length && !incumbent) return { ...stop('FC27_PURCHASE_REPAIR_NO_PLAN'), marketCandidates: 0, nodes: 0,
     truncated: false, marketWideInfeasibilityProven: false };
+  if (keepOwnedTotw !== null) return yield* iterateOwnedTotwRatingCosts(input, parsed.rules, pool.candidates, market,
+    { prices, walletLimit, maxPurchases: keepOwnedTotw, maxNodes, onProgress, priceSource });
   // Public quotes, when supplied, price the full eligible candidate pool.
   // The legacy inspection path keeps unit weights, never fabricated coins.
   const candidates = [...pool.candidates.filter(item => !materialPrices || validValue(materialPrices.get(item.definitionId))), ...market];
@@ -957,8 +1150,9 @@ function* iterateJointPurchases(input, entries, { maxNodes = 50000, onProgress =
   }
   const result = localNodes < maxNodes && localValue > 0 ? yield* iterateFc27PuzzleCandidateRoutes({ ...input, maxNodes: maxNodes - localNodes, searchBudget,
     pool: { ...pool, candidates },
-    procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE,
-      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input), maxPurchases: required(input),
+    procurement: { budget: prices ? Math.min(required(input) * MAX_PUZZLE_QUOTE_PRICE, walletLimit,
+      costCeiling === null ? Infinity : costCeiling - 1, localValue - 1) : required(input),
+      maxPurchases: oneTotw ? 1 : required(input), oneTotw,
       priceAware: prices instanceof Map, objective,
       costOf: item => item.catalogRef ? prices ? prices.get(item.definitionId) : 1
         : materialPrices ? materialPrices.get(item.definitionId) : 0 },

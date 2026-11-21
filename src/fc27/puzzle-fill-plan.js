@@ -1,6 +1,7 @@
-import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
-import { parseFc27SbcRequirements, matchFc27SbcRequirements } from './sbc-requirements.js';
+import { collectSafePuzzleCandidates } from './puzzle-material-policy.js';
+import { evaluateFc27PuzzleRating, evaluateFc27PuzzleSquad } from './puzzle-evaluator.js';
+import { isFc27TotwCard, isFc27TotwRatingOnly, parseFc27SbcRequirements, matchFc27SbcRequirements,
+  requiresFc27SingleTotw } from './sbc-requirements.js';
 
 const itemFields = ['id', 'definitionId', 'type', 'pile', 'rating', 'rarity', 'nationId', 'leagueId', 'teamId',
   'positions', 'groups', 'special', 'evolution', 'cosmetic', 'concept', 'academyEnrolled', 'activeTrade',
@@ -57,18 +58,22 @@ function assess(scope, selected, items) {
     }
     squad[ref.slot] = { ...project(item), slot: ref.slot };
   }
-  const pool = collectSafeTraditionalCandidates({ context, policy,
-    challenge: { ...challenge, mechanism: 'traditional', requirements: [{ kind: 'player-count', count: required }] },
+  const pool = collectSafePuzzleCandidates({ context, policy, challenge,
     inventory: { schema: 1, context, kind: 'normalized-inventory', status: 'provisional', items: squad.filter(Boolean) } });
   if (pool.status !== 'candidates' || pool.candidates.length !== required) return fail('FC27_PUZZLE_FILL_MATERIAL_PROTECTED');
   const parsed = parseFc27SbcRequirements(challenge.rawRequirements, required);
   if (parsed.status !== 'observed') return fail(parsed.reason);
+  if (requiresFc27SingleTotw(parsed.rules) && squad.filter(isFc27TotwCard).length !== 1) {
+    return fail('FC27_PUZZLE_FILL_MATERIAL_PROTECTED');
+  }
   const needsFacts = parsed.rules.some(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating',
     'min-chemistry', 'max-chemistry', 'exact-chemistry'].includes(rule.kind));
-  const facts = needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation, chemistry, rating: chemistry?.rating })
+  const ratingOnly = isFc27TotwRatingOnly(parsed.rules);
+  const facts = ratingOnly ? { ...evaluateFc27PuzzleRating({ squad: squad.filter(Boolean), rating: chemistry?.rating }), chemistry: null }
+    : needsFacts ? evaluateFc27PuzzleSquad({ squad, formation: challenge.formation, chemistry, rating: chemistry?.rating })
     : { status: 'observed', teamRating: null, chemistry: null };
   if (needsFacts && (facts.status !== 'observed' || !Number.isInteger(facts.teamRating) || facts.teamRating < 0
-      || !Number.isInteger(facts.chemistry) || facts.chemistry < 0 || facts.chemistry > 33)) {
+      || !ratingOnly && (!Number.isInteger(facts.chemistry) || facts.chemistry < 0 || facts.chemistry > 33))) {
     return fail('FC27_PUZZLE_FILL_FACTS_UNAVAILABLE');
   }
   const validation = matchFc27SbcRequirements({ requirements: parsed.rules, squad: squad.filter(Boolean), clubLinks,

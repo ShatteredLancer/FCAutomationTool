@@ -11,10 +11,12 @@ import { contextKey } from '../../src/fc27/prelaunch-contract.js';
 import { createFcatDiagnosticLog } from '../../src/diagnostics/fcat-diagnostic-log.js';
 import { fc27ConceptPendingKey } from '../../src/fc27/puzzle-concept-session.js';
 import { FC27_BUY_SERVICE_METHODS } from '../../src/adapters/ea/fc27-puzzle-buy.js';
+import { createPurchasePriceApproval } from '../../src/fc27/purchase-price-approval.js';
 import observation from '../fixtures/fc27-puzzle-plan-observation.json';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as procurement from '../../src/fc27/puzzle-procurement.js';
+import { evaluateFc27PuzzleRating } from '../../src/fc27/puzzle-evaluator.js';
 
 const fsuSource = readFileSync(new URL('../../FSU_mod/【FSU】EAFC FUT WEB 增强器-26.09_mod.user.js', import.meta.url), 'utf8');
 const fsuBuyStart = fsuSource.indexOf('events.buyConceptPlayer = async');
@@ -154,6 +156,95 @@ it('carries mixed Club/Storage through the production native session, exact read
   expect(record.itemRefs).toContainEqual(expect.objectContaining({ id: 1, definitionId: 101, pile: 'storage' }));
   expect(x.challenge.squad._players.find(slot => slot._item.id === 1)?._item.utasPile).toBe(8);
   expect(x.calls.some(call => call.url?.includes('skipUserSquadValidation'))).toBe(false);
+});
+
+function setRatingTotwChallenge(x, rarity) {
+  x.controller._challengeId = x.challenge.id = 266;
+  x.set.id = x.challenge.setId = 163;
+  Object.assign(x.root.SBCEligibilityKey, { PLAYER_RARITY: 18, TEAM_RATING: 19 });
+  x.challenge.eligibilityRequirements = [
+    { count: 1, scope: 0, kvPairs: { _collection: { 18: [3] } } },
+    { count: -1, scope: 0, kvPairs: { _collection: { 19: [81] } } },
+  ];
+  x.root.services.SBC.repository.sets._collection = { 163: { ...x.set, challenges: [x.challenge] } };
+  x.state.playerFacts._rating = 81;
+  x.state.playerFactsById = { 1: { _rareflag: rarity } };
+  for (const card of x.state.players) x.root.repositories.Item.club.items._collection[card.id] = x.root.factories.Item.createItem(card);
+}
+
+it.each([true, false])('163/266 supports an explicit rating-81 plus a single owned TOTW (available=%s), with no market or submit', async available => {
+  const publicPrices = { load: vi.fn() }, x = fixture({ gold: true, publicPrices });
+  setRatingTotwChallenge(x, available ? 3 : 5);
+  await x.session.setPuzzlePolicy({ objective: 'additional-coins' });
+  if (available) moveFixtureCardToStorage(x);
+  const result = await x.fill();
+  if (available) {
+    expect(result, JSON.stringify({ result, calls: x.calls })).toMatchObject({ status: 'filled', saved: true, submitted: false, selectedCount: 11 });
+    expect(x.calls.filter(call => call.kind === 'storage')).toHaveLength(1);
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+    expect(x.challenge.squad._players.filter(slot => slot._item._rareflag > 1).map(slot => slot._item._rareflag)).toEqual([3]);
+    expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED' });
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  } else {
+    expect(result).toMatchObject({ status: 'blocked', reason: 'FC27_BUY_INSUFFICIENT_COINS' });
+    expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(0);
+  }
+  expect(publicPrices.load).not.toHaveBeenCalled();
+  expect(x.calls.some(call => /skipUserSquadValidation|transfermarket|\/defid/.test(call.url ?? ''))).toBe(false);
+});
+
+it.each(['integer', 'float', 'equal-value', 'missing-baseline', 'expired', 'cash'])('163/266 values an already-valid owned TOTW lineup (%s)', async mode => {
+  const ratings = [82, 85, 84, 84, 84, 84, 83, 82, 82, 82, 81, 79, 79, 80, 80, 80, 80, 80, 80];
+  const costs = [13750, 2800, 850, 950, 950, 900, 700, 700, 700, 700, 650, 200, 200, 500, 500, 650, 650, 650, 650];
+  const publicPrices = { load: vi.fn(async ids => {
+    const now = Date.now();
+    const result = { policy: { source: 'futgg' }, references: Object.fromEntries(ids.map(definitionId => [definitionId, {
+      definitionId, season: '27', platform: 'pc', quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, {
+        schema: 2, source, definitionId, season: '27', platform: 'pc', price: mode === 'missing-baseline' && source === 'futgg'
+          && definitionId === 102 ? null : mode === 'equal-value' && definitionId !== 101 ? 650 : costs[definitionId - 101], fetchedAt: now,
+        sourceUpdatedAt: null, expiresAt: now + 300000, error: null }])) }])) };
+    if (mode === 'expired') vi.setSystemTime(now + 300001);
+    return result;
+  }) };
+  const x = fixture({ gold: true, publicPrices });
+  setRatingTotwChallenge(x, 3);
+  x.state.players = ratings.map((rating, i) => {
+    const id = i + 1;
+    x.state.playerFactsById[id] = { _rating: rating, _rareflag: id === 1 ? 3 : 0 };
+    return { id, resourceId: id + 100 };
+  });
+  x.state.filterClubQueries = true;
+  for (const player of x.state.players) x.root.repositories.Item.club.items._collection[player.id] = x.root.factories.Item.createItem(player);
+  // Cheap cards 112/113 must not be quoted or selected despite being attractive.
+  x.root.info.lock = [12];
+  x.root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item = { id: 13 };
+  if (mode === 'float') x.root.services.Configuration.checkFeatureEnabled = key => key === 'rating';
+  x.root.info.set.goldenrange = 85;
+  await x.session.setPuzzlePolicy({ maxRating: 85, ...(mode === 'cash' ? { objective: 'additional-coins' } : {}) });
+  const result = await x.fill();
+  expect(result).toMatchObject({ status: 'filled', saved: true, submitted: false });
+  const saved = x.state.saved.filter(row => row.itemData?.id > 0).map(row => row.itemData.id);
+  expect(saved).toHaveLength(11);
+  expect(saved.filter(id => id === 1)).toHaveLength(1);
+  expect(saved).not.toContain(12);
+  expect(saved).not.toContain(13);
+  if (['integer', 'float', 'equal-value'].includes(mode)) {
+    expect(publicPrices.load).toHaveBeenCalledTimes(1);
+    expect(result.materialValue).toBe(mode === 'equal-value' ? 20250 : 20100);
+    expect(saved).not.toContain(2);
+    expect(evaluateFc27PuzzleRating({ squad: saved.map(id => ({rating: ratings[id - 1]})),
+      rating: { floatCalculationEnabled: mode === 'float' } }).teamRating).toBe(81);
+  } else {
+    expect(Number.isSafeInteger(result.materialValue)).toBe(false);
+    expect(saved, JSON.stringify(saved)).toContain(2);
+    expect(saved.reduce((sum, id) => sum + costs[id - 1], 0)).toBe(23650);
+    expect(publicPrices.load).toHaveBeenCalledTimes(mode === 'cash' ? 0 : 1);
+  }
+  if (mode !== 'cash') for (const id of [112, 113]) expect(publicPrices.load.mock.calls[0][0]).not.toContain(id);
+  // On a second click the saved squad guard still wins.
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PUZZLE_EXISTING_SQUAD_BLOCKED' });
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.some(call => /skipUserSquadValidation|transfermarket|\/defid/.test(call.url ?? ''))).toBe(false);
 });
 
 it.each(['missing', 'version', 'pile', 'http'])('blocks native mixed-pile fill before saving on fresh Storage %s', async kind => {
@@ -459,6 +550,10 @@ it('continues from filtered internal routes into cached procurement on repeated 
 async function buyingFixture(count = 1, options = {}) {
   const x = await missingFixture(count, options);
   expect((await x.fill()).status).toBe('concept-filled');
+  return addBuyingRuntime(x, count);
+}
+
+function addBuyingRuntime(x, count = 1, { buyNow = 200, balance = 10000, rarity = 0 } = {}) {
   const { root, state } = x; state.filterClubQueries = true;
   Object.assign(root.ItemPile, { PURCHASED: 6 }); root.GameCurrency = { COINS: 'COINS' }; root.MAX_NEW_ITEMS = 100;
   root.SearchType = { PLAYER: 'player' }; root.SearchCategory = { ANY: 'any' }; root.UTSearchCriteriaDTO = class {};
@@ -471,11 +566,11 @@ async function buyingFixture(count = 1, options = {}) {
   root.PINEventType = { PAGE_VIEW: 'view' }; root.PIN_PAGEVIEW_EVT_TYPE = 'page';
   root.services.PIN = { sendData: (_type, data) => x.calls.push({ kind: 'pin', page: data.pgid }) };
   root.UtasErrorCode = { PERMISSION_DENIED: 461 };
-  const user = { getCurrency: () => ({ amount: 10000 }) }; root.services.User.getUser = () => user;
+  const user = { getCurrency: () => ({ amount: state.coinBalance ?? balance }) }; root.services.User.getUser = () => user;
   const observable = reply => ({ observe(owner, cb) { cb(this, reply); }, unobserve() {} });
   const purchases = Array.from({ length: count }, (_, i) => Object.assign(root.factories.Item.createItem({ id: 801 + i, resourceId: 901 + i }),
-    { tradable: true, isPlayer: () => true, isDuplicate: () => false, pile: 6,
-      getAuctionData: () => ({ tradeId: String(9901 + i), tradeState: 'active', buyNowPrice: 200, getSecondsRemaining: () => 60, canBuy: () => true }) }));
+    { _rareflag: rarity, tradable: true, isPlayer: () => true, isDuplicate: () => false, pile: 6,
+      getAuctionData: () => ({ tradeId: String(9901 + i), tradeState: 'active', buyNowPrice: state.offerPrices?.[801 + i] ?? buyNow, getSecondsRemaining: () => 60, canBuy: () => true }) }));
   const purchased = purchases[0];
   class ItemService {
     bid(item, price) { x.calls.push({ kind: 'buy', id: item.id, price }); return observable(state.bidReplies?.[item.id]
@@ -485,7 +580,8 @@ async function buyingFixture(count = 1, options = {}) {
       if (state.moveReplies?.[item.id]) return observable(state.moveReplies[item.id]);
       item.pile = pile;
       state.players.push({ id: item.id, resourceId: item.definitionId });
-      state.playerFactsById = { ...state.playerFactsById, [item.id]: { tradable: true } };
+      state.playerFactsById = { ...state.playerFactsById, [item.id]: { tradable: true,
+        _rating: item._rating, _rareflag: state.deliveredRarity ?? item._rareflag } };
       const index = x.challenge.squad._players.findIndex(slot => slot._item.concept && slot._item.definitionId === item.definitionId);
       if (index >= 0 && !state.deferConceptReplacement) {
         x.challenge.squad._players[index]._item = item;
@@ -497,7 +593,8 @@ async function buyingFixture(count = 1, options = {}) {
       data: { items: purchases.filter(item => criteria.defId.includes(item.definitionId)
         && (!criteria.maxBuy || item.getAuctionData().buyNowPrice <= criteria.maxBuy)) } }); }
     clearTransferMarketCache() {}
-    requestUnassignedItems() { return observable({ success: true, status: 200, response: { items: [purchased] } }); }
+    requestUnassignedItems() { return observable({ success: true, status: 200,
+      response: { items: state.unassignedPurchaseIds ? purchases.filter(item => state.unassignedPurchaseIds.includes(item.id)) : [purchased] } }); }
   }
   root.services.Item = new ItemService();
   root.repositories.Item.numItemsInCache = () => 0; root.repositories.Item.setDirty = () => {};
@@ -508,13 +605,228 @@ async function buyingFixture(count = 1, options = {}) {
     return method ? Uint8Array.from(Buffer.from(state.buyMethodHashes?.[method[0]] ?? method[1], 'hex')).buffer : digest(algorithm, bytes);
   };
   const buy = async budget => {
-    const target = { setId: 4, challengeId: 16 };
+    const target = { setId: x.set.id, challengeId: x.challenge.id };
     const summary = await x.session.inspectPuzzlePurchases(target);
     const promise = x.session.buyPuzzlePlayers(target, { approved: true, budget, expectedOperationId: summary.operationId }, { isCurrent: () => true });
     await vi.runAllTimersAsync(); return promise;
   };
   return { ...x, buy, purchased, purchases };
 }
+
+async function totwBuyingFixture({ quote = 10000, listing = 9800, quoteCeiling = 10300, balance = 15000, auctionRarity = 3,
+  heldTotw = false, heldNormalRating = 81 } = {}) {
+  const priceRef = (definitionId, price) => ({ definitionId, season: '27', platform: 'pc',
+    quotes: Object.fromEntries(['futgg', 'futbin'].map(source => [source, { schema: 2, source, definitionId, season: '27',
+      platform: 'pc', price, fetchedAt: Date.now(), sourceUpdatedAt: null, expiresAt: Date.now() + 300000, error: null }])) });
+  const publicPrices = {
+    load: vi.fn(async ids => ({ policy: { source: 'futgg' },
+      references: Object.fromEntries(ids.map(id => [id, priceRef(id, heldTotw || id === 901 ? quote : 14500)])) })),
+    remember() {},
+    preparePurchase: vi.fn(async record => createPurchasePriceApproval({
+      scope: record.scope, definitionIds: record.entries.filter(entry => entry.state === 'waiting').map(entry => entry.definitionId),
+      references: Object.fromEntries(record.plan.map(card => [card.definitionId, card.priceReference])),
+      policy: record.plan[0].pricePolicy, season: '27', platform: 'pc',
+    })),
+  };
+  const x = fixture({ gold: true, publicPrices });
+  setRatingTotwChallenge(x, heldTotw ? 3 : 5);
+  if (heldTotw) {
+    // 7 safe physical cards but only 6 definitions (including the TOTW).
+    x.state.players = x.state.players.slice(0, 7);
+    x.state.players[6].resourceId = x.state.players[5].resourceId;
+    for (const card of x.state.players.slice(1)) x.state.playerFactsById[card.id] = { _rating: heldNormalRating };
+    x.root.repositories.Item.club.items._collection = Object.fromEntries(x.state.players.map(card => [card.id, x.root.factories.Item.createItem(card)]));
+  }
+  const count = heldTotw ? 7 : 1;
+  for (let i = 0; i < count; i++) {
+    x.state.playerFactsById[901 + i] = x.state.playerFactsById[801 + i] = { _rareflag: heldTotw ? 0 : 3, _rating: heldTotw ? 82 : 81 };
+  }
+  const market = addBuyingRuntime(x, count, { buyNow: listing, balance, rarity: auctionRarity });
+  market.root.UTCurrencyInputControl = { PRICE_TIERS: [{ min: 50000, inc: 500 }, { min: 10000, inc: 250 },
+    { min: 1000, inc: 100 }, { min: 0, inc: 50 }],
+    getIncrementAboveVal: n => n + 100, getIncrementBelowVal: n => n - 100 };
+  const card = { definitionId: 901, rating: heldTotw ? 82 : 81, rarity: heldTotw ? 0 : 3, nationId: 27, leagueId: 10, teamId: 1,
+    positions: [5], groups: [], special: !heldTotw, evolution: false, cosmetic: false };
+  const definitionIds = Array.from({ length: count }, (_, i) => 901 + i);
+  const query = heldTotw ? { start: 0, count: 20, level: 'gold', definitionIds } : { start: 0, count: 20, level: 'totw' };
+  if (heldTotw) {
+    publicPrices.puzzleRatedFodder = vi.fn(async () => [definitionIds, [101], []]);
+    // The session captures the optional reader at creation time.
+    market.session = x.restart();
+    market.fill = async () => {
+      const pending = market.session.solveAndFillPuzzle({ setId: 163, challengeId: 266 }, { isCurrent: () => true });
+      await vi.runAllTimersAsync(); return pending;
+    };
+    market.buy = async budget => {
+      const target = { setId: 163, challengeId: 266 }, summary = await market.session.inspectPuzzlePurchases(target);
+      const pending = market.session.buyPuzzlePlayers(target, { approved: true, budget, expectedOperationId: summary.operationId }, { isCurrent: () => true });
+      await vi.runAllTimersAsync(); return pending;
+    };
+  }
+  const scope = traditionalJournalScope(readFc27Context(x.root));
+  x.data.set(`fcat-fc27-puzzle-market:${scope}:catalog:${JSON.stringify(query)}`, {
+    schema: 1, kind: 'catalog', query, at: Date.now(), state: 'observed',
+    result: { status: 'observed', season: '27', source: 'ea-defid', query, observedAt: Date.now(), pageEndObserved: true,
+      entries: heldTotw ? definitionIds.map(definitionId => ({ ...card, definitionId })) : [card, { ...card, definitionId: 902, rarity: 5 }, { ...card, definitionId: 905, rating: 83 },
+        { ...card, definitionId: 906, cosmetic: true }, { ...card, definitionId: 907 }] },
+  });
+  if (heldTotw) {
+    const fallback = { start: 0, count: 20, level: 'gold' };
+    x.data.set(`fcat-fc27-puzzle-market:${scope}:catalog:${JSON.stringify(fallback)}`, {
+      schema: 1, kind: 'catalog', query: fallback, at: Date.now(), state: 'observed',
+      result: { status: 'observed', season: '27', source: 'ea-defid', query: fallback, observedAt: Date.now(),
+        pageEndObserved: true, entries: [] },
+    });
+  }
+  await market.session.setPuzzlePolicy({ quoteCeiling });
+  return { ...market, publicPrices, target: { setId: 163, challengeId: 266 } };
+}
+
+it('163/266 retains the held TOTW with only six unique safe versions and buys exactly five normal fillers after approval', async () => {
+  const x = await totwBuyingFixture({ heldTotw: true, auctionRarity: 0, quote: 500, listing: 450, quoteCeiling: 600 });
+  const result = await x.fill();
+  expect(result, JSON.stringify(result)).toMatchObject({ status: 'concept-filled', keptOwnedTotw: true, needsTotwPurchase: false,
+    purchaseCount: 5, estimatedCost: 2500, submitted: false });
+  expect(x.publicPrices.puzzleRatedFodder.mock.calls[0][0]).toEqual([82, 81, 80, 79, 78, 77, 76]);
+  expect(x.challenge.squad._players.filter(slot => slot._item._rareflag === 3).map(slot => slot._item.id)).toEqual([1]);
+  expect(x.calls.filter(call => call.kind === 'buy' || call.kind === 'search')).toEqual([]);
+  expect(await x.session.inspectPuzzlePurchases(x.target)).toMatchObject({ keptOwnedTotw: true, approvedMaterialsBudget: 2500 });
+  expect(await x.buy(2500)).toMatchObject({ status: 'purchased', purchased: 5, spent: 2250, saved: true, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy').every(call => call.price <= 500)).toBe(true);
+  expect(x.calls.filter(call => call.method === 'POST').at(-1).body.defId.split(',')).toHaveLength(11);
+  expect(await x.buy(2500)).toMatchObject({ status: 'purchased', purchased: 5, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(5);
+  expect(x.calls.some(call => call.url?.includes('skipUserSquadValidation'))).toBe(false);
+});
+
+it('163/266 keeps its TOTW plan unwritten when the total normal-card cost exceeds the wallet', async () => {
+  const x = await totwBuyingFixture({ heldTotw: true, quote: 500, quoteCeiling: 600, balance: 2499 });
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PURCHASE_TOTW_FODDER_UNAVAILABLE' });
+  expect(x.calls.filter(call => call.method === 'PUT' || call.kind === 'buy')).toEqual([]);
+});
+
+it('163/266 increases the gap by one normal replacement only when five additions still fail the native rating', async () => {
+  const x = await totwBuyingFixture({ heldTotw: true, heldNormalRating: 75, quote: 500, quoteCeiling: 600 });
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', keptOwnedTotw: true, purchaseCount: 6, estimatedCost: 3000 });
+  const record = [...x.data.values()].find(value => value?.phase === 'saved' && value.plan?.kind === 'puzzle-concept-draft');
+  expect(record.plan.validation.teamFacts.teamRating).toBe(81);
+  expect(record.plan.owned.filter(card => card.rarity === 3).map(card => card.id)).toEqual([1]);
+  expect(x.calls.filter(call => call.kind === 'buy')).toEqual([]);
+});
+
+it('163/266 preserves the held TOTW and all normal-card receipts when the replacement save response is lost', async () => {
+  const x = await totwBuyingFixture({ heldTotw: true, auctionRarity: 0, quote: 500, listing: 450, quoteCeiling: 600 });
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', purchaseCount: 5 });
+  x.state.deferConceptReplacement = true;
+  x.state.saveResponseLost = true;
+  expect(await x.buy(2500)).toMatchObject({ status: 'recovery-required', purchased: 5, spent: 2250 });
+  x.state.saveResponseLost = false;
+  expect(await x.buy(2500)).toMatchObject({ status: 'purchased', purchased: 5, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(5);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(2);
+  expect(x.challenge.squad._players.filter(slot => slot._item._rareflag === 3).map(slot => slot._item.id)).toEqual([1]);
+});
+
+it('163/266 reconciles an unknown bid mid-batch and resumes only unsettled normal cards', async () => {
+  const x = await totwBuyingFixture({ heldTotw: true, auctionRarity: 0, quote: 500, listing: 450, quoteCeiling: 600 });
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', purchaseCount: 5 });
+  const [first, second] = x.challenge.squad._players.filter(slot => slot._item.concept).map(slot => slot._item.definitionId - 100);
+  x.state.bidReplies = { [second]: { success: false, status: 500 } };
+  x.state.unassignedPurchaseIds = [second];
+  expect(await x.buy(2500)).toMatchObject({ status: 'recovery-required', purchased: 1 });
+  expect(x.calls.filter(call => call.kind === 'buy').map(call => call.id)).toEqual([first, second]);
+  expect(await x.buy(2500)).toMatchObject({ status: 'purchased', purchased: 5, spent: 2250, saved: true, submitted: false });
+  expect(new Set(x.calls.filter(call => call.kind === 'buy').map(call => call.id)).size).toBe(5);
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(5);
+});
+
+it('163/266 saves a single TOTW concept, buys only after approval, then checks all eleven exact materials and never rebuys or submits', async () => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', saved: true, needsTotwPurchase: true,
+    purchaseCount: 1, estimatedCost: 10000, submitted: false });
+  expect(x.publicPrices.load.mock.calls[0][0]).toEqual([901, 907]);
+  expect(x.calls.filter(call => call.kind === 'buy' || call.kind === 'search')).toEqual([]);
+  const summary = await x.session.inspectPuzzlePurchases(x.target);
+  expect(summary).toMatchObject({ status: 'ready', remaining: 1, budget: 10000, totwMaxBuy: 10000 });
+  expect(await x.session.buyPuzzlePlayers(x.target, { approved: false, expectedOperationId: summary.operationId }, { isCurrent: () => true }))
+    .toMatchObject({ status: 'blocked', reason: 'FC27_BUY_APPROVAL_REQUIRED' });
+  const result = await x.buy(10000);
+  expect(result, JSON.stringify({ result, calls: x.calls })).toMatchObject({ status: 'purchased', saved: true, submitted: false, purchased: 1, spent: 9800 });
+  expect(x.calls.filter(call => call.kind === 'buy')).toEqual([{ kind: 'buy', id: 801, price: 9800 }]);
+  expect(x.calls.filter(call => call.kind === 'search').every(call => call.criteria.maxBuy <= 10000)).toBe(true);
+  expect(x.calls.filter(call => call.method === 'POST').at(-1).body.defId.split(',').map(Number).sort((a, b) => a - b))
+    .toEqual([102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 901]);
+  expect(await x.buy(10000)).toMatchObject({ status: 'purchased', purchased: 1, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.some(call => call.url?.includes('skipUserSquadValidation'))).toBe(false);
+});
+
+it.each([{ quoteCeiling: 9900 }, { balance: 9900 }])('blocks the one-TOTW plan before saving when its quote exceeds %j', async limits => {
+  const x = await totwBuyingFixture(limits);
+  expect(await x.fill()).toMatchObject({ status: 'blocked', reason: 'FC27_PURCHASE_TOTW_UNAVAILABLE' });
+  expect(x.calls.filter(call => call.kind === 'buy' || call.method === 'PUT')).toEqual([]);
+});
+
+it.each([{ listing: 10100 }, { auctionRarity: 5 }])('never dispatches a bid with an invalid TOTW offer %j', async options => {
+  const x = await totwBuyingFixture(options);
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled' });
+  expect(await x.buy(12000)).toMatchObject({ purchased: 0, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy' || call.kind === 'move')).toEqual([]);
+  expect(x.calls.filter(call => call.kind === 'search').length).toBeGreaterThan(0);
+});
+
+it('refreshes an expired TOTW quote before approval without raising the original confirmation limit', async () => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled', estimatedCost: 10000 });
+  vi.setSystemTime(Date.now() + 300001);
+  expect(await x.buy(12000)).toMatchObject({ status: 'purchased', purchased: 1, spent: 9800, submitted: false });
+  expect(x.publicPrices.load).toHaveBeenCalledWith([901], expect.objectContaining({ purpose: 'purchase', policy: expect.objectContaining({ source: 'futgg' }) }));
+  expect(x.calls.filter(call => call.kind === 'search').every(call => call.criteria.maxBuy <= 10000)).toBe(true);
+});
+
+it('recovers the one-TOTW replacement when its save response is lost, without a repeat purchase or PUT', async () => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled' });
+  x.state.deferConceptReplacement = true;
+  x.state.saveResponseLost = true;
+  expect(await x.buy(10000)).toMatchObject({ status: 'recovery-required', purchased: 1, spent: 9800 });
+  x.state.saveResponseLost = false;
+  expect(await x.buy(10000)).toMatchObject({ status: 'purchased', saved: true, purchased: 1, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(2);
+});
+
+it('resolves an unknown TOTW bid by exact Unassigned identity, rather than bidding twice', async () => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled' });
+  x.state.bidReplies = { 801: { success: false, status: 500 } };
+  expect(await x.buy(10000)).toMatchObject({ status: 'recovery-required', reason: 'FC27_BUY_RECEIPT_UNCONFIRMED' });
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(0);
+  expect(await x.buy(10000)).toMatchObject({ status: 'purchased', purchased: 1, spent: 9800, submitted: false });
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+  expect(x.calls.filter(call => call.kind === 'move')).toHaveLength(1);
+});
+
+it('does not save a purchased TOTW whose fresh Club evidence disagrees with the auction, and never rebuys it', async () => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled' });
+  x.state.deferConceptReplacement = true;
+  x.state.deliveredRarity = 5;
+  for (let i = 0; i < 2; i++) {
+    expect(await x.buy(10000)).toMatchObject({ status: 'blocked', reason: 'FC27_BUY_MATERIAL_UNVERIFIED', purchased: 1, spent: 9800 });
+  }
+  expect(x.calls.filter(call => call.method === 'PUT')).toHaveLength(1);
+  expect(x.calls.filter(call => call.kind === 'buy')).toHaveLength(1);
+});
+
+it.each(['lock', 'active roster'])('honors a changed %s after the TOTW draft, before searching or spending', async protection => {
+  const x = await totwBuyingFixture();
+  expect(await x.fill()).toMatchObject({ status: 'concept-filled' });
+  if (protection === 'lock') x.root.info.lock = [2];
+  else x.root.repositories.Squad.squads._collection[902]._collection[7]._players[0]._item = { id: 2 };
+  expect(await x.buy(10000)).toMatchObject({ status: 'blocked', reason: 'FC27_BUY_PLAN_CHANGED', purchased: 0 });
+  expect(x.calls.filter(call => call.kind === 'search' || call.kind === 'buy')).toEqual([]);
+});
 
 it('exports procurement cost and selected public versions after a successful concept save', async () => {
   const store = new Map();

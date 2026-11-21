@@ -5,7 +5,16 @@
 // substitute for those ids.  Unknown ids stay in the returned contract and
 // make executable matching unsupported until a later observation reviews them.
 
+import { FC27_TOTW_RARITY } from '../domain/player-rarity.js';
+export { isFc27TotwCard } from '../domain/player-rarity.js';
+
 export const FC27_SBC_SCOPE = Object.freeze({ GREATER: 0, LOWER: 1, EXACT: 2 });
+
+export const requiresFc27SingleTotw = rules => Array.isArray(rules) && rules.some(rule => rule.kind === 'totw');
+// Full chemistry profiles for special cards are not supported. For the
+// explicit rating-only TOTW shape, EA's team rating needs only player OVR.
+export const isFc27TotwRatingOnly = rules => requiresFc27SingleTotw(rules)
+  && rules.some(rule => rule.kind.endsWith('-team-rating')) && !rules.some(rule => rule.kind.endsWith('-chemistry'));
 
 export const FC27_SBC_KEY = Object.freeze({
   QUALITY: 3,
@@ -135,7 +144,9 @@ export function parseFc27SbcRequirements(rawRequirements, required) {
           break;
         case FC27_SBC_KEY.RARE:
           parsed = count !== null && values.length === 1 && value === 1
-            ? { kind: 'rare', count, mode, source } : unsupported(raw, pair, required, 'rare-shape');
+            ? { kind: 'rare', count, mode, source }
+            : count === 1 && values.length === 1 && value === FC27_TOTW_RARITY && scope !== FC27_SBC_SCOPE.LOWER
+              ? { kind: 'totw', count, mode, source } : unsupported(raw, pair, required, 'rare-shape');
           break;
         case FC27_SBC_KEY.RARITY_GROUP:
           parsed = count !== null && values.length === 1 && positive(value)
@@ -208,7 +219,7 @@ export function createFc27ClubResolver(clubLinks) {
 export function matchFc27SbcItemRule(rule, item, groupMatcher, clubResolver) {
   if (!['all-quality', 'min-quality', 'max-quality', 'quality-count', 'player-min-overall',
     'player-exact-overall', 'player-max-overall', 'from-nations', 'from-leagues', 'from-clubs',
-    'rare', 'rarity-group'].includes(rule?.kind)) return null;
+    'rare', 'totw', 'rarity-group'].includes(rule?.kind)) return null;
   return ruleResult({ ...rule, count: 1, mode: 'min' }, [item], { groupMatcher, clubResolver });
 }
 
@@ -251,6 +262,10 @@ function ruleResult(rule, squad, options) {
     case 'rare': return countMatches(players.map(item => {
       const rarity = itemValue(item, ['rarity', 'rareflag']);
       return nonnegative(rarity) ? rarity === 1 : null;
+    }), value => value === true);
+    case 'totw': return countMatches(players.map(item => {
+      const rarity = itemValue(item, ['rarity', 'rareflag']);
+      return nonnegative(rarity) ? rarity === FC27_TOTW_RARITY : null;
     }), value => value === true);
     case 'rarity-group': return countMatches(players.map(item => {
       if (typeof options.groupMatcher === 'function') {

@@ -7,11 +7,14 @@ import { createFc27StreamlinedStorageReader } from './fc27-streamlined-storage-r
 import { createFc27TransactionTransport, verifyFc27Methods } from './fc27-transaction-transport.js';
 import { projectFc27PuzzleLayout, projectFc27PuzzleSquadBaseline, assertFc27PuzzleLayout } from './fc27-puzzle-layout.js';
 import { synchronizeFc27PuzzleSquad, synchronizeFc27PuzzleConceptSquad, synchronizeFc27PurchasedPuzzleSquad } from './fc27-puzzle-page.js';
+import { projectFc27PuzzleIntrinsicProtection } from '../../fc27/puzzle-material-policy.js';
 
 const fail = reason => { throw new Error(reason); };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const at = (root, path) => path.split('.').reduce((value, key) => ownData(value, key), root);
 const protectedItem = item => ({ ...item, protected: item.special !== false || item.evolution !== false || item.cosmetic !== false });
+const protectionFor = plan => ['puzzle-fill', 'puzzle-concept-draft'].includes(plan.kind)
+  ? projectFc27PuzzleIntrinsicProtection(plan.challenge) : protectedItem;
 const identity = value => Number.isSafeInteger(value) && value > 0;
 const count = value => Number.isSafeInteger(value) && value >= 0;
 export const FC27_SBC_EXECUTION_METHODS = Object.freeze([
@@ -309,6 +312,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       const layout = projectFc27PuzzleLayout(root, squad, target);
       assertFc27PuzzleLayout(plan, layout);
       const slots = ownData(squad, '_players'); const owned = []; const concepts = [];
+      const projectProtection = protectionFor(plan);
       const playable = index => index < 11 && !plan.challenge.brickIndices.includes(index);
       const occupied = slots.slice(0, 11).filter((slot, index) => playable(index)
         && Number(ownData(ownData(slot, '_item'), 'id')) > 0).length;
@@ -326,7 +330,7 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
       if (!identityMatches) return fail('FC27_CONCEPT_SQUAD_MANUAL_EDITED');
       for (const ref of plan.slots.filter(Boolean)) {
         const item = ownData(slots[ref.slot], '_item');
-        if (ref.kind === 'owned') owned.push({ ...protectedItem(snapshotOwned(item, plan.kind)), slot: ref.slot });
+        if (ref.kind === 'owned') owned.push({ ...projectProtection(snapshotOwned(item, plan.kind)), slot: ref.slot });
         else {
           // EA's saved concept entity must reproduce the catalog facts used by
           // the solver, including alternative positions and eligibility groups.
@@ -373,7 +377,8 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
     },
     async validateItems(plan) {
       const items = await freshRefs(plan.selected, ['puzzle-fill', 'puzzle-fill-recovery', 'puzzle-concept-draft'].includes(plan.kind));
-      return { context, fresh: true, observedAt: Date.now(), items };
+      return { context, fresh: true, observedAt: Date.now(),
+        items: ['puzzle-fill', 'puzzle-concept-draft'].includes(plan.kind) ? items.map(protectionFor(plan)) : items };
     },
     assertCurrent() { assert(); return true; },
     async readSquadState(plan) {
@@ -439,13 +444,13 @@ export async function createFc27TraditionalProvider(root, { canWrite = () => fal
           || !same(ownData(squad, 'simpleBrickIndices'), ['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind)
             ? plan.challenge.brickIndices : []) || !same(ownData(squad, 'customBrickIndices'), [])
           || !['puzzle-fill', 'puzzle-fill-recovery'].includes(plan.kind) && plan.challenge.brickIndices.length) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
-      const items = [];
+      const items = [], projectProtection = protectionFor(plan);
       for (let index = 0; index < slots.length; index++) {
         if (ownData(slots[index], 'index') !== index) return fail('FC27_SAVED_SQUAD_UNVERIFIED');
         const item = ownData(slots[index], '_item');
         if (index < 11 && !plan.challenge.brickIndices.includes(index)) {
           if (plan.kind !== 'puzzle-fill-recovery' || ![0, -1].includes(ownData(item, 'id'))) {
-            items.push({ ...protectedItem(snapshotOwned(item, plan.kind)), slot: index });
+            items.push({ ...projectProtection(snapshotOwned(item, plan.kind)), slot: index });
           }
         }
         else if (![0, -1].includes(ownData(item, 'id'))) return fail('FC27_SAVED_SQUAD_UNVERIFIED');

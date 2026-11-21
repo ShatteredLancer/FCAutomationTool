@@ -1,6 +1,7 @@
-import { collectSafeTraditionalCandidates } from './traditional-preview.js';
-import { puzzleMaterialRules, puzzleMaterialRuleVectors, puzzleHasQualityAlternative } from './puzzle-material-policy.js';
-import { createFc27ClubResolver, matchFc27SbcItemRule, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { collectSafePuzzleCandidates, puzzleMaterialRules, puzzleMaterialRuleVectors,
+  puzzleHasQualityAlternative } from './puzzle-material-policy.js';
+import { createFc27ClubResolver, isFc27TotwCard, isFc27TotwRatingOnly, matchFc27SbcItemRule, matchFc27SbcRequirements,
+  parseFc27SbcRequirements, requiresFc27SingleTotw } from './sbc-requirements.js';
 import { createFc27PuzzlePartialChemistryBound, evaluateFc27PuzzleRating } from './puzzle-evaluator.js';
 import { pricedPuzzleGroupStarts } from './puzzle-price-starts.js';
 import { createPuzzleGroupCapacity } from './puzzle-group-capacity.js';
@@ -230,7 +231,7 @@ function* evaluatePlacement({ chosen, slots, formation, evaluateSquad, takeNode,
 }
 
 const itemKinds = new Set(['all-quality', 'min-quality', 'max-quality', 'quality-count', 'player-min-overall',
-  'player-exact-overall', 'player-max-overall', 'from-nations', 'from-leagues', 'from-clubs', 'rare', 'rarity-group']);
+  'player-exact-overall', 'player-max-overall', 'from-nations', 'from-leagues', 'from-clubs', 'rare', 'totw', 'rarity-group']);
 const relationField = rule => rule.kind.endsWith('nation') || rule.kind.endsWith('nations') ? 'nationId'
   : rule.kind.endsWith('league') || rule.kind.endsWith('leagues') ? 'leagueId' : 'teamId';
 const relationValue = (rule, item, resolveClub) => relationField(rule) === 'teamId'
@@ -294,6 +295,129 @@ function filterUnaryCandidates(candidates, itemRules, required, groupMatcher, re
   }));
 }
 
+// Feasibility before prices. Assign the tightest actual slot first, not an
+// unordered subset followed by another formation search. This is a bounded
+// preference for in-position cards; the caller may still try the ordinary
+// unpriced route if legal off-position fillers are needed.
+export function* iterateFc27PuzzlePositionScaffolds({ challenge, evaluateSquad, groupMatcher, clubLinks,
+  chemistry, candidates, maxNodes, maxPlans = 2, onProgress }) {
+  const slots = challenge.formation?.positions?.flatMap((position, slot) => challenge.brickIndices.includes(slot)
+    ? [] : [{ position, slot }]);
+  const parsed = parseFc27SbcRequirements(challenge.rawRequirements, slots?.length ?? 0);
+  const resolveClub = createFc27ClubResolver(clubLinks);
+  const counters = { combinationNodes: 0, placementNodes: 0, evaluations: 0, bounds: 0 };
+  const plans = [], signatures = new Set();
+  let nodes = 0;
+  const result = () => ({ plans, nodes, search: counters });
+  if (parsed.status !== 'observed' || !slots?.length || slots.length > 11
+      || typeof evaluateSquad !== 'function' || !resolveClub) return result();
+  const items = parsed.rules.filter(rule => itemKinds.has(rule.kind));
+  const relations = parsed.rules.filter(rule => /^(same|distinct)-/.test(rule.kind));
+  const cards = filterUnaryCandidates(candidates, items, slots.length, groupMatcher, resolveClub);
+  const rowOf = card => ({
+    card,
+    items: items.map(rule => matchFc27SbcItemRule(rule, card, groupMatcher, resolveClub)),
+    groups: relations.map(rule => relationValue(rule, card, resolveClub)),
+  });
+  const rows = cards.map(rowOf);
+  if (rows.some(row => row.items.includes(null) || row.groups.some(id => !integer(id, 1, Number.MAX_SAFE_INTEGER)))) return result();
+  const fitting = slots.map(({ position }) => rows.filter(({ card }) => card.positions?.includes(position)));
+  if (fitting.some(list => !list.length)) return result();
+  const assigned = Array(slots.length).fill(null), occupied = new Set(), chosen = [];
+  const counts = items.map(() => 0), groups = relations.map(() => new Map());
+  const maxLimited = rule => rule.mode !== 'min' && rule.mode !== undefined;
+  const minLimited = rule => rule.mode !== 'max';
+  const possible = row => !occupied.has(row.card.definitionId)
+    && items.every((rule, i) => !maxLimited(rule) || !row.items[i] || counts[i] < rule.count)
+    && relations.every((rule, i) => !maxLimited(rule) || (rule.kind.startsWith('same-')
+      ? (groups[i].get(row.groups[i]) ?? 0) < rule.value
+      : groups[i].has(row.groups[i]) || groups[i].size < rule.value));
+  const minChemistry = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind)).map(rule => rule.value));
+  const chemistryBound = createFc27PuzzlePartialChemistryBound({ candidates: cards, slots: slots.map(row => row.slot),
+    formation: challenge.formation, chemistry });
+  const take = kind => {
+    if (nodes >= maxNodes) return false;
+    nodes++; counters[kind]++;
+    if (nodes % 128 === 0) onProgress?.({ nodes, search: { ...counters } });
+    return true;
+  };
+  const visit = function* () {
+    if (plans.length >= maxPlans || !take('placementNodes')) return;
+    yield;
+    const left = slots.length - chosen.length;
+    if (!left) {
+      const signature = [...occupied].sort((a, b) => a - b).join(',');
+      if (signatures.has(signature) || !take('evaluations')) return;
+      signatures.add(signature);
+      const squad = Array(challenge.slotCount).fill(null);
+      assigned.forEach((row, i) => { squad[slots[i].slot] = { ...row.card, slot: slots[i].slot }; });
+      const facts = evaluateSquad(squad);
+      if (facts && (!facts.status || facts.status === 'observed') && matchFc27SbcRequirements({ requirements: parsed.rules,
+        squad: squad.filter(Boolean), chemistry: facts?.chemistry, teamRating: facts?.teamRating, groupMatcher, clubLinks }).status === 'satisfied') {
+        plans.push({ squad, facts: { chemistry: facts.chemistry ?? null, teamRating: facts.teamRating ?? null },
+          requirementCount: parsed.rules.length });
+      }
+      return;
+    }
+    if (chemistryBound && chemistryBound(chosen.map(row => row.card), 0) < minChemistry) return;
+    const offers = fitting.flatMap((pool, i) => assigned[i] ? [] : [[i, pool.filter(possible)]]);
+    if (offers.some(([, pool]) => !pool.length)) return;
+    const available = [...new Set(offers.flatMap(([, pool]) => pool))];
+    if (new Set(available.map(row => row.card.definitionId)).size < left) return;
+    for (let i = 0; i < items.length; i++) if (minLimited(items[i])) {
+      const demand = items[i].count - counts[i];
+      if (demand > 0 && Math.min(offers.filter(([, pool]) => pool.some(row => row.items[i])).length,
+        new Set(available.filter(row => row.items[i]).map(row => row.card.definitionId)).size) < demand) return;
+    }
+    for (let i = 0; i < relations.length; i++) {
+      const rule = relations[i], used = groups[i], byGroup = new Map();
+      for (const [slot, pool] of offers) for (const row of pool) {
+        const key = row.groups[i], group = byGroup.get(key) ?? { slots: new Set(), definitions: new Set() };
+        group.slots.add(slot); group.definitions.add(row.card.definitionId); byGroup.set(key, group);
+      }
+      if (rule.kind.startsWith('distinct-')) {
+        if (minLimited(rule) && used.size + Math.min(left, [...byGroup.keys()].filter(key => !used.has(key)).length) < rule.value) return;
+        if (maxLimited(rule)) {
+          const capacity = [...byGroup].map(([key, g]) => ({ existing: used.has(key), n: Math.min(g.slots.size, g.definitions.size) }))
+            .sort((a, b) => Number(b.existing) - Number(a.existing) || b.n - a.n)
+            .slice(0, [...used.keys()].filter(key => byGroup.has(key)).length + rule.value - used.size)
+            .reduce((sum, row) => sum + row.n, 0);
+          if (capacity < left) return;
+        }
+      } else if (minLimited(rule) && Math.max(0, ...used.values()) < rule.value
+          && ![...byGroup].some(([key, g]) => (used.get(key) ?? 0) + Math.min(g.slots.size, g.definitions.size) >= rule.value)) return;
+    }
+    const [index, options] = offers.sort((a, b) => a[1].length - b[1].length || a[0] - b[0])[0];
+    // Satisfy scarce open quotas before preferring chemistry links. No
+    // heuristic can accept a lineup; the complete matcher above always runs.
+    const scored = options.map(row => {
+      const clause = items.reduce((sum, rule, i) => sum + Number(minLimited(rule) && counts[i] < rule.count && row.items[i]) * 4, 0);
+      const connection = chosen.reduce((sum, other) => sum + Number(row.card.nationId === other.card.nationId)
+        + Number(row.card.leagueId === other.card.leagueId) * 2
+        + Number(resolveClub(row.card.teamId) === resolveClub(other.card.teamId)) * 2, 0);
+      const relation = relations.reduce((sum, rule, i) => sum + (rule.kind.startsWith('same-') && minLimited(rule)
+        ? (groups[i].get(row.groups[i]) ?? 0) * 3 : rule.kind.startsWith('distinct-') && minLimited(rule)
+          && groups[i].size < rule.value && !groups[i].has(row.groups[i]) ? 3 : 0), 0);
+      return { row, score: clause + connection + relation };
+    }).sort((a, b) => b.score - a.score || Number(Boolean(a.row.card.catalogRef)) - Number(Boolean(b.row.card.catalogRef))
+      || a.row.card.rating - b.row.card.rating || a.row.card.definitionId - b.row.card.definitionId);
+    for (const { row } of scored) {
+      if (nodes >= maxNodes || plans.length >= maxPlans) break;
+      assigned[index] = row; occupied.add(row.card.definitionId); chosen.push(row);
+      row.items.forEach((value, i) => { counts[i] += Number(value); });
+      row.groups.forEach((key, i) => groups[i].set(key, (groups[i].get(key) ?? 0) + 1));
+      yield* visit();
+      row.groups.forEach((key, i) => {
+        if (groups[i].get(key) === 1) groups[i].delete(key); else groups[i].set(key, groups[i].get(key) - 1);
+      });
+      row.items.forEach((value, i) => { counts[i] -= Number(value); });
+      chosen.pop(); occupied.delete(row.card.definitionId); assigned[index] = null;
+    }
+  };
+  yield* visit();
+  return result();
+}
+
 
 // A bounded, deterministic first-feasible search. Not a minimum-cost proof. Team
 // evaluators operate on detached immutable snapshots; this module cannot access EA.
@@ -306,13 +430,14 @@ export function* iterateFc27PuzzleSquad({ context, challenge, inventory, policy,
   maxNodes = DEFAULT_MAX_NODES, searchHint = null, onProgress = null, searchBudget = null } = {}) {
   if (!integer(maxNodes, 1, 250000) || searchBudget !== null && !isFc27PuzzleSearchBudget(searchBudget)) return blocked('FC27_PUZZLE_BUDGET_INVALID');
   if (challenge?.mechanism !== 'traditional-puzzle') return blocked('CHALLENGE_UNVERIFIED');
-  const required = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
-  // Reuse the exact existing safety gates. This cardinality-only view is never
-  // returned to the Live transaction; all Puzzle rules are checked separately.
-  const pool = collectSafeTraditionalCandidates({ context, inventory, policy, challenge: {
-    ...challenge, mechanism: 'traditional', requirements: [{ kind: 'player-count', count: required }],
-  } });
+  const pool = collectSafePuzzleCandidates({ context, inventory, policy, challenge });
   if (pool.status !== 'candidates') return pool;
+  const parsed = parseFc27SbcRequirements(challenge.rawRequirements, pool.required);
+  if (parsed.status === 'observed' && requiresFc27SingleTotw(parsed.rules)) {
+    if (!isFc27TotwRatingOnly(parsed.rules)) return blocked('FC27_PUZZLE_TOTW_FACTS_UNSUPPORTED');
+    if (!pool.candidates.some(isFc27TotwCard)) return blocked('FC27_PUZZLE_TOTW_REQUIRED', {
+      safeCandidates: pool.candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason });
+  }
   const options = { challenge, policy, evaluateSquad, boundSquad, groupMatcher, clubLinks, chemistry, pool };
   return yield* iterateFc27PuzzleCandidateRoutes({ ...options, maxNodes, searchHint, onProgress, searchBudget });
 }
@@ -580,7 +705,9 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   if (parsed.rules.some(rule => ['from-clubs', 'same-club', 'distinct-clubs'].includes(rule.kind)) && !resolveClub) {
     return blocked('FC27_PUZZLE_CLUB_LINKS_UNAVAILABLE');
   }
-  const itemRules = [...parsed.rules, ...materialRules].filter(rule => itemKinds.has(rule.kind));
+  // Meet EA's minimum while preserving every extra special card.
+  const itemRules = [...parsed.rules, ...materialRules].filter(rule => itemKinds.has(rule.kind))
+    .map(rule => rule.kind === 'totw' ? { ...rule, mode: 'exact' } : rule);
   // Validate against the safe input pool, not the propagated pool: a known
   // traversal preference can lose all members without becoming malformed.
   if (!isFc27PuzzleSearchHintValid(searchHint, pool.candidates, clubLinks)) {
@@ -720,6 +847,19 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
       || a.rating - b.rating
       || (Number.isSafeInteger(a.id) && Number.isSafeInteger(b.id) ? a.id - b.id : a.definitionId - b.definitionId));
   }
+  if ((!procurement || procurement.oneTotw) && searchHint === null && isFc27TotwRatingOnly(parsed.rules)
+      && parsed.rules.every(rule => ['totw', 'min-team-rating'].includes(rule.kind))) {
+    const target = Math.max(...parsed.rules.filter(rule => rule.kind === 'min-team-rating').map(rule => rule.value));
+    // A large stock of low-rated cards can spend the entire DFS allowance on
+    // squads far below the rating floor. Visit the required card and the
+    // nearest ratings around the target first; retain every lower rating for
+    // mixed combinations and let EA's exact rating formula decide.
+    candidates = candidates.slice().sort((a, b) => Number(isFc27TotwCard(b)) - Number(isFc27TotwCard(a))
+      || (procurement?.oneTotw && isFc27TotwCard(a) && isFc27TotwCard(b) ? procurement.costOf(a) - procurement.costOf(b) : 0)
+      || Number(a.rating < target) - Number(b.rating < target)
+      || Math.abs(a.rating - target) - Math.abs(b.rating - target)
+      || (policy.storageFirst ? Number(b.pile === 'storage') - Number(a.pile === 'storage') : 0));
+  }
   const metrics = { safeCandidates: candidates.length, excluded: pool.excluded, excludedByReason: pool.excludedByReason,
     qualityCounts: pool.qualityCounts, qualityDefinitionCounts: pool.qualityDefinitionCounts };
   let costs = procurement ? candidates.map(procurement.costOf) : candidates.map(() => 0);
@@ -846,6 +986,8 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
   const needsFacts = ruleNeedsTeamFacts(parsed.rules);
   const ratingRules = parsed.rules.filter(rule => ['min-team-rating', 'max-team-rating', 'exact-team-rating'].includes(rule.kind));
   const searchPositions = parsed.rules.some(rule => rule.kind.endsWith('-chemistry'));
+  const exactEvaluator = isFc27TotwRatingOnly(parsed.rules)
+    ? squad => evaluateFc27PuzzleRating({ squad: squad.filter(Boolean), rating: chemistry?.rating }) : evaluateSquad;
   const minimumChemistry = Math.max(0, ...parsed.rules.filter(rule => ['min-chemistry', 'exact-chemistry'].includes(rule.kind))
     .map(rule => rule.value));
   const partialChemistry = minimumChemistry > 0 ? createFc27PuzzlePartialChemistryBound({
@@ -927,7 +1069,7 @@ export function* iterateFc27PuzzleCandidates({ challenge, policy, evaluateSquad,
           placementNodes++; return takeNode(kind);
         };
         const result = yield* evaluatePlacement({ chosen, slots,
-          formation: { ...challenge.formation, slotCount: challenge.slotCount }, evaluateSquad,
+          formation: { ...challenge.formation, slotCount: challenge.slotCount }, evaluateSquad: exactEvaluator,
           takeNode: placementNode, validate, searchPositions });
         found = result.found; unavailable = result.unavailable;
       } else {

@@ -1,6 +1,24 @@
-import { matchFc27SbcRequirements } from './sbc-requirements.js';
+import { isFc27TotwCard, isFc27TotwRatingOnly, matchFc27SbcRequirements, parseFc27SbcRequirements } from './sbc-requirements.js';
+import { collectPuzzleCandidatePool } from './traditional-preview.js';
 
 export const DEFAULT_PUZZLE_MAX_RATING = 82;
+
+const totwRequiredFor = challenge => {
+  if (challenge?.mechanism !== 'traditional-puzzle') return false;
+  const count = challenge.slotCount - (challenge.brickIndices?.length ?? NaN);
+  const parsed = parseFc27SbcRequirements(challenge.rawRequirements, count);
+  return parsed.status === 'observed' && isFc27TotwRatingOnly(parsed.rules);
+};
+
+export const collectSafePuzzleCandidates = input => collectPuzzleCandidatePool(input, totwRequiredFor(input?.challenge));
+
+// Used only on native projections: intrinsic card protection is separate
+// from account locks, the active roster and reservations.
+export function projectFc27PuzzleIntrinsicProtection(challenge) {
+  const totwRequired = totwRequiredFor(challenge);
+  return item => ({ ...item, protected: item.special !== false && !(totwRequired && isFc27TotwCard(item))
+    || item.evolution !== false || item.cosmetic !== false });
+}
 
 // Preferred low-quality composition, not an extra EA eligibility requirement.
 // Search this vector first; a native-quality fallback can use higher safe

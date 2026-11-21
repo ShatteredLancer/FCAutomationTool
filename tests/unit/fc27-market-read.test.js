@@ -114,6 +114,34 @@ const october12Hashes = FC27_MARKET_READ_METHODS.map(([path]) => october12.metho
 const build11502Hashes = FC27_MARKET_READ_METHODS.map(([path], index) =>
   build11502.methods[path] ?? build11502Shared.methods[path] ?? october12Hashes[index]);
 
+it('encodes the bounded TOTW-only lookup as the native rareflag filter, not a quality search', async () => {
+  const f = fixture(build11502Hashes);
+  f.control.entity = { _rareflag: 3 };
+  const transport = await createFc27MarketReadTransport(f.root);
+  const query = { start: 20, count: 20, level: 'totw' };
+  expect(await transport.readCatalogPage(query)).toMatchObject({ query, entries: [{ definitionId: 101, rarity: 3, special: true }] });
+  expect(f.calls[0].url).toMatch(/\/defid$/);
+  expect(Object.fromEntries(new URLSearchParams(f.calls[0].urlVariables)))
+    .toEqual({ type: 'player', sort: 'asc', start: '20', count: '20', rarityIds: '3' });
+  for (const invalid of [{ ...query, start: 60 }, { ...query, count: 50 }, { ...query, league: 13 }, { ...query, rarityIds: 5 }]) {
+    await expect(transport.readCatalogPage(invalid)).rejects.toThrow('QUERY_INVALID');
+  }
+  expect(f.calls).toHaveLength(1);
+});
+
+it('requests only the exact normal-material shortlist definitions and rejects unrelated results', async () => {
+  const f = fixture(build11502Hashes);
+  const transport = await createFc27MarketReadTransport(f.root);
+  const query = { start: 0, count: 20, level: 'gold', definitionIds: [101, 103] };
+  expect(await transport.readCatalogPage(query)).toMatchObject({ query, entries: [{ definitionId: 101 }] });
+  expect(Object.fromEntries(new URLSearchParams(f.calls[0].urlVariables)))
+    .toEqual({ type: 'player', sort: 'asc', start: '0', count: '20', level: 'gold', defId: '101,103', rarityIds: '0,1' });
+  for (const invalid of [{ ...query, start: 20 }, { ...query, level: 'totw' }, { ...query, definitionIds: [101, 101] }]) {
+    await expect(transport.readCatalogPage(invalid)).rejects.toThrow('QUERY_INVALID');
+  }
+  await expect(transport.readCatalogPage({ ...query, definitionIds: [102] })).rejects.toThrow('DEFINITION_MISMATCH');
+});
+
 it('reads build 11502 quotes even when the catalog method is unavailable in quotes-only mode', async () => {
   const f = fixture(build11502Hashes);
   delete f.root.UTItemDAO.prototype.searchConceptItems;
